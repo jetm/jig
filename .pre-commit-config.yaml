@@ -1,0 +1,37 @@
+repos:
+  - repo: https://github.com/golangci/golangci-lint
+    rev: v2.1.6
+    hooks:
+      - id: golangci-lint
+        args: ["--timeout=3m"]
+
+  - repo: https://github.com/dnephin/pre-commit-golang
+    rev: v0.5.1
+    hooks:
+      - id: go-vet
+      - id: go-fmt
+      - id: go-imports
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-merge-conflict
+      - id: detect-private-key
+
+  - repo: local
+    hooks:
+      - id: go-fix
+        name: go fix
+        entry: bash -c 'go fix ./... && git diff --exit-code'
+        language: system
+        pass_filenames: false
+        types: [go]
+      - id: go-build
+        name: go build
+        entry: go build ./cmd/gti
+        language: system
+        pass_filenames: false
+        types: [go]

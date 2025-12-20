@@ -39,6 +39,16 @@ func configZero() config.Config {
 	return config.Config{}
 }
 
+// TestInit delegates to active model's Init.
+func TestInit(t *testing.T) {
+	root := newMock("root")
+	a := NewAppModel(root, nil, configZero())
+	a.Init()
+	if !root.initCalled {
+		t.Fatal("expected root.Init() to be called")
+	}
+}
+
 // TestPushIncreasesDepth verifies Push adds to the stack and Active returns the new model.
 func TestPushIncreasesDepth(t *testing.T) {
 	root := newMock("root")

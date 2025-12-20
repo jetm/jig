@@ -2,6 +2,7 @@ package git_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/jetm/gti/internal/git"
@@ -45,4 +46,26 @@ func TestBranchName_Detached(t *testing.T) {
 		t.Errorf("got %q, want %q", got, "HEAD")
 	}
 	testhelper.MustHaveCall(t, f, "rev-parse", "--abbrev-ref", "HEAD")
+}
+
+func TestRepoRoot_Error(t *testing.T) {
+	f := &testhelper.FakeRunner{
+		Outputs: []string{""},
+		Errors:  []error{fmt.Errorf("not a git repo")},
+	}
+	_, err := git.RepoRoot(context.Background(), f)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestBranchName_Error(t *testing.T) {
+	f := &testhelper.FakeRunner{
+		Outputs: []string{""},
+		Errors:  []error{fmt.Errorf("no HEAD")},
+	}
+	_, err := git.BranchName(context.Background(), f)
+	if err == nil {
+		t.Fatal("expected error")
+	}
 }

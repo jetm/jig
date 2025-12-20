@@ -2,6 +2,7 @@ package testhelper
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -90,10 +91,8 @@ func MustHaveEnv(tb testing.TB, f *FakeRunner, keyvalue string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	for _, c := range f.Calls {
-		for _, e := range c.Env {
-			if e == keyvalue {
-				return
-			}
+		if slices.Contains(c.Env, keyvalue) {
+			return
 		}
 	}
 	tb.Errorf("FakeRunner: no call with env %q recorded; calls: %v", keyvalue, f.Calls)
@@ -148,4 +147,3 @@ func containsSubsequence(haystack, needle []string) bool {
 	}
 	return false
 }
-

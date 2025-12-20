@@ -2,6 +2,7 @@ package testhelper_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/jetm/gti/internal/testhelper"
@@ -69,6 +70,33 @@ func TestFakeRunner_CallCount(t *testing.T) {
 	}
 }
 
+func TestFakeRunner_FIFO_WithErrors(t *testing.T) {
+	err1 := fmt.Errorf("first error")
+	f := &testhelper.FakeRunner{
+		Outputs: []string{"out1"},
+		Errors:  []error{err1},
+	}
+	out, err := f.Run(context.Background(), "cmd")
+	if out != "out1" {
+		t.Errorf("expected out1, got %q", out)
+	}
+	if err != err1 {
+		t.Errorf("expected err1, got %v", err)
+	}
+}
+
+func TestFakeRunner_MustHaveEnv(t *testing.T) {
+	f := &testhelper.FakeRunner{}
+	_, _ = f.RunWithEnv(context.Background(), []string{"KEY=VAL"}, "status")
+	testhelper.MustHaveEnv(t, f, "KEY=VAL")
+}
+
+func TestFakeRunner_MustHaveStdin(t *testing.T) {
+	f := &testhelper.FakeRunner{}
+	_, _ = f.RunWithStdin(context.Background(), "patch data here", "apply")
+	testhelper.MustHaveStdin(t, f, "patch data")
+}
+
 func TestFakeRunner_NthCall(t *testing.T) {
 	f := &testhelper.FakeRunner{}
 	_, _ = f.Run(context.Background(), "first")
@@ -76,5 +104,74 @@ func TestFakeRunner_NthCall(t *testing.T) {
 	c := testhelper.NthCall(f, 1)
 	if len(c.Args) != 1 || c.Args[0] != "second" {
 		t.Errorf("expected Args=[second], got %v", c.Args)
+	}
+}
+
+func TestFakeRunner_MustHaveCall_SubsetMatch(t *testing.T) {
+	f := &testhelper.FakeRunner{}
+	_, _ = f.Run(context.Background(), "diff", "--cached", "--quiet")
+	// Subset match: just "diff" should match
+	testhelper.MustHaveCall(t, f, "diff")
+}
+
+func TestFakeRunner_MustHaveCall_NoMatch(t *testing.T) {
+	f := &testhelper.FakeRunner{}
+	_, _ = f.Run(context.Background(), "status")
+	// Use a mock TB to verify MustHaveCall fails on no match
+	mt := &mockTB{}
+	testhelper.MustHaveCall(mt, f, "nonexistent")
+	if !mt.failed {
+		t.Error("expected MustHaveCall to fail on no match")
+	}
+}
+
+func TestFakeRunner_MustHaveNoCall_WithCalls(t *testing.T) {
+	f := &testhelper.FakeRunner{}
+	_, _ = f.Run(context.Background(), "status")
+	mt := &mockTB{}
+	testhelper.MustHaveNoCall(mt, f)
+	if !mt.failed {
+		t.Error("expected MustHaveNoCall to fail when calls exist")
+	}
+}
+
+func TestFakeRunner_MustHaveEnv_NoMatch(t *testing.T) {
+	f := &testhelper.FakeRunner{}
+	_, _ = f.Run(context.Background(), "status")
+	mt := &mockTB{}
+	testhelper.MustHaveEnv(mt, f, "MISSING=val")
+	if !mt.failed {
+		t.Error("expected MustHaveEnv to fail on no match")
+	}
+}
+
+func TestFakeRunner_MustHaveStdin_NoMatch(t *testing.T) {
+	f := &testhelper.FakeRunner{}
+	_, _ = f.Run(context.Background(), "status")
+	mt := &mockTB{}
+	testhelper.MustHaveStdin(mt, f, "missing")
+	if !mt.failed {
+		t.Error("expected MustHaveStdin to fail on no match")
+	}
+}
+
+// mockTB captures Errorf/Fatalf calls without actually failing the test.
+type mockTB struct {
+	testing.TB
+	failed bool
+}
+
+func (m *mockTB) Helper()                         {}
+func (m *mockTB) Errorf(format string, args ...any) { m.failed = true }
+func (m *mockTB) Fatalf(format string, args ...any)  { m.failed = true }
+
+func TestFakeRunner_EmptyOutputs(t *testing.T) {
+	f := &testhelper.FakeRunner{} // no outputs queued
+	out, err := f.Run(context.Background(), "cmd")
+	if out != "" {
+		t.Errorf("expected empty output, got %q", out)
+	}
+	if err != nil {
+		t.Errorf("expected nil error, got %v", err)
 	}
 }

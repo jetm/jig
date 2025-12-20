@@ -72,6 +72,51 @@ func TestExecRunner_Run_ExecError(t *testing.T) {
 	}
 }
 
+func TestExecError_Error(t *testing.T) {
+	e := &git.ExecError{
+		Args:     []string{"push", "origin"},
+		ExitCode: 128,
+		Stderr:   "permission denied",
+	}
+	got := e.Error()
+	if got != "git push: exit 128: permission denied" {
+		t.Errorf("Error() = %q", got)
+	}
+}
+
+func TestExecRunner_RunWithEnv(t *testing.T) {
+	initTempRepo(t)
+	ctx := context.Background()
+	runner, err := git.NewExecRunner(ctx)
+	if err != nil {
+		t.Fatalf("NewExecRunner: %v", err)
+	}
+	out, err := runner.RunWithEnv(ctx, []string{"GIT_AUTHOR_NAME=TestEnv"}, "--version")
+	if err != nil {
+		t.Fatalf("RunWithEnv: %v", err)
+	}
+	if !strings.Contains(out, "git version") {
+		t.Errorf("expected git version output, got %q", out)
+	}
+}
+
+func TestExecRunner_RunWithStdin(t *testing.T) {
+	initTempRepo(t)
+	ctx := context.Background()
+	runner, err := git.NewExecRunner(ctx)
+	if err != nil {
+		t.Fatalf("NewExecRunner: %v", err)
+	}
+	// Use hash-object which reads from stdin
+	out, err := runner.RunWithStdin(ctx, "test content\n", "hash-object", "--stdin")
+	if err != nil {
+		t.Fatalf("RunWithStdin: %v", err)
+	}
+	if len(out) != 40 {
+		t.Errorf("expected 40-char SHA, got %q (len %d)", out, len(out))
+	}
+}
+
 func TestExecRunner_Run_ContextCancel(t *testing.T) {
 	initTempRepo(t)
 	ctx, cancel := context.WithCancel(context.Background())

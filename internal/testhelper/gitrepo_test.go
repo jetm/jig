@@ -2,7 +2,9 @@ package testhelper_test
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/jetm/gti/internal/testhelper"
@@ -46,5 +48,35 @@ func TestWriteFile(t *testing.T) {
 	}
 	if string(content) != "world\n" {
 		t.Fatalf("expected %q, got %q", "world\n", string(content))
+	}
+}
+
+func TestWriteFile_Subdirectory(t *testing.T) {
+	dir := testhelper.NewTempRepo(t)
+	testhelper.WriteFile(t, dir, "sub/dir/file.txt", "nested\n")
+
+	content, err := os.ReadFile(filepath.Join(dir, "sub", "dir", "file.txt"))
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if string(content) != "nested\n" {
+		t.Fatalf("expected %q, got %q", "nested\n", string(content))
+	}
+}
+
+func TestStageFile(t *testing.T) {
+	dir := testhelper.NewTempRepo(t)
+	testhelper.WriteFile(t, dir, "staged.txt", "content\n")
+	testhelper.StageFile(t, dir, "staged.txt")
+
+	// Verify file is staged by checking git diff --cached --name-only
+	cmd := exec.Command("git", "diff", "--cached", "--name-only")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git diff --cached: %v", err)
+	}
+	if !strings.Contains(string(out), "staged.txt") {
+		t.Errorf("expected staged.txt in staged files, got %q", string(out))
 	}
 }

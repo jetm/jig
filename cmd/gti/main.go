@@ -43,8 +43,12 @@ func newRootCmd() *cobra.Command {
 	return root
 }
 
+func run() error {
+	return newRootCmd().Execute()
+}
+
 func main() {
-	if err := newRootCmd().Execute(); err != nil {
+	if err := run(); err != nil {
 		os.Exit(1)
 	}
 }

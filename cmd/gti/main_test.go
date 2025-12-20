@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"os"
 	"strings"
 	"testing"
 )
@@ -53,6 +54,27 @@ func TestSubcommandStub_PrintsNotImplemented(t *testing.T) {
 	output := errBuf.String()
 	if !strings.Contains(output, "not implemented") {
 		t.Errorf("stderr = %q, want containing %q", output, "not implemented")
+	}
+}
+
+func TestRun_Success(t *testing.T) {
+	os.Args = []string{"gti", "--version"}
+	if err := run(); err != nil {
+		t.Fatalf("run() returned error: %v", err)
+	}
+}
+
+func TestRun_EachSubcommand(t *testing.T) {
+	for _, name := range []string{
+		"add", "hunk-add", "checkout", "diff",
+		"fixup", "rebase-interactive", "reset", "log",
+	} {
+		t.Run(name, func(t *testing.T) {
+			os.Args = []string{"gti", name}
+			if err := run(); err != nil {
+				t.Fatalf("run(%s) returned error: %v", name, err)
+			}
+		})
 	}
 }
 

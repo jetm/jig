@@ -1,4 +1,5 @@
 # Binaries
+/gti
 bin/
 *.exe
 *.exe~

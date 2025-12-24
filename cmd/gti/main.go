@@ -29,7 +29,6 @@ func newRootCmd() *cobra.Command {
 		"add", "hunk-add", "checkout", "diff",
 		"fixup", "rebase-interactive", "reset", "log",
 	} {
-		name := name // capture loop variable
 		root.AddCommand(&cobra.Command{
 			Use:   name,
 			Short: fmt.Sprintf("%s command (not yet implemented)", name),

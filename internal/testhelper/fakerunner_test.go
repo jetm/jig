@@ -161,9 +161,9 @@ type mockTB struct {
 	failed bool
 }
 
-func (m *mockTB) Helper()                         {}
+func (m *mockTB) Helper()                           {}
 func (m *mockTB) Errorf(format string, args ...any) { m.failed = true }
-func (m *mockTB) Fatalf(format string, args ...any)  { m.failed = true }
+func (m *mockTB) Fatalf(format string, args ...any) { m.failed = true }
 
 func TestFakeRunner_EmptyOutputs(t *testing.T) {
 	f := &testhelper.FakeRunner{} // no outputs queued

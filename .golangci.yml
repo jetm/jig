@@ -1,17 +1,21 @@
+version: "2"
+
 linters:
   enable:
     - errcheck
-    - gosimple
     - govet
     - ineffassign
     - staticcheck
     - unused
-    - gofmt
-    - goimports
     - gocritic
     - revive
     - wrapcheck
     - testifylint
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
 
 linters-settings:
   wrapcheck:

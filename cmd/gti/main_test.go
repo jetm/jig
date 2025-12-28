@@ -65,8 +65,10 @@ func TestRun_Success(t *testing.T) {
 }
 
 func TestRun_EachSubcommand(t *testing.T) {
+	// Diff is excluded because it launches a real TUI (requires TTY).
+	// It is tested separately via TestDiffCmd_Flags.
 	for _, name := range []string{
-		"add", "hunk-add", "checkout", "diff",
+		"add", "hunk-add", "checkout",
 		"fixup", "rebase-interactive", "reset", "log",
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -75,6 +77,25 @@ func TestRun_EachSubcommand(t *testing.T) {
 				t.Fatalf("run(%s) returned error: %v", name, err)
 			}
 		})
+	}
+}
+
+func TestDiffCmd_RegisteredWithFlags(t *testing.T) {
+	cmd := newRootCmd()
+	diffCmd, _, err := cmd.Find([]string{"diff"})
+	if err != nil {
+		t.Fatalf("diff subcommand not found: %v", err)
+	}
+	if diffCmd.Use != "diff [revision]" {
+		t.Errorf("diff Use = %q, want %q", diffCmd.Use, "diff [revision]")
+	}
+
+	staged := diffCmd.Flags().Lookup("staged")
+	if staged == nil {
+		t.Fatal("diff command missing --staged flag")
+	}
+	if staged.DefValue != "false" {
+		t.Errorf("--staged default = %q, want %q", staged.DefValue, "false")
 	}
 }
 

@@ -1,3 +1,5 @@
+// Package git provides types and functions for executing git commands and
+// querying repository state.
 package git
 
 import (

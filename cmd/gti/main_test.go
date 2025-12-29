@@ -45,7 +45,7 @@ func TestSubcommandStub_PrintsNotImplemented(t *testing.T) {
 	cmd := newRootCmd()
 	errBuf := new(bytes.Buffer)
 	cmd.SetErr(errBuf)
-	cmd.SetArgs([]string{"add"})
+	cmd.SetArgs([]string{"hunk-add"})
 	err := cmd.Execute()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -65,10 +65,9 @@ func TestRun_Success(t *testing.T) {
 }
 
 func TestRun_EachSubcommand(t *testing.T) {
-	// Diff is excluded because it launches a real TUI (requires TTY).
-	// It is tested separately via TestDiffCmd_Flags.
+	// add, checkout, diff are excluded because they launch a real TUI (requires TTY).
 	for _, name := range []string{
-		"add", "hunk-add", "checkout",
+		"hunk-add",
 		"fixup", "rebase-interactive", "reset", "log",
 	} {
 		t.Run(name, func(t *testing.T) {

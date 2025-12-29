@@ -33,9 +33,9 @@ func newRootCmd() *cobra.Command {
 	// Override version template to match spec format
 	root.SetVersionTemplate("gti version {{.Version}}\n")
 
-	// Register stub subcommands (all except diff which is implemented)
+	// Register stub subcommands (not yet implemented)
 	for _, name := range []string{
-		"add", "hunk-add", "checkout",
+		"hunk-add",
 		"fixup", "rebase-interactive", "reset", "log",
 	} {
 		root.AddCommand(&cobra.Command{
@@ -50,8 +50,10 @@ func newRootCmd() *cobra.Command {
 		})
 	}
 
-	// Register the diff command
+	// Register implemented commands
 	root.AddCommand(newDiffCmd())
+	root.AddCommand(newAddCmd())
+	root.AddCommand(newCheckoutCmd())
 
 	return root
 }
@@ -111,6 +113,98 @@ func (d *diffTeaModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (d *diffTeaModel) View() tea.View {
 	return tea.NewView(d.inner.View())
+}
+
+func newAddCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "add",
+		Short: "Interactively stage files",
+		Args:  cobra.NoArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			ctx := context.Background()
+			runner, err := git.NewExecRunner(ctx)
+			if err != nil {
+				return fmt.Errorf("initializing git runner: %w", err)
+			}
+
+			cfg := config.NewDefault()
+			renderer := diff.Chain(cfg)
+			addModel := commands.NewAddModel(ctx, runner, cfg, renderer)
+
+			appModel := app.NewAppModel(newAddTeaModel(addModel), runner, cfg)
+			p := tea.NewProgram(appModel)
+			if _, err = p.Run(); err != nil {
+				return fmt.Errorf("running add: %w", err)
+			}
+			return nil
+		},
+	}
+}
+
+// addTeaModel wraps AddModel (child component pattern) as a tea.Model for AppModel.
+type addTeaModel struct {
+	inner *commands.AddModel
+}
+
+func newAddTeaModel(m *commands.AddModel) *addTeaModel {
+	return &addTeaModel{inner: m}
+}
+
+func (a *addTeaModel) Init() tea.Cmd { return nil }
+
+func (a *addTeaModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	cmd := a.inner.Update(msg)
+	return a, cmd
+}
+
+func (a *addTeaModel) View() tea.View {
+	return tea.NewView(a.inner.View())
+}
+
+func newCheckoutCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "checkout",
+		Short: "Interactively discard file changes",
+		Args:  cobra.NoArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			ctx := context.Background()
+			runner, err := git.NewExecRunner(ctx)
+			if err != nil {
+				return fmt.Errorf("initializing git runner: %w", err)
+			}
+
+			cfg := config.NewDefault()
+			renderer := diff.Chain(cfg)
+			checkoutModel := commands.NewCheckoutModel(ctx, runner, cfg, renderer)
+
+			appModel := app.NewAppModel(newCheckoutTeaModel(checkoutModel), runner, cfg)
+			p := tea.NewProgram(appModel)
+			if _, err = p.Run(); err != nil {
+				return fmt.Errorf("running checkout: %w", err)
+			}
+			return nil
+		},
+	}
+}
+
+// checkoutTeaModel wraps CheckoutModel (child component pattern) as a tea.Model for AppModel.
+type checkoutTeaModel struct {
+	inner *commands.CheckoutModel
+}
+
+func newCheckoutTeaModel(m *commands.CheckoutModel) *checkoutTeaModel {
+	return &checkoutTeaModel{inner: m}
+}
+
+func (c *checkoutTeaModel) Init() tea.Cmd { return nil }
+
+func (c *checkoutTeaModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	cmd := c.inner.Update(msg)
+	return c, cmd
+}
+
+func (c *checkoutTeaModel) View() tea.View {
+	return tea.NewView(c.inner.View())
 }
 
 func run() error {

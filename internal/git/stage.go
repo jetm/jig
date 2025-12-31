@@ -24,7 +24,7 @@ func ListUnstagedFiles(ctx context.Context, r Runner) ([]StatusFile, error) {
 	}
 
 	var files []StatusFile
-	for _, line := range strings.Split(nameStatus, "\n") {
+	for line := range strings.SplitSeq(nameStatus, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
@@ -39,7 +39,7 @@ func ListUnstagedFiles(ctx context.Context, r Runner) ([]StatusFile, error) {
 		return nil, fmt.Errorf("git ls-files --others: %w", err)
 	}
 
-	for _, line := range strings.Split(untracked, "\n") {
+	for line := range strings.SplitSeq(untracked, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
@@ -59,7 +59,7 @@ func ListModifiedFiles(ctx context.Context, r Runner) ([]StatusFile, error) {
 	}
 
 	var files []StatusFile
-	for _, line := range strings.Split(nameStatus, "\n") {
+	for line := range strings.SplitSeq(nameStatus, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
@@ -103,6 +103,19 @@ func StageFiles(ctx context.Context, r Runner, paths []string) error {
 	_, err := r.Run(ctx, args...)
 	if err != nil {
 		return fmt.Errorf("git add: %w", err)
+	}
+	return nil
+}
+
+// StageHunk applies a single hunk patch to the index via `git apply --cached`.
+// patchHeader is the unified diff file header (e.g. "diff --git a/f b/f\n--- a/f\n+++ b/f\n")
+// and hunkBody is the "@@ ... @@\n..." hunk text. They are concatenated to form
+// a minimal patch that git apply can process.
+func StageHunk(ctx context.Context, r Runner, patchHeader, hunkBody string) error {
+	patch := patchHeader + "\n" + hunkBody + "\n"
+	_, err := r.RunWithStdin(ctx, patch, "apply", "--cached")
+	if err != nil {
+		return fmt.Errorf("git apply --cached: %w", err)
 	}
 	return nil
 }

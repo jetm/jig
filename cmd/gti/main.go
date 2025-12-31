@@ -35,7 +35,6 @@ func newRootCmd() *cobra.Command {
 
 	// Register stub subcommands (not yet implemented)
 	for _, name := range []string{
-		"hunk-add",
 		"fixup", "rebase-interactive", "reset", "log",
 	} {
 		root.AddCommand(&cobra.Command{
@@ -54,6 +53,7 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newDiffCmd())
 	root.AddCommand(newAddCmd())
 	root.AddCommand(newCheckoutCmd())
+	root.AddCommand(newHunkAddCmd())
 
 	return root
 }
@@ -205,6 +205,52 @@ func (c *checkoutTeaModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (c *checkoutTeaModel) View() tea.View {
 	return tea.NewView(c.inner.View())
+}
+
+func newHunkAddCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "hunk-add",
+		Short: "Interactively stage hunks",
+		Args:  cobra.NoArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			ctx := context.Background()
+			runner, err := git.NewExecRunner(ctx)
+			if err != nil {
+				return fmt.Errorf("initializing git runner: %w", err)
+			}
+
+			cfg := config.NewDefault()
+			renderer := diff.Chain(cfg)
+			hunkAddModel := commands.NewHunkAddModel(ctx, runner, cfg, renderer)
+
+			appModel := app.NewAppModel(newHunkAddTeaModel(hunkAddModel), runner, cfg)
+			p := tea.NewProgram(appModel)
+			if _, err = p.Run(); err != nil {
+				return fmt.Errorf("running hunk-add: %w", err)
+			}
+			return nil
+		},
+	}
+}
+
+// hunkAddTeaModel wraps HunkAddModel (child component pattern) as a tea.Model for AppModel.
+type hunkAddTeaModel struct {
+	inner *commands.HunkAddModel
+}
+
+func newHunkAddTeaModel(m *commands.HunkAddModel) *hunkAddTeaModel {
+	return &hunkAddTeaModel{inner: m}
+}
+
+func (h *hunkAddTeaModel) Init() tea.Cmd { return nil }
+
+func (h *hunkAddTeaModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	cmd := h.inner.Update(msg)
+	return h, cmd
+}
+
+func (h *hunkAddTeaModel) View() tea.View {
+	return tea.NewView(h.inner.View())
 }
 
 func run() error {

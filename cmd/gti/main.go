@@ -35,7 +35,7 @@ func newRootCmd() *cobra.Command {
 
 	// Register stub subcommands (not yet implemented)
 	for _, name := range []string{
-		"fixup", "rebase-interactive", "reset", "log",
+		"rebase-interactive", "reset", "log",
 	} {
 		root.AddCommand(&cobra.Command{
 			Use:   name,
@@ -54,6 +54,7 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newAddCmd())
 	root.AddCommand(newCheckoutCmd())
 	root.AddCommand(newHunkAddCmd())
+	root.AddCommand(newFixupCmd())
 
 	return root
 }
@@ -251,6 +252,52 @@ func (h *hunkAddTeaModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (h *hunkAddTeaModel) View() tea.View {
 	return tea.NewView(h.inner.View())
+}
+
+func newFixupCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "fixup",
+		Short: "Interactively create a fixup commit",
+		Args:  cobra.NoArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			ctx := context.Background()
+			runner, err := git.NewExecRunner(ctx)
+			if err != nil {
+				return fmt.Errorf("initializing git runner: %w", err)
+			}
+
+			cfg := config.NewDefault()
+			renderer := diff.Chain(cfg)
+			fixupModel := commands.NewFixupModel(ctx, runner, cfg, renderer)
+
+			appModel := app.NewAppModel(newFixupTeaModel(fixupModel), runner, cfg)
+			p := tea.NewProgram(appModel)
+			if _, err = p.Run(); err != nil {
+				return fmt.Errorf("running fixup: %w", err)
+			}
+			return nil
+		},
+	}
+}
+
+// fixupTeaModel wraps FixupModel (child component pattern) as a tea.Model for AppModel.
+type fixupTeaModel struct {
+	inner *commands.FixupModel
+}
+
+func newFixupTeaModel(m *commands.FixupModel) *fixupTeaModel {
+	return &fixupTeaModel{inner: m}
+}
+
+func (f *fixupTeaModel) Init() tea.Cmd { return nil }
+
+func (f *fixupTeaModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	cmd := f.inner.Update(msg)
+	return f, cmd
+}
+
+func (f *fixupTeaModel) View() tea.View {
+	return tea.NewView(f.inner.View())
 }
 
 func run() error {

@@ -53,7 +53,7 @@ func TestSubcommandStub_PrintsNotImplemented(t *testing.T) {
 	cmd := newRootCmd()
 	errBuf := new(bytes.Buffer)
 	cmd.SetErr(errBuf)
-	cmd.SetArgs([]string{"fixup"})
+	cmd.SetArgs([]string{"rebase-interactive"})
 	err := cmd.Execute()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -73,9 +73,9 @@ func TestRun_Success(t *testing.T) {
 }
 
 func TestRun_EachSubcommand(t *testing.T) {
-	// add, checkout, diff, hunk-add are excluded because they launch a real TUI (requires TTY).
+	// add, checkout, diff, hunk-add, fixup are excluded because they launch a real TUI (requires TTY).
 	for _, name := range []string{
-		"fixup", "rebase-interactive", "reset", "log",
+		"rebase-interactive", "reset", "log",
 	} {
 		t.Run(name, func(t *testing.T) {
 			os.Args = []string{"gti", name}
@@ -226,6 +226,36 @@ func TestCheckoutTeaModel_View(t *testing.T) {
 	m := newCheckoutTeaModel(newFakeCheckoutModel(t))
 	view := m.View()
 	_ = view // just ensure no panic
+}
+
+// newFakeFixupModel creates a FixupModel with no real git calls.
+func newFakeFixupModel(t *testing.T) *commands.FixupModel {
+	t.Helper()
+	runner := &testhelper.FakeRunner{Outputs: []string{"", "main"}}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	return commands.NewFixupModel(context.Background(), runner, cfg, renderer)
+}
+
+func TestFixupTeaModel_InitReturnsNil(t *testing.T) {
+	m := newFixupTeaModel(newFakeFixupModel(t))
+	if cmd := m.Init(); cmd != nil {
+		t.Error("Init() should return nil")
+	}
+}
+
+func TestFixupTeaModel_Update(t *testing.T) {
+	m := newFixupTeaModel(newFakeFixupModel(t))
+	next, cmd := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	if next == nil {
+		t.Error("Update() should return non-nil model")
+	}
+	_ = cmd
+}
+
+func TestFixupTeaModel_View(t *testing.T) {
+	m := newFixupTeaModel(newFakeFixupModel(t))
+	_ = m.View() // just ensure no panic
 }
 
 func TestAllSubcommandsRegistered(t *testing.T) {

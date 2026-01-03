@@ -35,7 +35,7 @@ func newRootCmd() *cobra.Command {
 
 	// Register stub subcommands (not yet implemented)
 	for _, name := range []string{
-		"rebase-interactive", "reset", "log",
+		"rebase-interactive", "reset",
 	} {
 		root.AddCommand(&cobra.Command{
 			Use:   name,
@@ -55,6 +55,7 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newCheckoutCmd())
 	root.AddCommand(newHunkAddCmd())
 	root.AddCommand(newFixupCmd())
+	root.AddCommand(newLogCmd())
 
 	return root
 }
@@ -298,6 +299,57 @@ func (f *fixupTeaModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (f *fixupTeaModel) View() tea.View {
 	return tea.NewView(f.inner.View())
+}
+
+func newLogCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "log [revision]",
+		Short: "Interactive commit log browser",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			var ref string
+			if len(args) > 0 {
+				ref = args[0]
+			}
+
+			ctx := context.Background()
+			runner, err := git.NewExecRunner(ctx)
+			if err != nil {
+				return fmt.Errorf("initializing git runner: %w", err)
+			}
+
+			cfg := config.NewDefault()
+			renderer := diff.Chain(cfg)
+			logModel := commands.NewLogModel(ctx, runner, cfg, renderer, ref)
+
+			appModel := app.NewAppModel(newLogTeaModel(logModel), runner, cfg)
+			p := tea.NewProgram(appModel)
+			if _, err = p.Run(); err != nil {
+				return fmt.Errorf("running log: %w", err)
+			}
+			return nil
+		},
+	}
+}
+
+// logTeaModel wraps LogModel (child component pattern) as a tea.Model for AppModel.
+type logTeaModel struct {
+	inner *commands.LogModel
+}
+
+func newLogTeaModel(m *commands.LogModel) *logTeaModel {
+	return &logTeaModel{inner: m}
+}
+
+func (l *logTeaModel) Init() tea.Cmd { return nil }
+
+func (l *logTeaModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	cmd := l.inner.Update(msg)
+	return l, cmd
+}
+
+func (l *logTeaModel) View() tea.View {
+	return tea.NewView(l.inner.View())
 }
 
 func run() error {

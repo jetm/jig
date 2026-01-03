@@ -17,10 +17,21 @@ type CommitEntry struct {
 // RecentCommits returns up to n recent commits from git log.
 // Each entry includes hash, subject, author name, and relative date.
 func RecentCommits(ctx context.Context, r Runner, n int) ([]CommitEntry, error) {
+	return RecentCommitsFrom(ctx, r, n, "")
+}
+
+// RecentCommitsFrom returns up to n recent commits from git log, starting from
+// the given revision ref (e.g. "HEAD", "main", "v1.0"). An empty ref defaults
+// to HEAD (standard git log behaviour).
+func RecentCommitsFrom(ctx context.Context, r Runner, n int, ref string) ([]CommitEntry, error) {
 	// Use NUL-separated format to safely handle special chars in subjects.
 	// Format: hash\x1fsubject\x1fauthor\x1freldate\x00 per commit.
 	format := "--format=%h\x1f%s\x1f%an\x1f%ar\x00"
-	out, err := r.Run(ctx, "log", fmt.Sprintf("-n%d", n), format)
+	args := []string{"log", fmt.Sprintf("-n%d", n), format}
+	if ref != "" {
+		args = append(args, ref)
+	}
+	out, err := r.Run(ctx, args...)
 	if err != nil {
 		return nil, fmt.Errorf("git log: %w", err)
 	}
@@ -52,8 +63,8 @@ func parseCommitLog(raw string) []CommitEntry {
 	}
 
 	var entries []CommitEntry
-	records := strings.Split(raw, "\x00")
-	for _, rec := range records {
+	records := strings.SplitSeq(raw, "\x00")
+	for rec := range records {
 		rec = strings.TrimSpace(rec)
 		if rec == "" {
 			continue

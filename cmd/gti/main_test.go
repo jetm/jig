@@ -73,9 +73,9 @@ func TestRun_Success(t *testing.T) {
 }
 
 func TestRun_EachSubcommand(t *testing.T) {
-	// add, checkout, diff, hunk-add, fixup are excluded because they launch a real TUI (requires TTY).
+	// add, checkout, diff, hunk-add, fixup, log are excluded because they launch a real TUI (requires TTY).
 	for _, name := range []string{
-		"rebase-interactive", "reset", "log",
+		"rebase-interactive", "reset",
 	} {
 		t.Run(name, func(t *testing.T) {
 			os.Args = []string{"gti", name}
@@ -256,6 +256,47 @@ func TestFixupTeaModel_Update(t *testing.T) {
 func TestFixupTeaModel_View(t *testing.T) {
 	m := newFixupTeaModel(newFakeFixupModel(t))
 	_ = m.View() // just ensure no panic
+}
+
+// newFakeLogModel creates a LogModel with no real git calls.
+func newFakeLogModel(t *testing.T) *commands.LogModel {
+	t.Helper()
+	runner := &testhelper.FakeRunner{Outputs: []string{"", "main"}}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	return commands.NewLogModel(context.Background(), runner, cfg, renderer, "")
+}
+
+func TestLogTeaModel_InitReturnsNil(t *testing.T) {
+	m := newLogTeaModel(newFakeLogModel(t))
+	if cmd := m.Init(); cmd != nil {
+		t.Error("Init() should return nil")
+	}
+}
+
+func TestLogTeaModel_Update(t *testing.T) {
+	m := newLogTeaModel(newFakeLogModel(t))
+	next, cmd := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	if next == nil {
+		t.Error("Update() should return non-nil model")
+	}
+	_ = cmd
+}
+
+func TestLogTeaModel_View(t *testing.T) {
+	m := newLogTeaModel(newFakeLogModel(t))
+	_ = m.View() // just ensure no panic
+}
+
+func TestLogCmd_RegisteredWithArgs(t *testing.T) {
+	cmd := newRootCmd()
+	logCmd, _, err := cmd.Find([]string{"log"})
+	if err != nil {
+		t.Fatalf("log subcommand not found: %v", err)
+	}
+	if logCmd.Use != "log [revision]" {
+		t.Errorf("log Use = %q, want %q", logCmd.Use, "log [revision]")
+	}
 }
 
 func TestAllSubcommandsRegistered(t *testing.T) {

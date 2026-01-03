@@ -149,6 +149,53 @@ func TestCreateFixupCommit_UsesFixupFlag(t *testing.T) {
 	testhelper.MustHaveCall(t, runner, "commit", "--fixup=abc1234")
 }
 
+func TestRecentCommitsFrom_NoRef(t *testing.T) {
+	raw := "abc1234\x1ffeat: add log command\x1fJane Doe\x1f1 hour ago\x00"
+	runner := &testhelper.FakeRunner{Outputs: []string{raw}}
+	commits, err := git.RecentCommitsFrom(context.Background(), runner, 20, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(commits) != 1 {
+		t.Fatalf("expected 1 commit, got %d", len(commits))
+	}
+}
+
+func TestRecentCommitsFrom_WithRef(t *testing.T) {
+	raw := "def5678\x1ffeat: old commit\x1fBob\x1f5 days ago\x00"
+	runner := &testhelper.FakeRunner{Outputs: []string{raw}}
+	commits, err := git.RecentCommitsFrom(context.Background(), runner, 20, "v1.0")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(commits) != 1 {
+		t.Fatalf("expected 1 commit, got %d", len(commits))
+	}
+	// Verify the ref was passed as an arg
+	call := testhelper.NthCall(runner, 0)
+	found := false
+	for _, a := range call.Args {
+		if a == "v1.0" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected ref %q in args, got %v", "v1.0", call.Args)
+	}
+}
+
+func TestRecentCommitsFrom_ReturnsErrorOnFailure(t *testing.T) {
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{""},
+		Errors:  []error{&git.ExecError{Args: []string{"log"}, ExitCode: 128, Stderr: "bad revision"}},
+	}
+	_, err := git.RecentCommitsFrom(context.Background(), runner, 20, "badref")
+	if err == nil {
+		t.Error("expected error, got nil")
+	}
+}
+
 func TestCreateFixupCommit_ReturnsErrorOnFailure(t *testing.T) {
 	runner := &testhelper.FakeRunner{
 		Outputs: []string{""},

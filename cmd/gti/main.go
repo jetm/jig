@@ -35,7 +35,7 @@ func newRootCmd() *cobra.Command {
 
 	// Register stub subcommands (not yet implemented)
 	for _, name := range []string{
-		"rebase-interactive", "reset",
+		"reset",
 	} {
 		root.AddCommand(&cobra.Command{
 			Use:   name,
@@ -56,6 +56,7 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newHunkAddCmd())
 	root.AddCommand(newFixupCmd())
 	root.AddCommand(newLogCmd())
+	root.AddCommand(newRebaseInteractiveCmd())
 
 	return root
 }
@@ -350,6 +351,57 @@ func (l *logTeaModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (l *logTeaModel) View() tea.View {
 	return tea.NewView(l.inner.View())
+}
+
+func newRebaseInteractiveCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "rebase-interactive [revision]",
+		Short: "Interactive rebase todo editor",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			var base string
+			if len(args) > 0 {
+				base = args[0]
+			}
+
+			ctx := context.Background()
+			runner, err := git.NewExecRunner(ctx)
+			if err != nil {
+				return fmt.Errorf("initializing git runner: %w", err)
+			}
+
+			cfg := config.NewDefault()
+			renderer := diff.Chain(cfg)
+			rebaseModel := commands.NewRebaseInteractiveModel(ctx, runner, cfg, renderer, base)
+
+			appModel := app.NewAppModel(newRebaseInteractiveTeaModel(rebaseModel), runner, cfg)
+			p := tea.NewProgram(appModel)
+			if _, err = p.Run(); err != nil {
+				return fmt.Errorf("running rebase-interactive: %w", err)
+			}
+			return nil
+		},
+	}
+}
+
+// rebaseInteractiveTeaModel wraps RebaseInteractiveModel (child component pattern) as a tea.Model for AppModel.
+type rebaseInteractiveTeaModel struct {
+	inner *commands.RebaseInteractiveModel
+}
+
+func newRebaseInteractiveTeaModel(m *commands.RebaseInteractiveModel) *rebaseInteractiveTeaModel {
+	return &rebaseInteractiveTeaModel{inner: m}
+}
+
+func (r *rebaseInteractiveTeaModel) Init() tea.Cmd { return nil }
+
+func (r *rebaseInteractiveTeaModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	cmd := r.inner.Update(msg)
+	return r, cmd
+}
+
+func (r *rebaseInteractiveTeaModel) View() tea.View {
+	return tea.NewView(r.inner.View())
 }
 
 func run() error {

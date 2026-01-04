@@ -53,7 +53,7 @@ func TestSubcommandStub_PrintsNotImplemented(t *testing.T) {
 	cmd := newRootCmd()
 	errBuf := new(bytes.Buffer)
 	cmd.SetErr(errBuf)
-	cmd.SetArgs([]string{"rebase-interactive"})
+	cmd.SetArgs([]string{"reset"})
 	err := cmd.Execute()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -73,9 +73,9 @@ func TestRun_Success(t *testing.T) {
 }
 
 func TestRun_EachSubcommand(t *testing.T) {
-	// add, checkout, diff, hunk-add, fixup, log are excluded because they launch a real TUI (requires TTY).
+	// add, checkout, diff, hunk-add, fixup, log, rebase-interactive are excluded because they launch a real TUI (requires TTY).
 	for _, name := range []string{
-		"rebase-interactive", "reset",
+		"reset",
 	} {
 		t.Run(name, func(t *testing.T) {
 			os.Args = []string{"gti", name}
@@ -296,6 +296,47 @@ func TestLogCmd_RegisteredWithArgs(t *testing.T) {
 	}
 	if logCmd.Use != "log [revision]" {
 		t.Errorf("log Use = %q, want %q", logCmd.Use, "log [revision]")
+	}
+}
+
+// newFakeRebaseInteractiveModel creates a RebaseInteractiveModel with no real git calls.
+func newFakeRebaseInteractiveModel(t *testing.T) *commands.RebaseInteractiveModel {
+	t.Helper()
+	runner := &testhelper.FakeRunner{Outputs: []string{"", "main"}}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	return commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~5")
+}
+
+func TestRebaseInteractiveTeaModel_InitReturnsNil(t *testing.T) {
+	m := newRebaseInteractiveTeaModel(newFakeRebaseInteractiveModel(t))
+	if cmd := m.Init(); cmd != nil {
+		t.Error("Init() should return nil")
+	}
+}
+
+func TestRebaseInteractiveTeaModel_Update(t *testing.T) {
+	m := newRebaseInteractiveTeaModel(newFakeRebaseInteractiveModel(t))
+	next, cmd := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	if next == nil {
+		t.Error("Update() should return non-nil model")
+	}
+	_ = cmd
+}
+
+func TestRebaseInteractiveTeaModel_View(t *testing.T) {
+	m := newRebaseInteractiveTeaModel(newFakeRebaseInteractiveModel(t))
+	_ = m.View() // just ensure no panic
+}
+
+func TestRebaseInteractiveCmd_RegisteredWithArgs(t *testing.T) {
+	cmd := newRootCmd()
+	riCmd, _, err := cmd.Find([]string{"rebase-interactive"})
+	if err != nil {
+		t.Fatalf("rebase-interactive subcommand not found: %v", err)
+	}
+	if riCmd.Use != "rebase-interactive [revision]" {
+		t.Errorf("rebase-interactive Use = %q, want %q", riCmd.Use, "rebase-interactive [revision]")
 	}
 }
 

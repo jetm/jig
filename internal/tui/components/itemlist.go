@@ -60,6 +60,9 @@ func (il *ItemList) SetHeight(h int) { il.list.SetHeight(h) }
 // View renders the list as a string.
 func (il *ItemList) View() string { return il.list.View() }
 
+// Select moves the cursor to the given index.
+func (il *ItemList) Select(index int) { il.list.Select(index) }
+
 // Update forwards messages to the inner list model and returns any command.
 func (il *ItemList) Update(msg tea.Msg) tea.Cmd {
 	var cmd tea.Cmd

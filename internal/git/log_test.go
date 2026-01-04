@@ -2,6 +2,7 @@ package git_test
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 
@@ -173,13 +174,7 @@ func TestRecentCommitsFrom_WithRef(t *testing.T) {
 	}
 	// Verify the ref was passed as an arg
 	call := testhelper.NthCall(runner, 0)
-	found := false
-	for _, a := range call.Args {
-		if a == "v1.0" {
-			found = true
-			break
-		}
-	}
+	found := slices.Contains(call.Args, "v1.0")
 	if !found {
 		t.Errorf("expected ref %q in args, got %v", "v1.0", call.Args)
 	}

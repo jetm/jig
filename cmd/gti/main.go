@@ -33,25 +33,10 @@ func newRootCmd() *cobra.Command {
 	// Override version template to match spec format
 	root.SetVersionTemplate("gti version {{.Version}}\n")
 
-	// Register stub subcommands (not yet implemented)
-	for _, name := range []string{
-		"reset",
-	} {
-		root.AddCommand(&cobra.Command{
-			Use:   name,
-			Short: fmt.Sprintf("%s command (not yet implemented)", name),
-			RunE: func(cmd *cobra.Command, _ []string) error {
-				if _, err := fmt.Fprintln(cmd.ErrOrStderr(), "not implemented"); err != nil {
-					return fmt.Errorf("writing to stderr: %w", err)
-				}
-				return nil
-			},
-		})
-	}
-
 	// Register implemented commands
 	root.AddCommand(newDiffCmd())
 	root.AddCommand(newAddCmd())
+	root.AddCommand(newResetCmd())
 	root.AddCommand(newCheckoutCmd())
 	root.AddCommand(newHunkAddCmd())
 	root.AddCommand(newFixupCmd())
@@ -351,6 +336,52 @@ func (l *logTeaModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (l *logTeaModel) View() tea.View {
 	return tea.NewView(l.inner.View())
+}
+
+func newResetCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "reset",
+		Short: "Interactively unstage files",
+		Args:  cobra.NoArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			ctx := context.Background()
+			runner, err := git.NewExecRunner(ctx)
+			if err != nil {
+				return fmt.Errorf("initializing git runner: %w", err)
+			}
+
+			cfg := config.NewDefault()
+			renderer := diff.Chain(cfg)
+			resetModel := commands.NewResetModel(ctx, runner, cfg, renderer)
+
+			appModel := app.NewAppModel(newResetTeaModel(resetModel), runner, cfg)
+			p := tea.NewProgram(appModel)
+			if _, err = p.Run(); err != nil {
+				return fmt.Errorf("running reset: %w", err)
+			}
+			return nil
+		},
+	}
+}
+
+// resetTeaModel wraps ResetModel (child component pattern) as a tea.Model for AppModel.
+type resetTeaModel struct {
+	inner *commands.ResetModel
+}
+
+func newResetTeaModel(m *commands.ResetModel) *resetTeaModel {
+	return &resetTeaModel{inner: m}
+}
+
+func (r *resetTeaModel) Init() tea.Cmd { return nil }
+
+func (r *resetTeaModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	cmd := r.inner.Update(msg)
+	return r, cmd
+}
+
+func (r *resetTeaModel) View() tea.View {
+	return tea.NewView(r.inner.View())
 }
 
 func newRebaseInteractiveCmd() *cobra.Command {

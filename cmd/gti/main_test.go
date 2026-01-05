@@ -49,40 +49,10 @@ func TestVersionFlag(t *testing.T) {
 	}
 }
 
-func TestSubcommandStub_PrintsNotImplemented(t *testing.T) {
-	cmd := newRootCmd()
-	errBuf := new(bytes.Buffer)
-	cmd.SetErr(errBuf)
-	cmd.SetArgs([]string{"reset"})
-	err := cmd.Execute()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	output := errBuf.String()
-	if !strings.Contains(output, "not implemented") {
-		t.Errorf("stderr = %q, want containing %q", output, "not implemented")
-	}
-}
-
 func TestRun_Success(t *testing.T) {
 	os.Args = []string{"gti", "--version"}
 	if err := run(); err != nil {
 		t.Fatalf("run() returned error: %v", err)
-	}
-}
-
-func TestRun_EachSubcommand(t *testing.T) {
-	// add, checkout, diff, hunk-add, fixup, log, rebase-interactive are excluded because they launch a real TUI (requires TTY).
-	for _, name := range []string{
-		"reset",
-	} {
-		t.Run(name, func(t *testing.T) {
-			os.Args = []string{"gti", name}
-			if err := run(); err != nil {
-				t.Fatalf("run(%s) returned error: %v", name, err)
-			}
-		})
 	}
 }
 
@@ -195,6 +165,36 @@ func TestAddTeaModel_View(t *testing.T) {
 	m := newAddTeaModel(newFakeAddModel(t))
 	view := m.View()
 	_ = view // just ensure no panic
+}
+
+// newFakeResetModel creates a ResetModel with no real git calls.
+func newFakeResetModel(t *testing.T) *commands.ResetModel {
+	t.Helper()
+	runner := &testhelper.FakeRunner{Outputs: []string{"", "main"}}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	return commands.NewResetModel(context.Background(), runner, cfg, renderer)
+}
+
+func TestResetTeaModel_InitReturnsNil(t *testing.T) {
+	m := newResetTeaModel(newFakeResetModel(t))
+	if cmd := m.Init(); cmd != nil {
+		t.Error("Init() should return nil")
+	}
+}
+
+func TestResetTeaModel_Update(t *testing.T) {
+	m := newResetTeaModel(newFakeResetModel(t))
+	next, cmd := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	if next == nil {
+		t.Error("Update() should return non-nil model")
+	}
+	_ = cmd
+}
+
+func TestResetTeaModel_View(t *testing.T) {
+	m := newResetTeaModel(newFakeResetModel(t))
+	_ = m.View() // just ensure no panic
 }
 
 // newFakeCheckoutModel creates a CheckoutModel with no real git calls.

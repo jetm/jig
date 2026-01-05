@@ -120,6 +120,40 @@ func StageHunk(ctx context.Context, r Runner, patchHeader, hunkBody string) erro
 	return nil
 }
 
+// ListStagedFiles returns the list of files currently in the index (staged for commit).
+// It uses git diff --cached --name-status to enumerate staged changes.
+func ListStagedFiles(ctx context.Context, r Runner) ([]StatusFile, error) {
+	nameStatus, err := r.Run(ctx, "diff", "--cached", "--name-status")
+	if err != nil {
+		return nil, fmt.Errorf("git diff --cached --name-status: %w", err)
+	}
+
+	var files []StatusFile
+	for line := range strings.SplitSeq(nameStatus, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		sf := parseNameStatusLine(line)
+		files = append(files, sf)
+	}
+
+	return files, nil
+}
+
+// UnstageFiles runs git reset HEAD -- for the given file paths to remove them from the index.
+func UnstageFiles(ctx context.Context, r Runner, paths []string) error {
+	if len(paths) == 0 {
+		return nil
+	}
+	args := append([]string{"reset", "HEAD", "--"}, paths...)
+	_, err := r.Run(ctx, args...)
+	if err != nil {
+		return fmt.Errorf("git reset HEAD: %w", err)
+	}
+	return nil
+}
+
 // DiscardFiles runs git checkout -- for the given file paths to restore them to HEAD.
 func DiscardFiles(ctx context.Context, r Runner, paths []string) error {
 	if len(paths) == 0 {

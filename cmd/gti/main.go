@@ -42,6 +42,7 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newFixupCmd())
 	root.AddCommand(newLogCmd())
 	root.AddCommand(newRebaseInteractiveCmd())
+	root.AddCommand(newCompletionCmd(root))
 
 	return root
 }
@@ -65,7 +66,10 @@ func newDiffCmd() *cobra.Command {
 				return fmt.Errorf("initializing git runner: %w", err)
 			}
 
-			cfg := config.NewDefault()
+			cfg, err := config.Load()
+			if err != nil {
+				return fmt.Errorf("loading config: %w", err)
+			}
 			renderer := diff.Chain(cfg)
 			diffModel := commands.NewDiffModel(ctx, runner, cfg, renderer, revision, staged)
 
@@ -115,7 +119,10 @@ func newAddCmd() *cobra.Command {
 				return fmt.Errorf("initializing git runner: %w", err)
 			}
 
-			cfg := config.NewDefault()
+			cfg, err := config.Load()
+			if err != nil {
+				return fmt.Errorf("loading config: %w", err)
+			}
 			renderer := diff.Chain(cfg)
 			addModel := commands.NewAddModel(ctx, runner, cfg, renderer)
 
@@ -161,7 +168,10 @@ func newCheckoutCmd() *cobra.Command {
 				return fmt.Errorf("initializing git runner: %w", err)
 			}
 
-			cfg := config.NewDefault()
+			cfg, err := config.Load()
+			if err != nil {
+				return fmt.Errorf("loading config: %w", err)
+			}
 			renderer := diff.Chain(cfg)
 			checkoutModel := commands.NewCheckoutModel(ctx, runner, cfg, renderer)
 
@@ -207,7 +217,10 @@ func newHunkAddCmd() *cobra.Command {
 				return fmt.Errorf("initializing git runner: %w", err)
 			}
 
-			cfg := config.NewDefault()
+			cfg, err := config.Load()
+			if err != nil {
+				return fmt.Errorf("loading config: %w", err)
+			}
 			renderer := diff.Chain(cfg)
 			hunkAddModel := commands.NewHunkAddModel(ctx, runner, cfg, renderer)
 
@@ -253,7 +266,10 @@ func newFixupCmd() *cobra.Command {
 				return fmt.Errorf("initializing git runner: %w", err)
 			}
 
-			cfg := config.NewDefault()
+			cfg, err := config.Load()
+			if err != nil {
+				return fmt.Errorf("loading config: %w", err)
+			}
 			renderer := diff.Chain(cfg)
 			fixupModel := commands.NewFixupModel(ctx, runner, cfg, renderer)
 
@@ -304,7 +320,10 @@ func newLogCmd() *cobra.Command {
 				return fmt.Errorf("initializing git runner: %w", err)
 			}
 
-			cfg := config.NewDefault()
+			cfg, err := config.Load()
+			if err != nil {
+				return fmt.Errorf("loading config: %w", err)
+			}
 			renderer := diff.Chain(cfg)
 			logModel := commands.NewLogModel(ctx, runner, cfg, renderer, ref)
 
@@ -350,7 +369,10 @@ func newResetCmd() *cobra.Command {
 				return fmt.Errorf("initializing git runner: %w", err)
 			}
 
-			cfg := config.NewDefault()
+			cfg, err := config.Load()
+			if err != nil {
+				return fmt.Errorf("loading config: %w", err)
+			}
 			renderer := diff.Chain(cfg)
 			resetModel := commands.NewResetModel(ctx, runner, cfg, renderer)
 
@@ -401,7 +423,10 @@ func newRebaseInteractiveCmd() *cobra.Command {
 				return fmt.Errorf("initializing git runner: %w", err)
 			}
 
-			cfg := config.NewDefault()
+			cfg, err := config.Load()
+			if err != nil {
+				return fmt.Errorf("loading config: %w", err)
+			}
 			renderer := diff.Chain(cfg)
 			rebaseModel := commands.NewRebaseInteractiveModel(ctx, runner, cfg, renderer, base)
 
@@ -433,6 +458,31 @@ func (r *rebaseInteractiveTeaModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (r *rebaseInteractiveTeaModel) View() tea.View {
 	return tea.NewView(r.inner.View())
+}
+
+// newCompletionCmd returns a cobra command that generates shell completion scripts.
+// root is the parent command whose subcommands are included in completions.
+func newCompletionCmd(root *cobra.Command) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:       "completion [bash|zsh|fish|powershell]",
+		Short:     "Generate shell completion scripts",
+		ValidArgs: []string{"bash", "zsh", "fish", "powershell"},
+		Args:      cobra.MatchAll(cobra.ExactArgs(1), cobra.OnlyValidArgs),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			switch args[0] {
+			case "bash":
+				return root.GenBashCompletion(cmd.OutOrStdout())
+			case "zsh":
+				return root.GenZshCompletion(cmd.OutOrStdout())
+			case "fish":
+				return root.GenFishCompletion(cmd.OutOrStdout(), true)
+			case "powershell":
+				return root.GenPowerShellCompletionWithDesc(cmd.OutOrStdout())
+			}
+			return nil
+		},
+	}
+	return cmd
 }
 
 func run() error {

@@ -56,6 +56,76 @@ func TestRun_Success(t *testing.T) {
 	}
 }
 
+func TestRun_UnknownCommandError(t *testing.T) {
+	os.Args = []string{"gti", "unknowncommand"}
+	err := run()
+	if err == nil {
+		t.Fatal("expected error for unknown command, got nil")
+	}
+}
+
+// runCmdWithInvalidConfig executes a subcommand with GTI_LOG_COMMIT_LIMIT set
+// to an invalid value so config.Load() returns an error before any TUI starts.
+func runCmdWithInvalidConfig(t *testing.T, args ...string) error {
+	t.Helper()
+	t.Setenv("GTI_LOG_COMMIT_LIMIT", "notanumber")
+	root := newRootCmd()
+	buf := new(bytes.Buffer)
+	root.SetOut(buf)
+	root.SetErr(buf)
+	root.SetArgs(args)
+	err := root.Execute()
+	return err //nolint:wrapcheck // test helper; caller checks for nil
+}
+
+func TestDiffCmd_ConfigLoadError(t *testing.T) {
+	if err := runCmdWithInvalidConfig(t, "diff"); err == nil {
+		t.Fatal("expected error from config load failure, got nil")
+	}
+}
+
+func TestAddCmd_ConfigLoadError(t *testing.T) {
+	if err := runCmdWithInvalidConfig(t, "add"); err == nil {
+		t.Fatal("expected error from config load failure, got nil")
+	}
+}
+
+func TestResetCmd_ConfigLoadError(t *testing.T) {
+	if err := runCmdWithInvalidConfig(t, "reset"); err == nil {
+		t.Fatal("expected error from config load failure, got nil")
+	}
+}
+
+func TestCheckoutCmd_ConfigLoadError(t *testing.T) {
+	if err := runCmdWithInvalidConfig(t, "checkout"); err == nil {
+		t.Fatal("expected error from config load failure, got nil")
+	}
+}
+
+func TestHunkAddCmd_ConfigLoadError(t *testing.T) {
+	if err := runCmdWithInvalidConfig(t, "hunk-add"); err == nil {
+		t.Fatal("expected error from config load failure, got nil")
+	}
+}
+
+func TestFixupCmd_ConfigLoadError(t *testing.T) {
+	if err := runCmdWithInvalidConfig(t, "fixup"); err == nil {
+		t.Fatal("expected error from config load failure, got nil")
+	}
+}
+
+func TestLogCmd_ConfigLoadError(t *testing.T) {
+	if err := runCmdWithInvalidConfig(t, "log"); err == nil {
+		t.Fatal("expected error from config load failure, got nil")
+	}
+}
+
+func TestRebaseInteractiveCmd_ConfigLoadError(t *testing.T) {
+	if err := runCmdWithInvalidConfig(t, "rebase-interactive"); err == nil {
+		t.Fatal("expected error from config load failure, got nil")
+	}
+}
+
 func TestDiffCmd_RegisteredWithFlags(t *testing.T) {
 	cmd := newRootCmd()
 	diffCmd, _, err := cmd.Find([]string{"diff"})
@@ -345,6 +415,7 @@ func TestAllSubcommandsRegistered(t *testing.T) {
 	expected := map[string]bool{
 		"add": false, "hunk-add": false, "checkout": false, "diff": false,
 		"fixup": false, "rebase-interactive": false, "reset": false, "log": false,
+		"completion": false,
 	}
 	for _, sub := range cmd.Commands() {
 		if _, ok := expected[sub.Name()]; ok {
@@ -355,5 +426,73 @@ func TestAllSubcommandsRegistered(t *testing.T) {
 		if !found {
 			t.Errorf("subcommand %q not registered", name)
 		}
+	}
+}
+
+func TestCompletionCmd_BashOutput(t *testing.T) {
+	root := newRootCmd()
+	buf := new(bytes.Buffer)
+	root.SetOut(buf)
+	root.SetErr(buf)
+	root.SetArgs([]string{"completion", "bash"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("completion bash error: %v", err)
+	}
+	if buf.Len() == 0 {
+		t.Error("expected non-empty bash completion output")
+	}
+}
+
+func TestCompletionCmd_ZshOutput(t *testing.T) {
+	root := newRootCmd()
+	buf := new(bytes.Buffer)
+	root.SetOut(buf)
+	root.SetErr(buf)
+	root.SetArgs([]string{"completion", "zsh"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("completion zsh error: %v", err)
+	}
+	if buf.Len() == 0 {
+		t.Error("expected non-empty zsh completion output")
+	}
+}
+
+func TestCompletionCmd_FishOutput(t *testing.T) {
+	root := newRootCmd()
+	buf := new(bytes.Buffer)
+	root.SetOut(buf)
+	root.SetErr(buf)
+	root.SetArgs([]string{"completion", "fish"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("completion fish error: %v", err)
+	}
+	if buf.Len() == 0 {
+		t.Error("expected non-empty fish completion output")
+	}
+}
+
+func TestCompletionCmd_PowershellOutput(t *testing.T) {
+	root := newRootCmd()
+	buf := new(bytes.Buffer)
+	root.SetOut(buf)
+	root.SetErr(buf)
+	root.SetArgs([]string{"completion", "powershell"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("completion powershell error: %v", err)
+	}
+	if buf.Len() == 0 {
+		t.Error("expected non-empty powershell completion output")
+	}
+}
+
+func TestCompletionCmd_UnknownShellErrors(t *testing.T) {
+	root := newRootCmd()
+	buf := new(bytes.Buffer)
+	root.SetOut(buf)
+	root.SetErr(buf)
+	root.SetArgs([]string{"completion", "unknownshell"})
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("expected error for unknown shell, got nil")
 	}
 }

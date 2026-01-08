@@ -42,7 +42,7 @@ func configZero() config.Config {
 // TestInit delegates to active model's Init.
 func TestInit(t *testing.T) {
 	root := newMock("root")
-	a := NewAppModel(root, nil, configZero())
+	a := New(root, nil, configZero())
 	a.Init()
 	if !root.initCalled {
 		t.Fatal("expected root.Init() to be called")
@@ -52,7 +52,7 @@ func TestInit(t *testing.T) {
 // TestPushIncreasesDepth verifies Push adds to the stack and Active returns the new model.
 func TestPushIncreasesDepth(t *testing.T) {
 	root := newMock("root")
-	a := NewAppModel(root, nil, configZero())
+	a := New(root, nil, configZero())
 
 	if a.Active() != root {
 		t.Fatal("expected root to be active before push")
@@ -72,7 +72,7 @@ func TestPushIncreasesDepth(t *testing.T) {
 // TestPopReturnsPreviousModel verifies Pop removes the top and returns the parent.
 func TestPopReturnsPreviousModel(t *testing.T) {
 	root := newMock("root")
-	a := NewAppModel(root, nil, configZero())
+	a := New(root, nil, configZero())
 	child := newMock("child")
 	a.Push(child)
 
@@ -92,7 +92,7 @@ func TestPopReturnsPreviousModel(t *testing.T) {
 // TestPopAtDepthOneReturnsNil verifies Pop returns nil when stack has only one model.
 func TestPopAtDepthOneReturnsNil(t *testing.T) {
 	root := newMock("root")
-	a := NewAppModel(root, nil, configZero())
+	a := New(root, nil, configZero())
 
 	result := a.Pop()
 
@@ -107,7 +107,7 @@ func TestPopAtDepthOneReturnsNil(t *testing.T) {
 // TestPushModelMsgPushesAndCallsInit verifies PushModelMsg pushes and inits the new model.
 func TestPushModelMsgPushesAndCallsInit(t *testing.T) {
 	root := newMock("root")
-	a := NewAppModel(root, nil, configZero())
+	a := New(root, nil, configZero())
 	child := newMock("child")
 
 	_, _ = a.Update(PushModelMsg{Model: child})
@@ -123,7 +123,7 @@ func TestPushModelMsgPushesAndCallsInit(t *testing.T) {
 // TestPopModelMsgMutatedGitSendsRefreshMsg verifies PopModelMsg{MutatedGit:true} sends RefreshMsg.
 func TestPopModelMsgMutatedGitSendsRefreshMsg(t *testing.T) {
 	root := newMock("root")
-	a := NewAppModel(root, nil, configZero())
+	a := New(root, nil, configZero())
 	child := newMock("child")
 	a.Push(child)
 
@@ -144,7 +144,7 @@ func TestPopModelMsgMutatedGitSendsRefreshMsg(t *testing.T) {
 // TestPopModelMsgNoMutationNoRefresh verifies PopModelMsg{MutatedGit:false} returns nil cmd.
 func TestPopModelMsgNoMutationNoRefresh(t *testing.T) {
 	root := newMock("root")
-	a := NewAppModel(root, nil, configZero())
+	a := New(root, nil, configZero())
 	child := newMock("child")
 	a.Push(child)
 
@@ -161,7 +161,7 @@ func TestPopModelMsgNoMutationNoRefresh(t *testing.T) {
 // TestPopModelMsgAtDepthOneEmitsQuit verifies PopModelMsg at depth 1 returns tea.Quit.
 func TestPopModelMsgAtDepthOneEmitsQuit(t *testing.T) {
 	root := newMock("root")
-	a := NewAppModel(root, nil, configZero())
+	a := New(root, nil, configZero())
 
 	_, cmd := a.Update(PopModelMsg{MutatedGit: false})
 
@@ -177,7 +177,7 @@ func TestPopModelMsgAtDepthOneEmitsQuit(t *testing.T) {
 // TestWindowSizeMsgForwardedToActive verifies WindowSizeMsg is forwarded to the active model.
 func TestWindowSizeMsgForwardedToActive(t *testing.T) {
 	root := newMock("root")
-	a := NewAppModel(root, nil, configZero())
+	a := New(root, nil, configZero())
 
 	sizeMsg := tea.WindowSizeMsg{Width: 80, Height: 24}
 	a.Update(sizeMsg) //nolint:errcheck
@@ -197,7 +197,7 @@ func TestWindowSizeMsgForwardedToActive(t *testing.T) {
 // TestViewReturnsAltScreen verifies View() returns tea.View with AltScreen true.
 func TestViewReturnsAltScreen(t *testing.T) {
 	root := newMock("hello world")
-	a := NewAppModel(root, nil, configZero())
+	a := New(root, nil, configZero())
 
 	v := a.View()
 

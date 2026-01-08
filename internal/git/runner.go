@@ -75,7 +75,7 @@ func (r *ExecRunner) run(ctx context.Context, env []string, stdin string, args [
 				Stderr:   strings.TrimSpace(stderr.String()),
 			}
 		}
-		return "", err
+		return "", fmt.Errorf("executing git: %w", err)
 	}
 	return strings.TrimSpace(string(out)), nil
 }

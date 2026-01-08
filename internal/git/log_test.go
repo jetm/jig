@@ -191,6 +191,30 @@ func TestRecentCommitsFrom_ReturnsErrorOnFailure(t *testing.T) {
 	}
 }
 
+func TestParseCommitLog_WhitespaceOnly(t *testing.T) {
+	runner := &testhelper.FakeRunner{Outputs: []string{"   \n\t\n  "}}
+	commits, err := git.RecentCommits(context.Background(), runner, 20)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(commits) != 0 {
+		t.Errorf("expected 0 commits for whitespace input, got %d", len(commits))
+	}
+}
+
+func TestParseCommitLog_TrailingNulSeparators(t *testing.T) {
+	// Extra NUL separators should be treated as empty records and skipped.
+	raw := "abc1234\x1ffeat: test\x1fAlice\x1f1 day ago\x00\x00\x00"
+	runner := &testhelper.FakeRunner{Outputs: []string{raw}}
+	commits, err := git.RecentCommits(context.Background(), runner, 20)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(commits) != 1 {
+		t.Fatalf("expected 1 commit, got %d", len(commits))
+	}
+}
+
 func TestCreateFixupCommit_ReturnsErrorOnFailure(t *testing.T) {
 	runner := &testhelper.FakeRunner{
 		Outputs: []string{""},

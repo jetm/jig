@@ -73,7 +73,7 @@ func newDiffCmd() *cobra.Command {
 			renderer := diff.Chain(cfg)
 			diffModel := commands.NewDiffModel(ctx, runner, cfg, renderer, revision, staged)
 
-			appModel := app.NewAppModel(newDiffTeaModel(diffModel), runner, cfg)
+			appModel := app.New(newDiffTeaModel(diffModel), runner, cfg)
 			p := tea.NewProgram(appModel)
 			if _, err = p.Run(); err != nil {
 				return fmt.Errorf("running diff: %w", err)
@@ -126,7 +126,7 @@ func newAddCmd() *cobra.Command {
 			renderer := diff.Chain(cfg)
 			addModel := commands.NewAddModel(ctx, runner, cfg, renderer)
 
-			appModel := app.NewAppModel(newAddTeaModel(addModel), runner, cfg)
+			appModel := app.New(newAddTeaModel(addModel), runner, cfg)
 			p := tea.NewProgram(appModel)
 			if _, err = p.Run(); err != nil {
 				return fmt.Errorf("running add: %w", err)
@@ -175,7 +175,7 @@ func newCheckoutCmd() *cobra.Command {
 			renderer := diff.Chain(cfg)
 			checkoutModel := commands.NewCheckoutModel(ctx, runner, cfg, renderer)
 
-			appModel := app.NewAppModel(newCheckoutTeaModel(checkoutModel), runner, cfg)
+			appModel := app.New(newCheckoutTeaModel(checkoutModel), runner, cfg)
 			p := tea.NewProgram(appModel)
 			if _, err = p.Run(); err != nil {
 				return fmt.Errorf("running checkout: %w", err)
@@ -224,7 +224,7 @@ func newHunkAddCmd() *cobra.Command {
 			renderer := diff.Chain(cfg)
 			hunkAddModel := commands.NewHunkAddModel(ctx, runner, cfg, renderer)
 
-			appModel := app.NewAppModel(newHunkAddTeaModel(hunkAddModel), runner, cfg)
+			appModel := app.New(newHunkAddTeaModel(hunkAddModel), runner, cfg)
 			p := tea.NewProgram(appModel)
 			if _, err = p.Run(); err != nil {
 				return fmt.Errorf("running hunk-add: %w", err)
@@ -273,7 +273,7 @@ func newFixupCmd() *cobra.Command {
 			renderer := diff.Chain(cfg)
 			fixupModel := commands.NewFixupModel(ctx, runner, cfg, renderer)
 
-			appModel := app.NewAppModel(newFixupTeaModel(fixupModel), runner, cfg)
+			appModel := app.New(newFixupTeaModel(fixupModel), runner, cfg)
 			p := tea.NewProgram(appModel)
 			if _, err = p.Run(); err != nil {
 				return fmt.Errorf("running fixup: %w", err)
@@ -327,7 +327,7 @@ func newLogCmd() *cobra.Command {
 			renderer := diff.Chain(cfg)
 			logModel := commands.NewLogModel(ctx, runner, cfg, renderer, ref)
 
-			appModel := app.NewAppModel(newLogTeaModel(logModel), runner, cfg)
+			appModel := app.New(newLogTeaModel(logModel), runner, cfg)
 			p := tea.NewProgram(appModel)
 			if _, err = p.Run(); err != nil {
 				return fmt.Errorf("running log: %w", err)
@@ -376,7 +376,7 @@ func newResetCmd() *cobra.Command {
 			renderer := diff.Chain(cfg)
 			resetModel := commands.NewResetModel(ctx, runner, cfg, renderer)
 
-			appModel := app.NewAppModel(newResetTeaModel(resetModel), runner, cfg)
+			appModel := app.New(newResetTeaModel(resetModel), runner, cfg)
 			p := tea.NewProgram(appModel)
 			if _, err = p.Run(); err != nil {
 				return fmt.Errorf("running reset: %w", err)
@@ -430,7 +430,7 @@ func newRebaseInteractiveCmd() *cobra.Command {
 			renderer := diff.Chain(cfg)
 			rebaseModel := commands.NewRebaseInteractiveModel(ctx, runner, cfg, renderer, base)
 
-			appModel := app.NewAppModel(newRebaseInteractiveTeaModel(rebaseModel), runner, cfg)
+			appModel := app.New(newRebaseInteractiveTeaModel(rebaseModel), runner, cfg)
 			p := tea.NewProgram(appModel)
 			if _, err = p.Run(); err != nil {
 				return fmt.Errorf("running rebase-interactive: %w", err)

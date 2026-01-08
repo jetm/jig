@@ -63,7 +63,11 @@ func WriteFile(tb testing.TB, repoPath, name, content string) {
 	if err != nil {
 		tb.Fatalf("open root %s: %v", repoPath, err)
 	}
-	defer root.Close()
+	defer func() {
+		if err := root.Close(); err != nil {
+			tb.Logf("closing root: %v", err)
+		}
+	}()
 
 	// Ensure parent directory exists
 	dir := filepath.Dir(name)
@@ -77,7 +81,11 @@ func WriteFile(tb testing.TB, repoPath, name, content string) {
 	if err != nil {
 		tb.Fatalf("create %s: %v", name, err)
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			tb.Logf("closing file %s: %v", name, err)
+		}
+	}()
 	if _, err := f.Write([]byte(content)); err != nil {
 		tb.Fatalf("write %s: %v", name, err)
 	}
@@ -104,6 +112,8 @@ func CommitCount(tb testing.TB, repoPath string) int {
 		tb.Fatalf("git rev-list --count HEAD: %v\n%s", err, out)
 	}
 	var count int
-	fmt.Sscanf(strings.TrimSpace(string(out)), "%d", &count)
+	if _, err := fmt.Sscanf(strings.TrimSpace(string(out)), "%d", &count); err != nil {
+		tb.Fatalf("parsing commit count: %v", err)
+	}
 	return count
 }

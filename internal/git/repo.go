@@ -2,6 +2,7 @@ package git
 
 import (
 	"context"
+	"fmt"
 	"strings"
 )
 
@@ -9,7 +10,7 @@ import (
 func RepoRoot(ctx context.Context, r Runner) (string, error) {
 	out, err := r.Run(ctx, "rev-parse", "--show-toplevel")
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("git rev-parse --show-toplevel: %w", err)
 	}
 	return strings.TrimSpace(out), nil
 }
@@ -18,7 +19,7 @@ func RepoRoot(ctx context.Context, r Runner) (string, error) {
 func BranchName(ctx context.Context, r Runner) (string, error) {
 	out, err := r.Run(ctx, "rev-parse", "--abbrev-ref", "HEAD")
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("git rev-parse --abbrev-ref HEAD: %w", err)
 	}
 	return strings.TrimSpace(out), nil
 }

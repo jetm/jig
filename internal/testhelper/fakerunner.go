@@ -1,3 +1,4 @@
+// Package testhelper provides test doubles and utilities for git operations.
 package testhelper
 
 import (

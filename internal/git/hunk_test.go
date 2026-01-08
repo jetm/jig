@@ -103,6 +103,22 @@ func TestParseHunks_TrailingEmptyLinesStripped(t *testing.T) {
 	}
 }
 
+func TestParseHunks_SingleHeaderOnly(t *testing.T) {
+	t.Parallel()
+	// A hunk with only the @@ header line and no body lines.
+	raw := "@@ -0,0 +1 @@\n"
+	hunks := ParseHunks(raw)
+	if len(hunks) != 1 {
+		t.Fatalf("expected 1 hunk, got %d", len(hunks))
+	}
+	if hunks[0].Header != "@@ -0,0 +1 @@" {
+		t.Errorf("header = %q, want %q", hunks[0].Header, "@@ -0,0 +1 @@")
+	}
+	if hunks[0].Body != "@@ -0,0 +1 @@" {
+		t.Errorf("body = %q, want just the header", hunks[0].Body)
+	}
+}
+
 func TestStageHunk_CallsApplyCached(t *testing.T) {
 	t.Parallel()
 	runner := &fakeStdinRunner{}

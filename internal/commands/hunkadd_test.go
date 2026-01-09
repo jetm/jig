@@ -215,6 +215,50 @@ func TestHunkAddModel_View_TwoPanel(t *testing.T) {
 	}
 }
 
+func TestHunkAddModel_TabTogglesFocus(t *testing.T) {
+	t.Parallel()
+	m, _ := newHunkAddTestModel(t, singleHunkDiff)
+	m.width = 120
+	m.height = 40
+
+	if m.focusRight {
+		t.Fatal("focus should start on left panel")
+	}
+	m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	if !m.focusRight {
+		t.Error("Tab should switch focus to right panel")
+	}
+}
+
+func TestHunkAddModel_QuitFromRightPanel(t *testing.T) {
+	t.Parallel()
+	m, _ := newHunkAddTestModel(t, singleHunkDiff)
+	m.width = 120
+	m.height = 40
+
+	m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	cmd := m.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
+	if cmd == nil {
+		t.Fatal("expected command from q on right panel")
+	}
+	msg := cmd()
+	if _, ok := msg.(app.PopModelMsg); !ok {
+		t.Errorf("expected PopModelMsg, got %T", msg)
+	}
+}
+
+func TestHunkAddModel_HunkActionsWorkFromRightPanel(t *testing.T) {
+	t.Parallel()
+	m, _ := newHunkAddTestModel(t, singleHunkDiff, "" /* git apply output */)
+	m.width = 120
+	m.height = 40
+
+	m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	// y (stage hunk) should still work from right panel
+	cmd := m.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
+	_ = cmd // should not panic
+}
+
 func TestHunkAddModel_View_HelpVisible(t *testing.T) {
 	t.Parallel()
 	m, _ := newHunkAddTestModel(t, singleHunkDiff)

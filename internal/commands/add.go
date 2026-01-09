@@ -36,18 +36,19 @@ func (a addItem) FilterValue() string { return a.sf.Path }
 // AddModel is the command model for the add TUI (interactive staging).
 // It follows the child component pattern: Update returns tea.Cmd, View returns string.
 type AddModel struct {
-	ctx       context.Context
-	runner    git.Runner
-	renderer  diff.Renderer
-	files     []git.StatusFile
-	selected  map[string]bool
-	fileList  components.ItemList
-	diffView  components.DiffView
-	statusBar components.StatusBar
-	help      components.HelpOverlay
-	branch    string
-	width     int
-	height    int
+	ctx        context.Context
+	runner     git.Runner
+	renderer   diff.Renderer
+	files      []git.StatusFile
+	selected   map[string]bool
+	fileList   components.ItemList
+	diffView   components.DiffView
+	statusBar  components.StatusBar
+	help       components.HelpOverlay
+	branch     string
+	width      int
+	height     int
+	focusRight bool
 }
 
 // NewAddModel creates an AddModel by listing unstaged files.
@@ -76,6 +77,7 @@ func NewAddModel(
 				Name: "Navigation",
 				Bindings: []components.KeyBinding{
 					{Key: "j/k", Desc: "move up/down"},
+					{Key: "Tab", Desc: "switch panel"},
 					{Key: "Space", Desc: "toggle selection"},
 					{Key: "a", Desc: "select all"},
 					{Key: "d", Desc: "deselect all"},
@@ -94,7 +96,7 @@ func NewAddModel(
 		branch: branchName,
 	}
 
-	m.statusBar.SetHints("Space: toggle  a: all  d: none  Enter: stage  ?: help  q: quit")
+	m.statusBar.SetHints("Space: toggle  a: all  d: none  Tab: panel  Enter: stage  ?: help  q: quit")
 	m.statusBar.SetBranch(branchName)
 	m.statusBar.SetMode("add")
 
@@ -126,6 +128,11 @@ func (m *AddModel) Update(msg tea.Msg) tea.Cmd {
 			return sbCmd
 		}
 
+		if msg.Code == tea.KeyTab {
+			m.focusRight = !m.focusRight
+			return sbCmd
+		}
+
 		switch msg.Code {
 		case 'q', tea.KeyEscape:
 			return func() tea.Msg {
@@ -149,6 +156,11 @@ func (m *AddModel) Update(msg tea.Msg) tea.Cmd {
 			m.deselectAll()
 			m.refreshList()
 			return sbCmd
+		}
+
+		if m.focusRight {
+			dvCmd := m.diffView.Update(msg)
+			return tea.Batch(sbCmd, dvCmd)
 		}
 
 		listCmd := m.fileList.Update(msg)
@@ -176,13 +188,21 @@ func (m *AddModel) View() string {
 	leftW, rightW := tui.Columns(m.width)
 	contentHeight := m.height - 1
 
+	leftW--
+	rightW--
+
 	m.fileList.SetWidth(leftW)
 	m.fileList.SetHeight(contentHeight)
 	m.diffView.SetWidth(rightW)
 	m.diffView.SetHeight(contentHeight)
 
-	leftPanel := lipgloss.NewStyle().Width(leftW).Height(contentHeight).Render(m.fileList.View())
-	rightPanel := lipgloss.NewStyle().Width(rightW).Height(contentHeight).Render(m.diffView.View())
+	leftBorder, rightBorder := tui.StyleFocusBorder, tui.StyleDimBorder
+	if m.focusRight {
+		leftBorder, rightBorder = tui.StyleDimBorder, tui.StyleFocusBorder
+	}
+
+	leftPanel := leftBorder.Width(leftW).Height(contentHeight).Render(m.fileList.View())
+	rightPanel := rightBorder.Width(rightW).Height(contentHeight).Render(m.diffView.View())
 
 	panels := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
 
@@ -309,6 +329,9 @@ func (m *AddModel) isTracked(path string) bool {
 func (m *AddModel) resize() {
 	leftW, rightW := tui.Columns(m.width)
 	contentHeight := m.height - 1
+
+	leftW--
+	rightW--
 
 	m.fileList.SetWidth(leftW)
 	m.fileList.SetHeight(contentHeight)

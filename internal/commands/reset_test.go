@@ -430,6 +430,38 @@ func TestResetModel_RenderSelectedDiff_DiffError(t *testing.T) {
 	}
 }
 
+func TestResetModel_TabTogglesFocus(t *testing.T) {
+	t.Parallel()
+	m := newTestResetModel(t, "M\tfoo.go\n")
+	m.width = 120
+	m.height = 40
+
+	if m.focusRight {
+		t.Fatal("focus should start on left panel")
+	}
+	m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	if !m.focusRight {
+		t.Error("Tab should switch focus to right panel")
+	}
+}
+
+func TestResetModel_QuitFromRightPanel(t *testing.T) {
+	t.Parallel()
+	m := newTestResetModel(t, "M\tfoo.go\n")
+	m.width = 120
+	m.height = 40
+
+	m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	cmd := m.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
+	if cmd == nil {
+		t.Fatal("expected command from q on right panel")
+	}
+	msg := cmd()
+	if _, ok := msg.(app.PopModelMsg); !ok {
+		t.Errorf("expected PopModelMsg, got %T", msg)
+	}
+}
+
 func TestResetModel_KeyJForwardsToList(t *testing.T) {
 	t.Parallel()
 	runner := &testhelper.FakeRunner{

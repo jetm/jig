@@ -489,6 +489,55 @@ func TestAddModel_IsTracked_AddedStatus(t *testing.T) {
 	}
 }
 
+func TestAddModel_TabTogglesFocus(t *testing.T) {
+	t.Parallel()
+	m := newTestAddModel(t, "M\tfoo.go\n", "")
+	m.width = 120
+	m.height = 40
+
+	if m.focusRight {
+		t.Fatal("focus should start on left panel")
+	}
+	m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	if !m.focusRight {
+		t.Error("Tab should switch focus to right panel")
+	}
+	m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	if m.focusRight {
+		t.Error("Tab again should switch focus back to left panel")
+	}
+}
+
+func TestAddModel_QuitFromRightPanel(t *testing.T) {
+	t.Parallel()
+	m := newTestAddModel(t, "M\tfoo.go\n", "")
+	m.width = 120
+	m.height = 40
+
+	m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	cmd := m.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
+	if cmd == nil {
+		t.Fatal("expected command from q on right panel")
+	}
+	msg := cmd()
+	if _, ok := msg.(app.PopModelMsg); !ok {
+		t.Errorf("expected PopModelMsg, got %T", msg)
+	}
+}
+
+func TestAddModel_SpaceWorksFromRightPanel(t *testing.T) {
+	t.Parallel()
+	m := newTestAddModel(t, "M\tfoo.go\n", "")
+	m.width = 120
+	m.height = 40
+
+	m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	m.Update(tea.KeyPressMsg{Code: ' ', Text: " "})
+	if !m.selected["foo.go"] {
+		t.Error("Space from right panel should toggle selection on left panel item")
+	}
+}
+
 func TestAddModel_KeyJForwardsToList(t *testing.T) {
 	t.Parallel()
 	runner := &testhelper.FakeRunner{

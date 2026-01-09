@@ -49,6 +49,7 @@ type CheckoutModel struct {
 	width      int
 	height     int
 	confirming bool
+	focusRight bool
 }
 
 // NewCheckoutModel creates a CheckoutModel by listing modified working-tree files.
@@ -77,6 +78,7 @@ func NewCheckoutModel(
 				Name: "Navigation",
 				Bindings: []components.KeyBinding{
 					{Key: "j/k", Desc: "move up/down"},
+					{Key: "Tab", Desc: "switch panel"},
 					{Key: "Space", Desc: "toggle selection"},
 					{Key: "a", Desc: "select all"},
 					{Key: "d", Desc: "deselect all"},
@@ -94,7 +96,7 @@ func NewCheckoutModel(
 		branch: branchName,
 	}
 
-	m.statusBar.SetHints("Space: toggle  a: all  d: none  Enter: discard  ?: help  q: quit")
+	m.statusBar.SetHints("Space: toggle  a: all  d: none  Tab: panel  Enter: discard  ?: help  q: quit")
 	m.statusBar.SetBranch(branchName)
 	m.statusBar.SetMode("checkout")
 
@@ -131,6 +133,11 @@ func (m *CheckoutModel) Update(msg tea.Msg) tea.Cmd {
 			return sbCmd
 		}
 
+		if msg.Code == tea.KeyTab {
+			m.focusRight = !m.focusRight
+			return sbCmd
+		}
+
 		switch msg.Code {
 		case 'q', tea.KeyEscape:
 			return func() tea.Msg {
@@ -159,6 +166,11 @@ func (m *CheckoutModel) Update(msg tea.Msg) tea.Cmd {
 			m.deselectAll()
 			m.refreshList()
 			return sbCmd
+		}
+
+		if m.focusRight {
+			dvCmd := m.diffView.Update(msg)
+			return tea.Batch(sbCmd, dvCmd)
 		}
 
 		listCmd := m.fileList.Update(msg)
@@ -200,13 +212,21 @@ func (m *CheckoutModel) View() string {
 	leftW, rightW := tui.Columns(m.width)
 	contentHeight := m.height - 1
 
+	leftW--
+	rightW--
+
 	m.fileList.SetWidth(leftW)
 	m.fileList.SetHeight(contentHeight)
 	m.diffView.SetWidth(rightW)
 	m.diffView.SetHeight(contentHeight)
 
-	leftPanel := lipgloss.NewStyle().Width(leftW).Height(contentHeight).Render(m.fileList.View())
-	rightPanel := lipgloss.NewStyle().Width(rightW).Height(contentHeight).Render(m.diffView.View())
+	leftBorder, rightBorder := tui.StyleFocusBorder, tui.StyleDimBorder
+	if m.focusRight {
+		leftBorder, rightBorder = tui.StyleDimBorder, tui.StyleFocusBorder
+	}
+
+	leftPanel := leftBorder.Width(leftW).Height(contentHeight).Render(m.fileList.View())
+	rightPanel := rightBorder.Width(rightW).Height(contentHeight).Render(m.diffView.View())
 
 	panels := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
 
@@ -322,6 +342,9 @@ func (m *CheckoutModel) renderSelectedDiff() {
 func (m *CheckoutModel) resize() {
 	leftW, rightW := tui.Columns(m.width)
 	contentHeight := m.height - 1
+
+	leftW--
+	rightW--
 
 	m.fileList.SetWidth(leftW)
 	m.fileList.SetHeight(contentHeight)

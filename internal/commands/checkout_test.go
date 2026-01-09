@@ -491,6 +491,38 @@ func TestCheckoutModel_RenderSelectedDiff_DiffError(t *testing.T) {
 	}
 }
 
+func TestCheckoutModel_TabTogglesFocus(t *testing.T) {
+	t.Parallel()
+	m := newTestCheckoutModel(t, "M\tfoo.go\n")
+	m.width = 120
+	m.height = 40
+
+	if m.focusRight {
+		t.Fatal("focus should start on left panel")
+	}
+	m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	if !m.focusRight {
+		t.Error("Tab should switch focus to right panel")
+	}
+}
+
+func TestCheckoutModel_QuitFromRightPanel(t *testing.T) {
+	t.Parallel()
+	m := newTestCheckoutModel(t, "M\tfoo.go\n")
+	m.width = 120
+	m.height = 40
+
+	m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	cmd := m.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
+	if cmd == nil {
+		t.Fatal("expected command from q on right panel")
+	}
+	msg := cmd()
+	if _, ok := msg.(app.PopModelMsg); !ok {
+		t.Errorf("expected PopModelMsg, got %T", msg)
+	}
+}
+
 func TestCheckoutModel_KeyJForwardsToList(t *testing.T) {
 	t.Parallel()
 	runner := &testhelper.FakeRunner{

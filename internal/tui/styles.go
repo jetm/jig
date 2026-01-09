@@ -73,5 +73,18 @@ var (
 	StyleStrikethrough = lipgloss.NewStyle().Strikethrough(true)
 )
 
+// Focus indicator styles for two-panel layouts.
+var (
+	StyleFocusBorder = lipgloss.NewStyle().
+				BorderStyle(lipgloss.NormalBorder()).
+				BorderLeft(true).
+				BorderForeground(ColorBlue)
+
+	StyleDimBorder = lipgloss.NewStyle().
+			BorderStyle(lipgloss.NormalBorder()).
+			BorderLeft(true).
+			BorderForeground(ColorBgAlt)
+)
+
 // compile-time check that color vars are color.Color
 var _ color.Color = ColorBg

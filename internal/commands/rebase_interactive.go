@@ -75,6 +75,7 @@ type RebaseInteractiveModel struct {
 	selectedIdx int
 	width       int
 	height      int
+	focusRight  bool
 }
 
 // NewRebaseInteractiveModel creates a RebaseInteractiveModel.
@@ -112,6 +113,7 @@ func NewRebaseInteractiveModel(
 				Name: "Navigation",
 				Bindings: []components.KeyBinding{
 					{Key: "j/k or ↑/↓", Desc: "move cursor"},
+					{Key: "Tab", Desc: "switch panel"},
 					{Key: "Ctrl+Up / K", Desc: "move commit up"},
 					{Key: "Ctrl+Down / J", Desc: "move commit down"},
 					{Key: "?", Desc: "toggle help"},
@@ -136,7 +138,7 @@ func NewRebaseInteractiveModel(
 		selectedIdx: 0,
 	}
 
-	m.statusBar.SetHints("Space: cycle action  p/r/e/s/f/d: set action  K/J: reorder  Enter: confirm  ?: help  q: quit")
+	m.statusBar.SetHints("Space: cycle action  p/r/e/s/f/d: set action  K/J: reorder  Tab: panel  Enter: confirm  ?: help  q: quit")
 	m.statusBar.SetBranch(branchName)
 	m.statusBar.SetMode("rebase-interactive")
 
@@ -165,6 +167,11 @@ func (m *RebaseInteractiveModel) Update(msg tea.Msg) tea.Cmd {
 		}
 
 		if m.help.IsVisible() {
+			return sbCmd
+		}
+
+		if msg.Code == tea.KeyTab {
+			m.focusRight = !m.focusRight
 			return sbCmd
 		}
 
@@ -233,6 +240,11 @@ func (m *RebaseInteractiveModel) Update(msg tea.Msg) tea.Cmd {
 			}
 		}
 
+		if m.focusRight {
+			dvCmd := m.diffView.Update(msg)
+			return tea.Batch(sbCmd, dvCmd)
+		}
+
 		// Forward navigation to list
 		listCmd := m.commitList.Update(msg)
 		m.checkSelectionChange()
@@ -259,13 +271,21 @@ func (m *RebaseInteractiveModel) View() string {
 	leftW, rightW := tui.Columns(m.width)
 	contentHeight := m.height - 1 // reserve 1 row for status bar
 
+	leftW--
+	rightW--
+
 	m.commitList.SetWidth(leftW)
 	m.commitList.SetHeight(contentHeight)
 	m.diffView.SetWidth(rightW)
 	m.diffView.SetHeight(contentHeight)
 
-	leftPanel := lipgloss.NewStyle().Width(leftW).Height(contentHeight).Render(m.commitList.View())
-	rightPanel := lipgloss.NewStyle().Width(rightW).Height(contentHeight).Render(m.diffView.View())
+	leftBorder, rightBorder := tui.StyleFocusBorder, tui.StyleDimBorder
+	if m.focusRight {
+		leftBorder, rightBorder = tui.StyleDimBorder, tui.StyleFocusBorder
+	}
+
+	leftPanel := leftBorder.Width(leftW).Height(contentHeight).Render(m.commitList.View())
+	rightPanel := rightBorder.Width(rightW).Height(contentHeight).Render(m.diffView.View())
 
 	panels := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
 
@@ -376,6 +396,9 @@ func (m *RebaseInteractiveModel) renderSelectedDiff() {
 func (m *RebaseInteractiveModel) resize() {
 	leftW, rightW := tui.Columns(m.width)
 	contentHeight := m.height - 1
+
+	leftW--
+	rightW--
 
 	m.commitList.SetWidth(leftW)
 	m.commitList.SetHeight(contentHeight)

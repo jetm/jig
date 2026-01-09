@@ -203,6 +203,36 @@ func TestFixupModel_RenderSelectedDiff_ErrorPath(t *testing.T) {
 	}
 }
 
+func TestFixupModel_TabThenQuitFromRightPanel(t *testing.T) {
+	logOutput := "abc1234\x1ffeat: first\x1fAlice\x1f2 hours ago\x00"
+	m := newFakeFixupModel(t, logOutput, "main")
+	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	_ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	cmd := m.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
+	if cmd == nil {
+		t.Fatal("expected command from q on right panel")
+	}
+}
+
+func TestFixupModel_TabThenEnterFromRightPanel(t *testing.T) {
+	logOutput := "abc1234\x1ffeat: first\x1fAlice\x1f2 hours ago\x00"
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{logOutput, "main", "diff content", "[main def5678] fixup!"},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m := commands.NewFixupModel(context.Background(), runner, cfg, renderer)
+	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	_ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	// Enter should still work from right panel (global key)
+	cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("Enter from right panel should trigger fixup")
+	}
+}
+
 func TestFixupModel_Update_NavigationJ(t *testing.T) {
 	logOutput := "abc1234\x1ffeat: first\x1fAlice\x1f2 hours ago\x00" +
 		"bbb5678\x1ffeat: second\x1fBob\x1f3 hours ago\x00"

@@ -51,6 +51,7 @@ type DiffModel struct {
 	selectedIdx int
 	width       int
 	height      int
+	focusRight  bool
 }
 
 // NewDiffModel creates a DiffModel by running git diff and parsing the output.
@@ -83,6 +84,7 @@ func NewDiffModel(
 				Name: "Navigation",
 				Bindings: []components.KeyBinding{
 					{Key: "j/k", Desc: "move up/down"},
+					{Key: "Tab", Desc: "switch panel"},
 					{Key: "/", Desc: "filter files"},
 					{Key: "?", Desc: "toggle help"},
 				},
@@ -99,7 +101,7 @@ func NewDiffModel(
 		selectedIdx: 0,
 	}
 
-	m.statusBar.SetHints("j/k: navigate  /: filter  ?: help  q: quit")
+	m.statusBar.SetHints("j/k: navigate  Tab: panel  /: filter  ?: help  q: quit")
 	m.statusBar.SetBranch(branchName)
 	m.statusBar.SetMode("diff")
 
@@ -134,10 +136,21 @@ func (m *DiffModel) Update(msg tea.Msg) tea.Cmd {
 			return sbCmd
 		}
 
+		if msg.Code == tea.KeyTab {
+			m.focusRight = !m.focusRight
+			return sbCmd
+		}
+
 		if msg.Code == 'q' || msg.Code == tea.KeyEscape {
 			return func() tea.Msg {
 				return app.PopModelMsg{MutatedGit: false}
 			}
+		}
+
+		// Route navigation to focused panel
+		if m.focusRight {
+			dvCmd := m.diffView.Update(msg)
+			return tea.Batch(sbCmd, dvCmd)
 		}
 
 		// Forward to file list
@@ -169,13 +182,22 @@ func (m *DiffModel) View() string {
 	leftW, rightW := tui.Columns(m.width)
 	contentHeight := m.height - 1 // reserve 1 row for status bar
 
+	// Account for border width (1 column each)
+	leftW--
+	rightW--
+
 	m.fileList.SetWidth(leftW)
 	m.fileList.SetHeight(contentHeight)
 	m.diffView.SetWidth(rightW)
 	m.diffView.SetHeight(contentHeight)
 
-	leftPanel := lipgloss.NewStyle().Width(leftW).Height(contentHeight).Render(m.fileList.View())
-	rightPanel := lipgloss.NewStyle().Width(rightW).Height(contentHeight).Render(m.diffView.View())
+	leftBorder, rightBorder := tui.StyleFocusBorder, tui.StyleDimBorder
+	if m.focusRight {
+		leftBorder, rightBorder = tui.StyleDimBorder, tui.StyleFocusBorder
+	}
+
+	leftPanel := leftBorder.Width(leftW).Height(contentHeight).Render(m.fileList.View())
+	rightPanel := rightBorder.Width(rightW).Height(contentHeight).Render(m.diffView.View())
 
 	panels := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
 
@@ -220,6 +242,9 @@ func (m *DiffModel) renderSelectedDiff() {
 func (m *DiffModel) resize() {
 	leftW, rightW := tui.Columns(m.width)
 	contentHeight := m.height - 1
+
+	leftW--
+	rightW--
 
 	m.fileList.SetWidth(leftW)
 	m.fileList.SetHeight(contentHeight)

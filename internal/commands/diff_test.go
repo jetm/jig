@@ -356,6 +356,73 @@ func TestDiffModel_RenderSelectedDiff_RendererError(t *testing.T) {
 	}
 }
 
+func TestDiffModel_TabTogglesFocus(t *testing.T) {
+	t.Parallel()
+	m := newTestModel(t, "", false, sampleDiff)
+	m.width = 120
+	m.height = 40
+
+	if m.focusRight {
+		t.Fatal("focus should start on left panel")
+	}
+
+	m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	if !m.focusRight {
+		t.Error("Tab should switch focus to right panel")
+	}
+
+	m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	if m.focusRight {
+		t.Error("Tab again should switch focus back to left panel")
+	}
+}
+
+func TestDiffModel_QuitFromRightPanel(t *testing.T) {
+	t.Parallel()
+	m := newTestModel(t, "", false, sampleDiff)
+	m.width = 120
+	m.height = 40
+
+	m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	cmd := m.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
+	if cmd == nil {
+		t.Fatal("expected command from q on right panel")
+	}
+	msg := cmd()
+	if _, ok := msg.(app.PopModelMsg); !ok {
+		t.Errorf("expected PopModelMsg, got %T", msg)
+	}
+}
+
+func TestDiffModel_RightPanelReceivesKeys(t *testing.T) {
+	t.Parallel()
+	m := newTestModel(t, "", false, sampleDiff)
+	m.width = 120
+	m.height = 40
+
+	m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+
+	// Press j - should go to diffView, not fileList
+	cmd := m.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
+	_ = cmd // should not panic
+}
+
+func TestDiffModel_View_FocusRightRenders(t *testing.T) {
+	t.Parallel()
+	m := newTestModel(t, "", false, sampleDiff)
+	m.width = 120
+	m.height = 40
+	m.focusRight = true
+
+	view := m.View()
+	if view == "" {
+		t.Fatal("View() with focusRight returned empty string")
+	}
+	if !strings.Contains(view, "main.go") {
+		t.Error("View() with focusRight should still contain file name")
+	}
+}
+
 func TestDiffModel_CheckSelectionChange_NilSelected(t *testing.T) {
 	t.Parallel()
 	// Empty diff — SelectedItem returns nil

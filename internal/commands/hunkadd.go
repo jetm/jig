@@ -46,6 +46,7 @@ type HunkAddModel struct {
 	hunkIdx    int          // index into hunks (current hunk)
 	decided    map[int]bool // hunkIdx -> staged (true) or skipped (false); nil means undecided
 	allDecided bool         // true once all hunks in current file are decided
+	focusRight bool
 }
 
 // NewHunkAddModel creates a HunkAddModel by listing files with unstaged changes.
@@ -79,6 +80,7 @@ func NewHunkAddModel(
 				Name: "Navigation",
 				Bindings: []components.KeyBinding{
 					{Key: "j/k", Desc: "move between files"},
+					{Key: "Tab", Desc: "switch panel"},
 					{Key: "n", Desc: "skip hunk"},
 					{Key: "?", Desc: "toggle help"},
 				},
@@ -97,7 +99,7 @@ func NewHunkAddModel(
 		decided: make(map[int]bool),
 	}
 
-	m.statusBar.SetHints("y: stage  n: skip  a: all  s: split  ?: help  q: quit")
+	m.statusBar.SetHints("y: stage  n: skip  a: all  s: split  Tab: panel  ?: help  q: quit")
 	m.statusBar.SetBranch(branchName)
 	m.statusBar.SetMode("hunk-add")
 
@@ -129,6 +131,11 @@ func (m *HunkAddModel) Update(msg tea.Msg) tea.Cmd {
 			return sbCmd
 		}
 
+		if msg.Code == tea.KeyTab {
+			m.focusRight = !m.focusRight
+			return sbCmd
+		}
+
 		switch msg.Code {
 		case 'q', tea.KeyEscape:
 			return func() tea.Msg {
@@ -147,6 +154,11 @@ func (m *HunkAddModel) Update(msg tea.Msg) tea.Cmd {
 		case 's':
 			m.splitCurrentHunk()
 			return sbCmd
+		}
+
+		if m.focusRight {
+			dvCmd := m.diffView.Update(msg)
+			return tea.Batch(sbCmd, dvCmd)
 		}
 
 		// Forward navigation (j/k) to the file list
@@ -175,13 +187,21 @@ func (m *HunkAddModel) View() string {
 	leftW, rightW := tui.Columns(m.width)
 	contentHeight := m.height - 1
 
+	leftW--
+	rightW--
+
 	m.fileList.SetWidth(leftW)
 	m.fileList.SetHeight(contentHeight)
 	m.diffView.SetWidth(rightW)
 	m.diffView.SetHeight(contentHeight)
 
-	leftPanel := lipgloss.NewStyle().Width(leftW).Height(contentHeight).Render(m.fileList.View())
-	rightPanel := lipgloss.NewStyle().Width(rightW).Height(contentHeight).Render(m.diffView.View())
+	leftBorder, rightBorder := tui.StyleFocusBorder, tui.StyleDimBorder
+	if m.focusRight {
+		leftBorder, rightBorder = tui.StyleDimBorder, tui.StyleFocusBorder
+	}
+
+	leftPanel := leftBorder.Width(leftW).Height(contentHeight).Render(m.fileList.View())
+	rightPanel := rightBorder.Width(rightW).Height(contentHeight).Render(m.diffView.View())
 
 	panels := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
 
@@ -193,10 +213,10 @@ func (m *HunkAddModel) View() string {
 // hintsWithProgress returns the status bar hint string including hunk progress.
 func (m *HunkAddModel) hintsWithProgress() string {
 	if len(m.hunks) == 0 {
-		return "y: stage  n: skip  a: all  s: split  ?: help  q: quit"
+		return "y: stage  n: skip  a: all  s: split  Tab: panel  ?: help  q: quit"
 	}
 	progress := fmt.Sprintf("Hunk %d/%d", m.hunkIdx+1, len(m.hunks))
-	return fmt.Sprintf("%s  y: stage  n: skip  a: all  s: split  ?: help  q: quit", progress)
+	return fmt.Sprintf("%s  y: stage  n: skip  a: all  s: split  Tab: panel  ?: help  q: quit", progress)
 }
 
 // loadFileHunks loads the hunks for the file at fileIdx and renders the first hunk.
@@ -467,6 +487,9 @@ func (m *HunkAddModel) patchHeader(fd git.FileDiff) string {
 func (m *HunkAddModel) resize() {
 	leftW, rightW := tui.Columns(m.width)
 	contentHeight := m.height - 1
+
+	leftW--
+	rightW--
 
 	m.fileList.SetWidth(leftW)
 	m.fileList.SetHeight(contentHeight)

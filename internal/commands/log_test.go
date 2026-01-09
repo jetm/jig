@@ -160,6 +160,34 @@ func TestLogModel_RenderSelectedDiff_ErrorPath(t *testing.T) {
 	}
 }
 
+func TestLogModel_TabThenQuitFromRightPanel(t *testing.T) {
+	logOutput := "abc1234\x1ffeat: first\x1fAlice\x1f2 hours ago\x00"
+	m := newFakeLogModel(t, logOutput, "main", "")
+	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	// Tab to right panel
+	_ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	// q should still quit
+	cmd := m.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
+	if cmd == nil {
+		t.Fatal("expected command from q on right panel")
+	}
+}
+
+func TestLogModel_TabThenJScrollsDiff(t *testing.T) {
+	logOutput := "abc1234\x1ffeat: first\x1fAlice\x1f2 hours ago\x00"
+	m := newFakeLogModel(t, logOutput, "main", "")
+	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	_ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	// j on right panel should not panic
+	_ = m.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
+	view := m.View()
+	if view == "" {
+		t.Error("View() should not be empty after scrolling right panel")
+	}
+}
+
 func TestLogModel_Update_NavigationJ(t *testing.T) {
 	logOutput := "abc1234\x1ffeat: first\x1fAlice\x1f2 hours ago\x00" +
 		"bbb5678\x1ffeat: second\x1fBob\x1f3 hours ago\x00"

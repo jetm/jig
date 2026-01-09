@@ -84,3 +84,24 @@ func TestStrikethroughStyleRendersStrikethrough(t *testing.T) {
 		t.Error("strikethrough style missing strikethrough ANSI attribute")
 	}
 }
+
+func TestFocusBorderRendersLeftBorder(t *testing.T) {
+	out := StyleFocusBorder.Width(10).Render("test")
+	if out == "" {
+		t.Error("StyleFocusBorder rendered empty string")
+	}
+	// Should contain a border character (│ from NormalBorder)
+	if !strings.Contains(out, "│") {
+		t.Error("StyleFocusBorder should render left border character")
+	}
+}
+
+func TestDimBorderRendersLeftBorder(t *testing.T) {
+	out := StyleDimBorder.Width(10).Render("test")
+	if out == "" {
+		t.Error("StyleDimBorder rendered empty string")
+	}
+	if !strings.Contains(out, "│") {
+		t.Error("StyleDimBorder should render left border character")
+	}
+}

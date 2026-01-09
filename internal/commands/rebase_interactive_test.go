@@ -394,6 +394,32 @@ func TestRebaseInteractiveModel_SetAction_NoCommits(t *testing.T) {
 	_ = cmd // no panic, no effect
 }
 
+func TestRebaseInteractiveModel_TabThenQuitFromRightPanel(t *testing.T) {
+	logOutput := "abc1234\x1ffeat: first\n"
+	m := newFakeRebaseModel(t, logOutput, "main", "HEAD~1")
+	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	_ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	cmd := m.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
+	if cmd == nil {
+		t.Fatal("expected command from q on right panel")
+	}
+}
+
+func TestRebaseInteractiveModel_ActionKeysWorkFromRightPanel(t *testing.T) {
+	logOutput := "abc1234\x1ffeat: first\n"
+	m := newFakeRebaseModel(t, logOutput, "main", "HEAD~1")
+	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	_ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	// Action keys (p/r/e/s/f/d) should still work from right panel
+	_ = m.Update(tea.KeyPressMsg{Code: 'r', Text: "r"})
+	view := m.View()
+	if view == "" {
+		t.Error("View() should not be empty after action key from right panel")
+	}
+}
+
 func TestRebaseInteractiveModel_Update_NavigationJ(t *testing.T) {
 	logOutput := "abc1234\x1ffeat: first\nbbb5678\x1ffix: second\n"
 	runner := &testhelper.FakeRunner{

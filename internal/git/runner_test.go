@@ -84,6 +84,41 @@ func TestExecError_Error(t *testing.T) {
 	}
 }
 
+func TestExecRunner_RunAllowExitCode_ReturnsOutput(t *testing.T) {
+	initTempRepo(t)
+	ctx := context.Background()
+	runner, err := git.NewExecRunner(ctx)
+	if err != nil {
+		t.Fatalf("NewExecRunner: %v", err)
+	}
+	// Create a file so diff --no-index has something to compare
+	if err := os.WriteFile("testfile.txt", []byte("hello\n"), 0o644); err != nil {
+		t.Fatalf("write testfile: %v", err)
+	}
+	// git diff --no-index exits 1 when files differ; RunAllowExitCode should return stdout
+	out, err := runner.RunAllowExitCode(ctx, 1, "diff", "--no-index", "--", "/dev/null", "testfile.txt")
+	if err != nil {
+		t.Fatalf("RunAllowExitCode: %v", err)
+	}
+	if !strings.Contains(out, "+hello") {
+		t.Errorf("expected diff output containing +hello, got %q", out)
+	}
+}
+
+func TestExecRunner_RunAllowExitCode_PropagatesOtherErrors(t *testing.T) {
+	initTempRepo(t)
+	ctx := context.Background()
+	runner, err := git.NewExecRunner(ctx)
+	if err != nil {
+		t.Fatalf("NewExecRunner: %v", err)
+	}
+	// A command that exits with a code != the allowed one should still error
+	_, err = runner.RunAllowExitCode(ctx, 42, "not-a-real-command")
+	if err == nil {
+		t.Fatal("expected error for non-matching exit code, got nil")
+	}
+}
+
 func TestExecRunner_RunWithEnv(t *testing.T) {
 	initTempRepo(t)
 	ctx := context.Background()

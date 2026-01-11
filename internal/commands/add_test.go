@@ -130,18 +130,18 @@ func TestAddModel_SpaceTogglesSelection(t *testing.T) {
 	m.width = 120
 	m.height = 40
 
-	if m.selected["foo.go"] {
-		t.Fatal("foo.go should not be selected initially")
+	if len(m.fileTree.CheckedPaths()) != 0 {
+		t.Fatal("no files should be checked initially")
 	}
 
 	m.Update(tea.KeyPressMsg{Code: ' ', Text: " "})
-	if !m.selected["foo.go"] {
-		t.Error("foo.go should be selected after pressing Space")
+	if len(m.fileTree.CheckedPaths()) != 1 {
+		t.Error("foo.go should be checked after pressing Space")
 	}
 
 	m.Update(tea.KeyPressMsg{Code: ' ', Text: " "})
-	if m.selected["foo.go"] {
-		t.Error("foo.go should be deselected after pressing Space again")
+	if len(m.fileTree.CheckedPaths()) != 0 {
+		t.Error("foo.go should be unchecked after pressing Space again")
 	}
 }
 
@@ -153,10 +153,9 @@ func TestAddModel_SelectAll(t *testing.T) {
 
 	m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
 
-	for _, f := range m.files {
-		if !m.selected[f.Path] {
-			t.Errorf("file %q should be selected after pressing a", f.Path)
-		}
+	checked := m.fileTree.CheckedPaths()
+	if len(checked) != 2 {
+		t.Errorf("expected 2 checked files after pressing a, got %d", len(checked))
 	}
 }
 
@@ -169,10 +168,9 @@ func TestAddModel_DeselectAll(t *testing.T) {
 	m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
 	m.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})
 
-	for _, f := range m.files {
-		if m.selected[f.Path] {
-			t.Errorf("file %q should not be selected after pressing d", f.Path)
-		}
+	checked := m.fileTree.CheckedPaths()
+	if len(checked) != 0 {
+		t.Errorf("expected 0 checked files after pressing d, got %d", len(checked))
 	}
 }
 
@@ -320,22 +318,15 @@ func TestAddModel_StatusBarShowsBranch(t *testing.T) {
 	}
 }
 
-func TestAddItem_Methods(t *testing.T) {
+func TestAddModel_FileTreeRendersFiles(t *testing.T) {
 	t.Parallel()
-	item := addItem{sf: git.StatusFile{Path: "test.go", Status: git.Modified}, selected: false}
-	if !strings.Contains(item.Title(), "test.go") {
-		t.Errorf("Title() should contain 'test.go', got %q", item.Title())
-	}
-	if item.FilterValue() != "test.go" {
-		t.Errorf("FilterValue() = %q, want %q", item.FilterValue(), "test.go")
-	}
-	if !strings.Contains(item.Description(), "modified") {
-		t.Errorf("Description() should contain 'modified', got %q", item.Description())
-	}
+	m := newTestAddModel(t, "M\ttest.go\n", "")
+	m.width = 120
+	m.height = 40
 
-	itemSelected := addItem{sf: git.StatusFile{Path: "test.go", Status: git.Modified}, selected: true}
-	if !strings.Contains(itemSelected.Title(), "test.go") {
-		t.Errorf("selected Title() should contain 'test.go', got %q", itemSelected.Title())
+	view := m.View()
+	if !strings.Contains(view, "test.go") {
+		t.Errorf("View() should contain 'test.go', got %q", view)
 	}
 }
 
@@ -353,13 +344,22 @@ func TestAddModel_EnterWithNoFiles(t *testing.T) {
 	}
 }
 
-func TestAddModel_UntrackedFilePreview(t *testing.T) {
+func TestAddModel_UntrackedFileShowsDiff(t *testing.T) {
 	t.Parallel()
+	fakeDiff := "diff --git a/newfile.go b/newfile.go\n" +
+		"new file mode 100644\n" +
+		"--- /dev/null\n" +
+		"+++ b/newfile.go\n" +
+		"@@ -0,0 +1,3 @@\n" +
+		"+package main\n" +
+		"+\n" +
+		"+func main() {}\n"
 	runner := &testhelper.FakeRunner{
 		Outputs: []string{
 			"",             // diff --name-status (no tracked changes)
 			"newfile.go\n", // ls-files --others
 			"main",         // branch name
+			fakeDiff,       // diff --no-index -- /dev/null newfile.go
 		},
 	}
 	cfg := config.NewDefault()
@@ -371,11 +371,17 @@ func TestAddModel_UntrackedFilePreview(t *testing.T) {
 	if len(m.files) != 1 {
 		t.Fatalf("expected 1 file, got %d", len(m.files))
 	}
-	// The diff view should show a placeholder for untracked
+
 	view := m.View()
-	if !strings.Contains(view, "newfile.go") {
-		t.Error("View() should mention 'newfile.go'")
+	// Should show the actual diff content, not a placeholder
+	if strings.Contains(view, "New file (untracked)") {
+		t.Error("View() should not show placeholder for untracked files")
 	}
+	if !strings.Contains(view, "package main") {
+		t.Error("View() should show diff content for untracked file")
+	}
+	// Verify the --no-index call was made
+	testhelper.MustHaveCall(t, runner, "diff", "--no-index", "--", "/dev/null", "newfile.go")
 }
 
 func TestAddModel_StageError(t *testing.T) {
@@ -533,7 +539,7 @@ func TestAddModel_SpaceWorksFromRightPanel(t *testing.T) {
 
 	m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	m.Update(tea.KeyPressMsg{Code: ' ', Text: " "})
-	if !m.selected["foo.go"] {
+	if len(m.fileTree.CheckedPaths()) != 1 {
 		t.Error("Space from right panel should toggle selection on left panel item")
 	}
 }

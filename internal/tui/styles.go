@@ -64,6 +64,7 @@ const (
 	IconSquash    = "\uf066" // nf-fa-compress
 	IconFixup     = "\uf0e2" // nf-fa-undo
 	IconDrop      = "\uf1f8" // nf-fa-trash
+	IconFolder    = "\uf07b" // nf-fa-folder
 )
 
 // Pre-built typography styles.

@@ -10,7 +10,6 @@ import (
 	"github.com/jetm/gti/internal/app"
 	"github.com/jetm/gti/internal/config"
 	"github.com/jetm/gti/internal/diff"
-	"github.com/jetm/gti/internal/git"
 	"github.com/jetm/gti/internal/testhelper"
 )
 
@@ -231,16 +230,16 @@ func TestCheckoutModel_SpaceTogglesSelection(t *testing.T) {
 	m.width = 120
 	m.height = 40
 
-	if m.selected["foo.go"] {
-		t.Fatal("foo.go should not be selected initially")
+	if len(m.fileTree.CheckedPaths()) != 0 {
+		t.Fatal("no files should be checked initially")
 	}
 	m.Update(tea.KeyPressMsg{Code: ' ', Text: " "})
-	if !m.selected["foo.go"] {
-		t.Error("foo.go should be selected after Space")
+	if len(m.fileTree.CheckedPaths()) != 1 {
+		t.Error("foo.go should be checked after Space")
 	}
 	m.Update(tea.KeyPressMsg{Code: ' ', Text: " "})
-	if m.selected["foo.go"] {
-		t.Error("foo.go should be deselected after second Space")
+	if len(m.fileTree.CheckedPaths()) != 0 {
+		t.Error("foo.go should be unchecked after second Space")
 	}
 }
 
@@ -251,10 +250,9 @@ func TestCheckoutModel_SelectAll(t *testing.T) {
 	m.height = 40
 
 	m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
-	for _, f := range m.files {
-		if !m.selected[f.Path] {
-			t.Errorf("file %q should be selected after a", f.Path)
-		}
+	checked := m.fileTree.CheckedPaths()
+	if len(checked) != 2 {
+		t.Errorf("expected 2 checked files after pressing a, got %d", len(checked))
 	}
 }
 
@@ -266,10 +264,9 @@ func TestCheckoutModel_DeselectAll(t *testing.T) {
 
 	m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
 	m.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})
-	for _, f := range m.files {
-		if m.selected[f.Path] {
-			t.Errorf("file %q should not be selected after d", f.Path)
-		}
+	checked := m.fileTree.CheckedPaths()
+	if len(checked) != 0 {
+		t.Errorf("expected 0 checked files after pressing d, got %d", len(checked))
 	}
 }
 
@@ -350,22 +347,15 @@ func TestCheckoutModel_StatusBarShowsBranch(t *testing.T) {
 	}
 }
 
-func TestCheckoutItem_Methods(t *testing.T) {
+func TestCheckoutModel_FileTreeRendersFiles(t *testing.T) {
 	t.Parallel()
-	item := checkoutItem{sf: git.StatusFile{Path: "test.go", Status: git.Modified}, selected: false}
-	if !strings.Contains(item.Title(), "test.go") {
-		t.Errorf("Title() should contain 'test.go', got %q", item.Title())
-	}
-	if item.FilterValue() != "test.go" {
-		t.Errorf("FilterValue() = %q, want %q", item.FilterValue(), "test.go")
-	}
-	if !strings.Contains(item.Description(), "modified") {
-		t.Errorf("Description() should contain 'modified', got %q", item.Description())
-	}
+	m := newTestCheckoutModel(t, "M\ttest.go\n")
+	m.width = 120
+	m.height = 40
 
-	itemSelected := checkoutItem{sf: git.StatusFile{Path: "test.go", Status: git.Modified}, selected: true}
-	if !strings.Contains(itemSelected.Title(), "test.go") {
-		t.Errorf("selected Title() should contain 'test.go', got %q", itemSelected.Title())
+	view := m.View()
+	if !strings.Contains(view, "test.go") {
+		t.Errorf("View() should contain 'test.go', got %q", view)
 	}
 }
 

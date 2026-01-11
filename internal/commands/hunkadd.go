@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
@@ -17,15 +16,6 @@ import (
 	"github.com/jetm/gti/internal/tui/components"
 )
 
-// hunkAddFileItem wraps a git.FileDiff for use with ItemList in hunk-add mode.
-type hunkAddFileItem struct {
-	fd git.FileDiff
-}
-
-func (h hunkAddFileItem) Title() string       { return h.fd.DisplayPath() }
-func (h hunkAddFileItem) Description() string { return statusLabel(h.fd.Status) }
-func (h hunkAddFileItem) FilterValue() string { return h.fd.DisplayPath() }
-
 // HunkAddModel is the command model for the hunk-add TUI (interactive hunk-level staging).
 // It follows the child component pattern: Update returns tea.Cmd, View returns string.
 type HunkAddModel struct {
@@ -34,7 +24,7 @@ type HunkAddModel struct {
 	renderer diff.Renderer
 
 	files      []git.FileDiff
-	fileList   components.ItemList
+	fileTree   components.FileTree
 	diffView   components.DiffView
 	statusBar  components.StatusBar
 	help       components.HelpOverlay
@@ -62,9 +52,9 @@ func NewHunkAddModel(
 
 	files := git.ParseFileDiffs(rawDiff)
 
-	items := make([]list.Item, len(files))
+	entries := make([]components.FileEntry, len(files))
 	for i, f := range files {
-		items[i] = hunkAddFileItem{fd: f}
+		entries[i] = components.FileEntry{Path: f.DisplayPath(), Status: f.Status}
 	}
 
 	m := &HunkAddModel{
@@ -72,7 +62,7 @@ func NewHunkAddModel(
 		runner:    runner,
 		renderer:  renderer,
 		files:     files,
-		fileList:  components.NewItemList(items, 40, 20),
+		fileTree:  components.NewFileTree(entries, false),
 		diffView:  components.NewDiffView(80, 20),
 		statusBar: components.NewStatusBar(120),
 		help: components.NewHelpOverlay([]components.KeyGroup{
@@ -80,6 +70,7 @@ func NewHunkAddModel(
 				Name: "Navigation",
 				Bindings: []components.KeyBinding{
 					{Key: "j/k", Desc: "move between files"},
+					{Key: "o", Desc: "expand/collapse"},
 					{Key: "Tab", Desc: "switch panel"},
 					{Key: "n", Desc: "skip hunk"},
 					{Key: "?", Desc: "toggle help"},
@@ -161,10 +152,10 @@ func (m *HunkAddModel) Update(msg tea.Msg) tea.Cmd {
 			return tea.Batch(sbCmd, dvCmd)
 		}
 
-		// Forward navigation (j/k) to the file list
-		listCmd := m.fileList.Update(msg)
+		// Forward navigation (j/k) to the file tree
+		treeCmd := m.fileTree.Update(msg)
 		m.syncFileSelection()
-		return tea.Batch(sbCmd, listCmd)
+		return tea.Batch(sbCmd, treeCmd)
 	}
 
 	return sbCmd
@@ -190,8 +181,8 @@ func (m *HunkAddModel) View() string {
 	leftW--
 	rightW--
 
-	m.fileList.SetWidth(leftW)
-	m.fileList.SetHeight(contentHeight)
+	m.fileTree.SetWidth(leftW)
+	m.fileTree.SetHeight(contentHeight)
 	m.diffView.SetWidth(rightW)
 	m.diffView.SetHeight(contentHeight)
 
@@ -200,7 +191,7 @@ func (m *HunkAddModel) View() string {
 		leftBorder, rightBorder = tui.StyleDimBorder, tui.StyleFocusBorder
 	}
 
-	leftPanel := leftBorder.Width(leftW).Height(contentHeight).Render(m.fileList.View())
+	leftPanel := leftBorder.Width(leftW).Height(contentHeight).Render(m.fileTree.View())
 	rightPanel := rightBorder.Width(rightW).Height(contentHeight).Render(m.diffView.View())
 
 	panels := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
@@ -429,12 +420,10 @@ func (m *HunkAddModel) tryNextFile() tea.Cmd {
 		hunks := git.ParseHunks(m.files[next].RawDiff)
 		if len(hunks) > 0 {
 			m.loadFileHunks(next)
-			// Sync the list selection
-			m.selectListItem(next)
 			return nil
 		}
 	}
-	// No more files — pop; MutatedGit reflects whether anything was staged
+	// No more files - pop; MutatedGit reflects whether anything was staged
 	mutated := m.anyStagedDecision()
 	return func() tea.Msg {
 		return app.PopModelMsg{MutatedGit: mutated}
@@ -451,25 +440,14 @@ func (m *HunkAddModel) anyStagedDecision() bool {
 	return false
 }
 
-// selectListItem moves the file list cursor to the given index.
-func (m *HunkAddModel) selectListItem(idx int) {
-	for range idx {
-		m.fileList.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
-	}
-}
-
-// syncFileSelection detects if the list cursor moved to a different file and loads its hunks.
+// syncFileSelection detects if the tree cursor moved to a different file and loads its hunks.
 func (m *HunkAddModel) syncFileSelection() {
-	sel := m.fileList.SelectedItem()
-	if sel == nil {
-		return
-	}
-	item, ok := sel.(hunkAddFileItem)
-	if !ok {
+	path := m.fileTree.SelectedPath()
+	if path == "" {
 		return
 	}
 	for i, f := range m.files {
-		if f.DisplayPath() == item.fd.DisplayPath() && i != m.fileIdx {
+		if f.DisplayPath() == path && i != m.fileIdx {
 			m.loadFileHunks(i)
 			return
 		}
@@ -491,8 +469,8 @@ func (m *HunkAddModel) resize() {
 	leftW--
 	rightW--
 
-	m.fileList.SetWidth(leftW)
-	m.fileList.SetHeight(contentHeight)
+	m.fileTree.SetWidth(leftW)
+	m.fileTree.SetHeight(contentHeight)
 	m.diffView.SetWidth(rightW)
 	m.diffView.SetHeight(contentHeight)
 	m.statusBar.SetWidth(m.width)

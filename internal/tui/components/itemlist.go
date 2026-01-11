@@ -1,8 +1,13 @@
 package components
 
 import (
+	"io"
+
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+
+	"github.com/jetm/gti/internal/tui"
 )
 
 // SimpleItem implements list.Item and list.DefaultItem for use with ItemList.
@@ -68,4 +73,47 @@ func (il *ItemList) Update(msg tea.Msg) tea.Cmd {
 	var cmd tea.Cmd
 	il.list, cmd = il.list.Update(msg)
 	return cmd
+}
+
+// CompactDelegate renders list items as a single line with zero spacing.
+type CompactDelegate struct {
+	selectedStyle lipgloss.Style
+	normalStyle   lipgloss.Style
+}
+
+// Height implements list.ItemDelegate.
+func (d CompactDelegate) Height() int { return 1 }
+
+// Spacing implements list.ItemDelegate.
+func (d CompactDelegate) Spacing() int { return 0 }
+
+// Update implements list.ItemDelegate.
+func (d CompactDelegate) Update(_ tea.Msg, _ *list.Model) tea.Cmd { return nil }
+
+// Render implements list.ItemDelegate.
+func (d CompactDelegate) Render(w io.Writer, m list.Model, index int, item list.Item) {
+	if item == nil {
+		return
+	}
+
+	title := item.(list.DefaultItem).Title()
+	style := d.normalStyle
+	if index == m.Index() {
+		style = d.selectedStyle
+	}
+	_, _ = io.WriteString(w, style.Width(m.Width()).MaxWidth(m.Width()).Render(title))
+}
+
+// NewCompactItemList creates an ItemList with compact single-line rendering.
+func NewCompactItemList(items []list.Item, width, height int) ItemList {
+	delegate := CompactDelegate{
+		selectedStyle: lipgloss.NewStyle().Background(tui.ColorBgSel).Foreground(tui.ColorFg),
+		normalStyle:   lipgloss.NewStyle().Foreground(tui.ColorFg),
+	}
+	l := list.New(items, delegate, width, height)
+	l.SetShowTitle(false)
+	l.SetShowHelp(false)
+	l.SetShowStatusBar(false)
+	l.DisableQuitKeybindings()
+	return ItemList{list: l}
 }

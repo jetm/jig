@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
@@ -16,23 +15,6 @@ import (
 	"github.com/jetm/gti/internal/tui/components"
 )
 
-// checkoutItem wraps a git.StatusFile for use with ItemList.
-type checkoutItem struct {
-	sf       git.StatusFile
-	selected bool
-}
-
-func (c checkoutItem) Title() string {
-	icon := tui.IconUnchecked
-	if c.selected {
-		icon = tui.IconChecked
-	}
-	return icon + " " + c.sf.Path
-}
-
-func (c checkoutItem) Description() string { return statusLabel(c.sf.Status) }
-func (c checkoutItem) FilterValue() string { return c.sf.Path }
-
 // CheckoutModel is the command model for the checkout TUI (interactive discard).
 // It follows the child component pattern: Update returns tea.Cmd, View returns string.
 type CheckoutModel struct {
@@ -40,8 +22,7 @@ type CheckoutModel struct {
 	runner     git.Runner
 	renderer   diff.Renderer
 	files      []git.StatusFile
-	selected   map[string]bool
-	fileList   components.ItemList
+	fileTree   components.FileTree
 	diffView   components.DiffView
 	statusBar  components.StatusBar
 	help       components.HelpOverlay
@@ -62,15 +43,17 @@ func NewCheckoutModel(
 	files, _ := git.ListModifiedFiles(ctx, runner)
 	branchName, _ := git.BranchName(ctx, runner)
 
-	items := checkoutItemsFromFiles(files, nil)
+	entries := make([]components.FileEntry, len(files))
+	for i, f := range files {
+		entries[i] = components.FileEntry{Path: f.Path, Status: f.Status}
+	}
 
 	m := &CheckoutModel{
 		ctx:       ctx,
 		runner:    runner,
 		renderer:  renderer,
 		files:     files,
-		selected:  make(map[string]bool),
-		fileList:  components.NewItemList(items, 40, 20),
+		fileTree:  components.NewFileTree(entries, true),
 		diffView:  components.NewDiffView(80, 20),
 		statusBar: components.NewStatusBar(120),
 		help: components.NewHelpOverlay([]components.KeyGroup{
@@ -78,6 +61,7 @@ func NewCheckoutModel(
 				Name: "Navigation",
 				Bindings: []components.KeyBinding{
 					{Key: "j/k", Desc: "move up/down"},
+					{Key: "o", Desc: "expand/collapse"},
 					{Key: "Tab", Desc: "switch panel"},
 					{Key: "Space", Desc: "toggle selection"},
 					{Key: "a", Desc: "select all"},
@@ -153,18 +137,15 @@ func (m *CheckoutModel) Update(msg tea.Msg) tea.Cmd {
 			return sbCmd
 
 		case ' ':
-			m.toggleSelected()
-			m.refreshList()
+			m.fileTree.ToggleChecked()
 			return sbCmd
 
 		case 'a':
-			m.selectAll()
-			m.refreshList()
+			m.fileTree.SetAllChecked(true)
 			return sbCmd
 
 		case 'd':
-			m.deselectAll()
-			m.refreshList()
+			m.fileTree.SetAllChecked(false)
 			return sbCmd
 		}
 
@@ -173,9 +154,9 @@ func (m *CheckoutModel) Update(msg tea.Msg) tea.Cmd {
 			return tea.Batch(sbCmd, dvCmd)
 		}
 
-		listCmd := m.fileList.Update(msg)
+		treeCmd := m.fileTree.Update(msg)
 		m.renderSelectedDiff()
-		return tea.Batch(sbCmd, listCmd)
+		return tea.Batch(sbCmd, treeCmd)
 	}
 
 	return sbCmd
@@ -215,8 +196,8 @@ func (m *CheckoutModel) View() string {
 	leftW--
 	rightW--
 
-	m.fileList.SetWidth(leftW)
-	m.fileList.SetHeight(contentHeight)
+	m.fileTree.SetWidth(leftW)
+	m.fileTree.SetHeight(contentHeight)
 	m.diffView.SetWidth(rightW)
 	m.diffView.SetHeight(contentHeight)
 
@@ -225,7 +206,7 @@ func (m *CheckoutModel) View() string {
 		leftBorder, rightBorder = tui.StyleDimBorder, tui.StyleFocusBorder
 	}
 
-	leftPanel := leftBorder.Width(leftW).Height(contentHeight).Render(m.fileList.View())
+	leftPanel := leftBorder.Width(leftW).Height(contentHeight).Render(m.fileTree.View())
 	rightPanel := rightBorder.Width(rightW).Height(contentHeight).Render(m.diffView.View())
 
 	panels := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
@@ -244,51 +225,16 @@ func (m *CheckoutModel) View() string {
 	return panels + "\n" + m.statusBar.View()
 }
 
-// toggleSelected toggles selection state of the currently focused item.
-func (m *CheckoutModel) toggleSelected() {
-	sel := m.fileList.SelectedItem()
-	if sel == nil {
-		return
-	}
-	item, ok := sel.(checkoutItem)
-	if !ok {
-		return
-	}
-	m.selected[item.sf.Path] = !m.selected[item.sf.Path]
-}
-
-// selectAll marks all files as selected.
-func (m *CheckoutModel) selectAll() {
-	for _, f := range m.files {
-		m.selected[f.Path] = true
-	}
-}
-
-// deselectAll clears all selections.
-func (m *CheckoutModel) deselectAll() {
-	m.selected = make(map[string]bool)
-}
-
-// selectedPaths returns paths of selected files or the focused file if none selected.
+// selectedPaths returns paths of checked files or the focused file if none checked.
 func (m *CheckoutModel) selectedPaths() []string {
-	var paths []string
-	for _, f := range m.files {
-		if m.selected[f.Path] {
-			paths = append(paths, f.Path)
-		}
-	}
+	paths := m.fileTree.CheckedPaths()
 	if len(paths) > 0 {
 		return paths
 	}
-	sel := m.fileList.SelectedItem()
-	if sel == nil {
-		return nil
+	if path := m.fileTree.SelectedPath(); path != "" {
+		return []string{path}
 	}
-	item, ok := sel.(checkoutItem)
-	if !ok {
-		return nil
-	}
-	return []string{item.sf.Path}
+	return nil
 }
 
 // discardSelected runs git checkout -- for the selected files.
@@ -308,24 +254,14 @@ func (m *CheckoutModel) discardSelected() tea.Cmd {
 	}
 }
 
-// refreshList rebuilds the list items to reflect current selection state.
-func (m *CheckoutModel) refreshList() {
-	items := checkoutItemsFromFiles(m.files, m.selected)
-	_ = m.fileList.SetItems(items)
-}
-
 // renderSelectedDiff renders the diff for the currently focused file.
 func (m *CheckoutModel) renderSelectedDiff() {
-	sel := m.fileList.SelectedItem()
-	if sel == nil {
-		return
-	}
-	item, ok := sel.(checkoutItem)
-	if !ok {
+	path := m.fileTree.SelectedPath()
+	if path == "" {
 		return
 	}
 
-	raw, err := m.runner.Run(m.ctx, "diff", "--", item.sf.Path)
+	raw, err := m.runner.Run(m.ctx, "diff", "--", path)
 	if err != nil || raw == "" {
 		m.diffView.SetContent("(no diff available)")
 		return
@@ -346,18 +282,9 @@ func (m *CheckoutModel) resize() {
 	leftW--
 	rightW--
 
-	m.fileList.SetWidth(leftW)
-	m.fileList.SetHeight(contentHeight)
+	m.fileTree.SetWidth(leftW)
+	m.fileTree.SetHeight(contentHeight)
 	m.diffView.SetWidth(rightW)
 	m.diffView.SetHeight(contentHeight)
 	m.statusBar.SetWidth(m.width)
-}
-
-// checkoutItemsFromFiles converts StatusFile slice to list.Item slice.
-func checkoutItemsFromFiles(files []git.StatusFile, selected map[string]bool) []list.Item {
-	items := make([]list.Item, len(files))
-	for i, f := range files {
-		items[i] = checkoutItem{sf: f, selected: selected[f.Path]}
-	}
-	return items
 }

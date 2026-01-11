@@ -127,3 +127,68 @@ func TestSimpleItemFilterValue(t *testing.T) {
 		t.Errorf("FilterValue() = %q, want test-title", item.FilterValue())
 	}
 }
+
+func TestCompactDelegateSpacingIsZero(t *testing.T) {
+	d := CompactDelegate{}
+	if d.Spacing() != 0 {
+		t.Errorf("Spacing() = %d, want 0", d.Spacing())
+	}
+}
+
+func TestCompactDelegateHeightIsOne(t *testing.T) {
+	d := CompactDelegate{}
+	if d.Height() != 1 {
+		t.Errorf("Height() = %d, want 1", d.Height())
+	}
+}
+
+func TestCompactItemListRendersCompact(t *testing.T) {
+	items := []list.Item{
+		NewSimpleItem("first", "desc1"),
+		NewSimpleItem("second", "desc2"),
+		NewSimpleItem("third", "desc3"),
+	}
+	il := NewCompactItemList(items, 40, 10)
+
+	view := il.View()
+	// Each item should be on its own line with no blank lines between them.
+	lines := strings.Split(view, "\n")
+	// Filter out empty trailing lines from the viewport.
+	var nonEmpty []string
+	for _, l := range lines {
+		if strings.TrimSpace(l) != "" {
+			nonEmpty = append(nonEmpty, l)
+		}
+	}
+	if len(nonEmpty) != 3 {
+		t.Errorf("expected 3 non-empty lines, got %d:\n%s", len(nonEmpty), view)
+	}
+	if !strings.Contains(view, "first") {
+		t.Error("view should contain 'first'")
+	}
+	if !strings.Contains(view, "second") {
+		t.Error("view should contain 'second'")
+	}
+	if !strings.Contains(view, "third") {
+		t.Error("view should contain 'third'")
+	}
+}
+
+func TestCompactItemListNavigates(t *testing.T) {
+	items := []list.Item{
+		NewSimpleItem("alpha", ""),
+		NewSimpleItem("beta", ""),
+	}
+	il := NewCompactItemList(items, 40, 10)
+
+	sel := il.SelectedItem()
+	if sel.(SimpleItem).Title() != "alpha" {
+		t.Errorf("initial selection = %q, want alpha", sel.(SimpleItem).Title())
+	}
+
+	sendKey(&il, 'j')
+	sel = il.SelectedItem()
+	if sel.(SimpleItem).Title() != "beta" {
+		t.Errorf("after j, selection = %q, want beta", sel.(SimpleItem).Title())
+	}
+}

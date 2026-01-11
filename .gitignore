@@ -8,7 +8,7 @@ bin/
 *.dylib
 
 # Test
-coverage.out
+*.out
 coverage.html
 
 # Build

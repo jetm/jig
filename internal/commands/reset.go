@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
@@ -16,23 +15,6 @@ import (
 	"github.com/jetm/gti/internal/tui/components"
 )
 
-// resetItem wraps a git.StatusFile for use with ItemList.
-type resetItem struct {
-	sf       git.StatusFile
-	selected bool
-}
-
-func (r resetItem) Title() string {
-	icon := tui.IconUnchecked
-	if r.selected {
-		icon = tui.IconChecked
-	}
-	return icon + " " + r.sf.Path
-}
-
-func (r resetItem) Description() string { return statusLabel(r.sf.Status) }
-func (r resetItem) FilterValue() string { return r.sf.Path }
-
 // ResetModel is the command model for the reset TUI (interactive unstaging).
 // It follows the child component pattern: Update returns tea.Cmd, View returns string.
 type ResetModel struct {
@@ -40,8 +22,7 @@ type ResetModel struct {
 	runner     git.Runner
 	renderer   diff.Renderer
 	files      []git.StatusFile
-	selected   map[string]bool
-	fileList   components.ItemList
+	fileTree   components.FileTree
 	diffView   components.DiffView
 	statusBar  components.StatusBar
 	help       components.HelpOverlay
@@ -61,15 +42,17 @@ func NewResetModel(
 	files, _ := git.ListStagedFiles(ctx, runner)
 	branchName, _ := git.BranchName(ctx, runner)
 
-	items := resetItemsFromFiles(files, nil)
+	entries := make([]components.FileEntry, len(files))
+	for i, f := range files {
+		entries[i] = components.FileEntry{Path: f.Path, Status: f.Status}
+	}
 
 	m := &ResetModel{
 		ctx:       ctx,
 		runner:    runner,
 		renderer:  renderer,
 		files:     files,
-		selected:  make(map[string]bool),
-		fileList:  components.NewItemList(items, 40, 20),
+		fileTree:  components.NewFileTree(entries, true),
 		diffView:  components.NewDiffView(80, 20),
 		statusBar: components.NewStatusBar(120),
 		help: components.NewHelpOverlay([]components.KeyGroup{
@@ -77,11 +60,11 @@ func NewResetModel(
 				Name: "Navigation",
 				Bindings: []components.KeyBinding{
 					{Key: "j/k", Desc: "move up/down"},
+					{Key: "o", Desc: "expand/collapse"},
 					{Key: "Tab", Desc: "switch panel"},
 					{Key: "Space", Desc: "toggle selection"},
 					{Key: "a", Desc: "select all"},
 					{Key: "d", Desc: "deselect all"},
-					{Key: "/", Desc: "filter files"},
 					{Key: "?", Desc: "toggle help"},
 				},
 			},
@@ -143,18 +126,15 @@ func (m *ResetModel) Update(msg tea.Msg) tea.Cmd {
 			return m.unstageSelected()
 
 		case ' ':
-			m.toggleSelected()
-			m.refreshList()
+			m.fileTree.ToggleChecked()
 			return sbCmd
 
 		case 'a':
-			m.selectAll()
-			m.refreshList()
+			m.fileTree.SetAllChecked(true)
 			return sbCmd
 
 		case 'd':
-			m.deselectAll()
-			m.refreshList()
+			m.fileTree.SetAllChecked(false)
 			return sbCmd
 		}
 
@@ -163,9 +143,9 @@ func (m *ResetModel) Update(msg tea.Msg) tea.Cmd {
 			return tea.Batch(sbCmd, dvCmd)
 		}
 
-		listCmd := m.fileList.Update(msg)
+		treeCmd := m.fileTree.Update(msg)
 		m.renderSelectedDiff()
-		return tea.Batch(sbCmd, listCmd)
+		return tea.Batch(sbCmd, treeCmd)
 	}
 
 	return sbCmd
@@ -191,8 +171,8 @@ func (m *ResetModel) View() string {
 	leftW--
 	rightW--
 
-	m.fileList.SetWidth(leftW)
-	m.fileList.SetHeight(contentHeight)
+	m.fileTree.SetWidth(leftW)
+	m.fileTree.SetHeight(contentHeight)
 	m.diffView.SetWidth(rightW)
 	m.diffView.SetHeight(contentHeight)
 
@@ -201,7 +181,7 @@ func (m *ResetModel) View() string {
 		leftBorder, rightBorder = tui.StyleDimBorder, tui.StyleFocusBorder
 	}
 
-	leftPanel := leftBorder.Width(leftW).Height(contentHeight).Render(m.fileList.View())
+	leftPanel := leftBorder.Width(leftW).Height(contentHeight).Render(m.fileTree.View())
 	rightPanel := rightBorder.Width(rightW).Height(contentHeight).Render(m.diffView.View())
 
 	panels := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
@@ -210,53 +190,17 @@ func (m *ResetModel) View() string {
 	return panels + "\n" + m.statusBar.View()
 }
 
-// toggleSelected toggles selection state of the currently focused item.
-func (m *ResetModel) toggleSelected() {
-	sel := m.fileList.SelectedItem()
-	if sel == nil {
-		return
-	}
-	item, ok := sel.(resetItem)
-	if !ok {
-		return
-	}
-	m.selected[item.sf.Path] = !m.selected[item.sf.Path]
-}
-
-// selectAll marks all files as selected.
-func (m *ResetModel) selectAll() {
-	for _, f := range m.files {
-		m.selected[f.Path] = true
-	}
-}
-
-// deselectAll clears all selections.
-func (m *ResetModel) deselectAll() {
-	m.selected = make(map[string]bool)
-}
-
-// selectedPaths returns the paths of all selected files.
-// If none are selected, returns the focused file's path (single-file shortcut).
+// selectedPaths returns the paths of all checked files.
+// If none are checked, returns the focused file's path (single-file shortcut).
 func (m *ResetModel) selectedPaths() []string {
-	var paths []string
-	for _, f := range m.files {
-		if m.selected[f.Path] {
-			paths = append(paths, f.Path)
-		}
-	}
+	paths := m.fileTree.CheckedPaths()
 	if len(paths) > 0 {
 		return paths
 	}
-	// Fallback: unstage focused file
-	sel := m.fileList.SelectedItem()
-	if sel == nil {
-		return nil
+	if path := m.fileTree.SelectedPath(); path != "" {
+		return []string{path}
 	}
-	item, ok := sel.(resetItem)
-	if !ok {
-		return nil
-	}
-	return []string{item.sf.Path}
+	return nil
 }
 
 // unstageSelected runs git reset HEAD for the selected files and returns a PopModelMsg.
@@ -277,25 +221,15 @@ func (m *ResetModel) unstageSelected() tea.Cmd {
 	}
 }
 
-// refreshList rebuilds the list items to reflect current selection state.
-func (m *ResetModel) refreshList() {
-	items := resetItemsFromFiles(m.files, m.selected)
-	_ = m.fileList.SetItems(items)
-}
-
 // renderSelectedDiff renders the staged diff for the currently focused file.
 func (m *ResetModel) renderSelectedDiff() {
-	sel := m.fileList.SelectedItem()
-	if sel == nil {
-		return
-	}
-	item, ok := sel.(resetItem)
-	if !ok {
+	path := m.fileTree.SelectedPath()
+	if path == "" {
 		return
 	}
 
 	// Run git diff --cached for this specific file
-	raw, err := m.runner.Run(m.ctx, "diff", "--cached", "--", item.sf.Path)
+	raw, err := m.runner.Run(m.ctx, "diff", "--cached", "--", path)
 	if err != nil || raw == "" {
 		m.diffView.SetContent("(no diff available)")
 		return
@@ -316,18 +250,9 @@ func (m *ResetModel) resize() {
 	leftW--
 	rightW--
 
-	m.fileList.SetWidth(leftW)
-	m.fileList.SetHeight(contentHeight)
+	m.fileTree.SetWidth(leftW)
+	m.fileTree.SetHeight(contentHeight)
 	m.diffView.SetWidth(rightW)
 	m.diffView.SetHeight(contentHeight)
 	m.statusBar.SetWidth(m.width)
-}
-
-// resetItemsFromFiles converts StatusFile slice to list.Item slice.
-func resetItemsFromFiles(files []git.StatusFile, selected map[string]bool) []list.Item {
-	items := make([]list.Item, len(files))
-	for i, f := range files {
-		items[i] = resetItem{sf: f, selected: selected[f.Path]}
-	}
-	return items
 }

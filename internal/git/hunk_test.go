@@ -157,6 +157,10 @@ func (f *fakeStdinRunner) Run(_ context.Context, _ ...string) (string, error) {
 	return "", nil
 }
 
+func (f *fakeStdinRunner) RunAllowExitCode(_ context.Context, _ int, _ ...string) (string, error) {
+	return "", nil
+}
+
 func (f *fakeStdinRunner) RunWithEnv(_ context.Context, _ []string, _ ...string) (string, error) {
 	return "", nil
 }

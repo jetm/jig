@@ -670,14 +670,15 @@ func TestHunkAddModel_StageAllRemaining_ErrorPath(t *testing.T) {
 	}
 }
 
-func TestHunkAddFileItem_Methods(t *testing.T) {
+func TestHunkAddModel_FileTreeRendersFiles(t *testing.T) {
 	t.Parallel()
-	item := hunkAddFileItem{fd: newTestFileDiff("foo.go")}
-	if got := item.FilterValue(); got != "foo.go" {
-		t.Errorf("FilterValue() = %q, want %q", got, "foo.go")
-	}
-	if got := item.Title(); got != "foo.go" {
-		t.Errorf("Title() = %q, want %q", got, "foo.go")
+	m, _ := newHunkAddTestModel(t, singleHunkDiff)
+	m.width = 120
+	m.height = 40
+
+	view := m.View()
+	if view == "" {
+		t.Error("View() should not be empty")
 	}
 }
 

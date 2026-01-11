@@ -224,9 +224,9 @@ func TestDiffModel_SelectionChangeUpdatesPreview(t *testing.T) {
 	m.width = 120
 	m.height = 40
 
-	// Initial view should have first file's content
-	if m.selectedIdx != 0 {
-		t.Fatalf("initial selectedIdx = %d, want 0", m.selectedIdx)
+	// Initial view should have first file selected
+	if m.selectedPath == "" {
+		t.Fatal("initial selectedPath should not be empty")
 	}
 
 	if len(m.files) != 2 {
@@ -284,32 +284,15 @@ func TestDiffModel_View_HelpVisible(t *testing.T) {
 	}
 }
 
-func TestDiffItem_FilterValue(t *testing.T) {
+func TestDiffModel_FileTreeRendersFiles(t *testing.T) {
 	t.Parallel()
-	item := diffItem{fd: git.FileDiff{NewPath: "test.go", Status: git.Modified}}
-	if got := item.FilterValue(); got != "test.go" {
-		t.Errorf("FilterValue() = %q, want %q", got, "test.go")
-	}
-}
+	m := newTestModel(t, "", false, sampleDiff)
+	m.width = 120
+	m.height = 40
 
-func TestStatusLabel_AllStatuses(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		status git.FileStatus
-		want   string
-	}{
-		{git.Added, "added"},
-		{git.Deleted, "deleted"},
-		{git.Renamed, "renamed"},
-		{git.Modified, "modified"},
-	}
-
-	for _, tc := range tests {
-		got := statusLabel(tc.status)
-		if !strings.Contains(got, tc.want) {
-			t.Errorf("statusLabel(%v) = %q, want containing %q", tc.status, got, tc.want)
-		}
+	view := m.View()
+	if !strings.Contains(view, "main.go") {
+		t.Error("View() should contain file name 'main.go'")
 	}
 }
 
@@ -325,10 +308,10 @@ func TestDiffModel_KeyForwardsToList(t *testing.T) {
 	_ = cmd
 }
 
-func TestDiffModel_RenderSelectedDiff_OutOfBounds(t *testing.T) {
+func TestDiffModel_RenderSelectedDiff_NoSelection(t *testing.T) {
 	t.Parallel()
 	m := newTestModel(t, "", false, sampleDiff)
-	m.selectedIdx = 999
+	m.selectedPath = "nonexistent.go"
 	// Should not panic
 	m.renderSelectedDiff()
 }

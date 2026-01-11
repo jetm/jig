@@ -47,6 +47,15 @@ func (f *FakeRunner) Run(_ context.Context, args ...string) (string, error) {
 	return f.pop()
 }
 
+// RunAllowExitCode records Call{Args: args} and returns the next scripted output.
+// The code parameter is ignored in the fake - it simply pops the next output.
+func (f *FakeRunner) RunAllowExitCode(_ context.Context, _ int, args ...string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.Calls = append(f.Calls, Call{Args: args})
+	return f.pop()
+}
+
 // RunWithEnv records Call{Args: args, Env: env} and returns the next scripted output.
 func (f *FakeRunner) RunWithEnv(_ context.Context, env []string, args ...string) (string, error) {
 	f.mu.Lock()

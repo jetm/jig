@@ -76,7 +76,7 @@ func NewLogModel(
 		runner:     runner,
 		renderer:   renderer,
 		commits:    commits,
-		commitList: components.NewItemList(items, 40, 20),
+		commitList: components.NewCompactItemList(items, 40, 20),
 		diffView:   components.NewDiffView(80, 20),
 		statusBar:  components.NewStatusBar(120),
 		help: components.NewHelpOverlay([]components.KeyGroup{

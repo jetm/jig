@@ -4,7 +4,6 @@ package commands
 import (
 	"context"
 
-	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
@@ -16,42 +15,20 @@ import (
 	"github.com/jetm/gti/internal/tui/components"
 )
 
-// diffItem wraps a FileDiff for use with ItemList.
-type diffItem struct {
-	fd git.FileDiff
-}
-
-func (d diffItem) Title() string       { return d.fd.DisplayPath() }
-func (d diffItem) Description() string { return statusLabel(d.fd.Status) }
-func (d diffItem) FilterValue() string { return d.fd.DisplayPath() }
-
-func statusLabel(s git.FileStatus) string {
-	switch s {
-	case git.Added:
-		return tui.IconAdded + " added"
-	case git.Deleted:
-		return tui.IconDeleted + " deleted"
-	case git.Renamed:
-		return tui.IconRenamed + " renamed"
-	default:
-		return tui.IconModified + " modified"
-	}
-}
-
 // DiffModel is the command model for the diff TUI.
 // It follows the child component pattern: Update returns tea.Cmd, View returns string.
 type DiffModel struct {
-	files       []git.FileDiff
-	fileList    components.ItemList
-	diffView    components.DiffView
-	statusBar   components.StatusBar
-	help        components.HelpOverlay
-	renderer    diff.Renderer
-	branch      string
-	selectedIdx int
-	width       int
-	height      int
-	focusRight  bool
+	files        []git.FileDiff
+	fileTree     components.FileTree
+	diffView     components.DiffView
+	statusBar    components.StatusBar
+	help         components.HelpOverlay
+	renderer     diff.Renderer
+	branch       string
+	selectedPath string
+	width        int
+	height       int
+	focusRight   bool
 }
 
 // NewDiffModel creates a DiffModel by running git diff and parsing the output.
@@ -69,14 +46,14 @@ func NewDiffModel(
 
 	files := git.ParseFileDiffs(rawDiff)
 
-	items := make([]list.Item, len(files))
+	entries := make([]components.FileEntry, len(files))
 	for i, f := range files {
-		items[i] = diffItem{fd: f}
+		entries[i] = components.FileEntry{Path: f.DisplayPath(), Status: f.Status}
 	}
 
 	m := &DiffModel{
 		files:     files,
-		fileList:  components.NewItemList(items, 40, 20),
+		fileTree:  components.NewFileTree(entries, false),
 		diffView:  components.NewDiffView(80, 20),
 		statusBar: components.NewStatusBar(120),
 		help: components.NewHelpOverlay([]components.KeyGroup{
@@ -84,8 +61,8 @@ func NewDiffModel(
 				Name: "Navigation",
 				Bindings: []components.KeyBinding{
 					{Key: "j/k", Desc: "move up/down"},
+					{Key: "o", Desc: "expand/collapse"},
 					{Key: "Tab", Desc: "switch panel"},
-					{Key: "/", Desc: "filter files"},
 					{Key: "?", Desc: "toggle help"},
 				},
 			},
@@ -96,18 +73,17 @@ func NewDiffModel(
 				},
 			},
 		}),
-		renderer:    renderer,
-		branch:      branchName,
-		selectedIdx: 0,
+		renderer: renderer,
+		branch:   branchName,
 	}
 
-	m.statusBar.SetHints("j/k: navigate  Tab: panel  /: filter  ?: help  q: quit")
+	m.statusBar.SetHints("j/k: navigate  o: expand/collapse  Tab: panel  ?: help  q: quit")
 	m.statusBar.SetBranch(branchName)
 	m.statusBar.SetMode("diff")
 
 	// Render first file if available
 	if len(files) > 0 {
-		m.renderSelectedDiff()
+		m.checkSelectionChange()
 	}
 
 	return m
@@ -153,13 +129,13 @@ func (m *DiffModel) Update(msg tea.Msg) tea.Cmd {
 			return tea.Batch(sbCmd, dvCmd)
 		}
 
-		// Forward to file list
-		listCmd := m.fileList.Update(msg)
+		// Forward to file tree
+		treeCmd := m.fileTree.Update(msg)
 
 		// Check if selection changed
 		m.checkSelectionChange()
 
-		return tea.Batch(sbCmd, listCmd)
+		return tea.Batch(sbCmd, treeCmd)
 	}
 
 	return sbCmd
@@ -186,8 +162,8 @@ func (m *DiffModel) View() string {
 	leftW--
 	rightW--
 
-	m.fileList.SetWidth(leftW)
-	m.fileList.SetHeight(contentHeight)
+	m.fileTree.SetWidth(leftW)
+	m.fileTree.SetHeight(contentHeight)
 	m.diffView.SetWidth(rightW)
 	m.diffView.SetHeight(contentHeight)
 
@@ -196,7 +172,7 @@ func (m *DiffModel) View() string {
 		leftBorder, rightBorder = tui.StyleDimBorder, tui.StyleFocusBorder
 	}
 
-	leftPanel := leftBorder.Width(leftW).Height(contentHeight).Render(m.fileList.View())
+	leftPanel := leftBorder.Width(leftW).Height(contentHeight).Render(m.fileTree.View())
 	rightPanel := rightBorder.Width(rightW).Height(contentHeight).Render(m.diffView.View())
 
 	panels := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
@@ -205,37 +181,28 @@ func (m *DiffModel) View() string {
 	return panels + "\n" + m.statusBar.View()
 }
 
-// checkSelectionChange detects if the selected item changed and re-renders the diff.
+// checkSelectionChange detects if the selected file changed and re-renders the diff.
 func (m *DiffModel) checkSelectionChange() {
-	sel := m.fileList.SelectedItem()
-	if sel == nil {
+	path := m.fileTree.SelectedPath()
+	if path == "" || path == m.selectedPath {
 		return
 	}
-	di, ok := sel.(diffItem)
-	if !ok {
-		return
-	}
-	// Find the index of this file
-	for i, f := range m.files {
-		if f.DisplayPath() == di.fd.DisplayPath() && i != m.selectedIdx {
-			m.selectedIdx = i
-			m.renderSelectedDiff()
-			return
-		}
-	}
+	m.selectedPath = path
+	m.renderSelectedDiff()
 }
 
 // renderSelectedDiff renders the currently selected file's diff through the renderer.
 func (m *DiffModel) renderSelectedDiff() {
-	if m.selectedIdx >= len(m.files) {
-		return
+	for _, f := range m.files {
+		if f.DisplayPath() == m.selectedPath {
+			rendered, err := m.renderer.Render(f.RawDiff)
+			if err != nil {
+				rendered = f.RawDiff
+			}
+			m.diffView.SetContent(rendered)
+			return
+		}
 	}
-	raw := m.files[m.selectedIdx].RawDiff
-	rendered, err := m.renderer.Render(raw)
-	if err != nil {
-		rendered = raw
-	}
-	m.diffView.SetContent(rendered)
 }
 
 // resize recalculates component dimensions after a terminal resize.
@@ -246,8 +213,8 @@ func (m *DiffModel) resize() {
 	leftW--
 	rightW--
 
-	m.fileList.SetWidth(leftW)
-	m.fileList.SetHeight(contentHeight)
+	m.fileTree.SetWidth(leftW)
+	m.fileTree.SetHeight(contentHeight)
 	m.diffView.SetWidth(rightW)
 	m.diffView.SetHeight(contentHeight)
 	m.statusBar.SetWidth(m.width)

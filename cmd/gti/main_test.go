@@ -375,7 +375,7 @@ func newFakeRebaseInteractiveModel(t *testing.T) *commands.RebaseInteractiveMode
 	runner := &testhelper.FakeRunner{Outputs: []string{"", "main"}}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	return commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~5")
+	return commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~5", "")
 }
 
 func TestRebaseInteractiveTeaModel_InitReturnsNil(t *testing.T) {

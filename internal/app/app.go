@@ -16,11 +16,16 @@ type PopModelMsg struct{ MutatedGit bool }
 // RefreshMsg is sent to the parent model after a mutating child returns.
 type RefreshMsg struct{}
 
+// AbortMsg signals the program should exit with a non-zero code.
+// Used by editor mode when the user aborts.
+type AbortMsg struct{}
+
 // Model is the root model managing a navigation stack of tea.Model instances.
 type Model struct {
-	stack  []tea.Model
-	Runner git.Runner
-	Config config.Config
+	stack   []tea.Model
+	Runner  git.Runner
+	Config  config.Config
+	Aborted bool // true when an abort was requested (non-zero exit)
 }
 
 // New creates a Model with the initial model on the stack.
@@ -54,6 +59,9 @@ func (a *Model) Init() tea.Cmd { return a.Active().Init() }
 // Update implements tea.Model.
 func (a *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case AbortMsg:
+		a.Aborted = true
+		return a, tea.Quit
 	case PushModelMsg:
 		a.Push(msg.Model)
 		return a, msg.Model.Init()

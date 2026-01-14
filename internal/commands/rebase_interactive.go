@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
@@ -15,6 +16,10 @@ import (
 	"github.com/jetm/gti/internal/tui"
 	"github.com/jetm/gti/internal/tui/components"
 )
+
+// AbortEditorMsg signals that the editor mode was aborted, requesting non-zero exit.
+// The app model handles this by setting Aborted=true and quitting.
+type AbortEditorMsg = app.AbortMsg
 
 // actionIcon returns the Nerd Font icon for a rebase action.
 func actionIcon(a git.RebaseAction) string {
@@ -65,33 +70,47 @@ type RebaseInteractiveModel struct {
 	runner   git.Runner
 	renderer diff.Renderer
 
-	base        string
-	entries     []git.RebaseTodoEntry
-	commitList  components.ItemList
-	diffView    components.DiffView
-	statusBar   components.StatusBar
-	help        components.HelpOverlay
-	branch      string
-	selectedIdx int
-	width       int
-	height      int
-	focusRight  bool
+	base         string
+	todoFilePath string // non-empty = editor mode (invoked as $GIT_SEQUENCE_EDITOR)
+	entries      []git.RebaseTodoEntry
+	commitList   components.ItemList
+	diffView     components.DiffView
+	statusBar    components.StatusBar
+	help         components.HelpOverlay
+	branch       string
+	selectedIdx  int
+	width        int
+	height       int
+	focusRight   bool
 }
 
 // NewRebaseInteractiveModel creates a RebaseInteractiveModel.
-// base is the revision to rebase from (e.g. "HEAD~5").
+// base is the revision to rebase from (e.g. "HEAD~5") for standalone mode.
+// todoFilePath is the path to the git rebase todo file for editor mode.
+// When todoFilePath is non-empty, the model operates in editor mode.
 func NewRebaseInteractiveModel(
 	ctx context.Context,
 	runner git.Runner,
 	_ config.Config,
 	renderer diff.Renderer,
 	base string,
+	todoFilePath string,
 ) *RebaseInteractiveModel {
-	if base == "" {
-		base = "HEAD~10"
-	}
+	var entries []git.RebaseTodoEntry
 
-	entries, _ := git.CommitsForRebase(ctx, runner, base)
+	if todoFilePath != "" {
+		// Editor mode: parse the todo file
+		raw, err := os.ReadFile(todoFilePath)
+		if err == nil {
+			entries = git.ParseNativeTodo(string(raw))
+		}
+	} else {
+		// Standalone mode: fetch commits via git log
+		if base == "" {
+			base = "HEAD~10"
+		}
+		entries, _ = git.CommitsForRebase(ctx, runner, base)
+	}
 	branchName, _ := git.BranchName(ctx, runner)
 
 	items := make([]list.Item, len(entries))
@@ -100,14 +119,15 @@ func NewRebaseInteractiveModel(
 	}
 
 	m := &RebaseInteractiveModel{
-		ctx:        ctx,
-		runner:     runner,
-		renderer:   renderer,
-		base:       base,
-		entries:    entries,
-		commitList: components.NewCompactItemList(items, 40, 20),
-		diffView:   components.NewDiffView(80, 20),
-		statusBar:  components.NewStatusBar(120),
+		ctx:          ctx,
+		runner:       runner,
+		renderer:     renderer,
+		base:         base,
+		todoFilePath: todoFilePath,
+		entries:      entries,
+		commitList:   components.NewCompactItemList(items, 40, 20),
+		diffView:     components.NewDiffView(80, 20),
+		statusBar:    components.NewStatusBar(120),
 		help: components.NewHelpOverlay([]components.KeyGroup{
 			{
 				Name: "Navigation",
@@ -177,6 +197,9 @@ func (m *RebaseInteractiveModel) Update(msg tea.Msg) tea.Cmd {
 
 		switch msg.Code {
 		case 'q', tea.KeyEscape:
+			if m.todoFilePath != "" {
+				return func() tea.Msg { return AbortEditorMsg{} }
+			}
 			return func() tea.Msg {
 				return app.PopModelMsg{MutatedGit: false}
 			}
@@ -294,10 +317,25 @@ func (m *RebaseInteractiveModel) View() string {
 }
 
 // confirmRebase executes the interactive rebase with the current todo.
+// In editor mode, it writes the todo back to the file and exits cleanly.
+// In standalone mode, it calls ExecuteRebaseInteractive.
 func (m *RebaseInteractiveModel) confirmRebase() tea.Cmd {
 	if len(m.entries) == 0 {
 		return nil
 	}
+
+	if m.todoFilePath != "" {
+		// Editor mode: write modified todo back to file
+		todo := git.FormatTodo(m.entries)
+		if err := os.WriteFile(m.todoFilePath, []byte(todo), 0o644); err != nil {
+			return m.statusBar.SetMessage(fmt.Sprintf("Write todo file: %v", err), components.Error)
+		}
+		return func() tea.Msg {
+			return app.PopModelMsg{MutatedGit: false}
+		}
+	}
+
+	// Standalone mode: execute rebase
 	err := git.ExecuteRebaseInteractive(m.ctx, m.runner, m.base, m.entries)
 	if err != nil {
 		return m.statusBar.SetMessage(fmt.Sprintf("Rebase failed: %v", err), components.Error)

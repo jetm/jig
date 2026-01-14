@@ -412,9 +412,14 @@ func newRebaseInteractiveCmd() *cobra.Command {
 		Short: "Interactive rebase todo editor",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			var base string
+			var base, todoFilePath string
 			if len(args) > 0 {
-				base = args[0]
+				// Detect mode: if arg is an existing file, it's editor mode
+				if info, err := os.Stat(args[0]); err == nil && !info.IsDir() {
+					todoFilePath = args[0]
+				} else {
+					base = args[0]
+				}
 			}
 
 			ctx := context.Background()
@@ -428,12 +433,16 @@ func newRebaseInteractiveCmd() *cobra.Command {
 				return fmt.Errorf("loading config: %w", err)
 			}
 			renderer := diff.Chain(cfg)
-			rebaseModel := commands.NewRebaseInteractiveModel(ctx, runner, cfg, renderer, base)
+			rebaseModel := commands.NewRebaseInteractiveModel(ctx, runner, cfg, renderer, base, todoFilePath)
 
-			appModel := app.New(newRebaseInteractiveTeaModel(rebaseModel), runner, cfg)
+			rebaseTeaModel := newRebaseInteractiveTeaModel(rebaseModel)
+			appModel := app.New(rebaseTeaModel, runner, cfg)
 			p := tea.NewProgram(appModel)
 			if _, err = p.Run(); err != nil {
 				return fmt.Errorf("running rebase-interactive: %w", err)
+			}
+			if appModel.Aborted {
+				os.Exit(1)
 			}
 			return nil
 		},

@@ -3,17 +3,23 @@ package commands_test
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
+	"github.com/jetm/gti/internal/app"
 	"github.com/jetm/gti/internal/commands"
 	"github.com/jetm/gti/internal/config"
 	"github.com/jetm/gti/internal/diff"
+	"github.com/jetm/gti/internal/git"
 	"github.com/jetm/gti/internal/testhelper"
 )
 
-// newFakeRebaseModel creates a RebaseInteractiveModel with scripted git outputs.
+// newFakeRebaseModel creates a RebaseInteractiveModel in standalone mode with scripted git outputs.
 // The FakeRunner receives calls in order:
 //   - output[0]: git log --reverse ... (commits for rebase)
 //   - output[1]: git rev-parse --abbrev-ref HEAD (branch name)
@@ -27,7 +33,7 @@ func newFakeRebaseModel(t *testing.T, logOutput, branch, base string) *commands.
 	runner := &testhelper.FakeRunner{Outputs: outputs}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	return commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, base)
+	return commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, base, "")
 }
 
 func TestNewRebaseInteractiveModel_NoCommits(t *testing.T) {
@@ -50,7 +56,7 @@ func TestNewRebaseInteractiveModel_DefaultBase(t *testing.T) {
 	runner := &testhelper.FakeRunner{Outputs: []string{"", "main"}}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "")
+	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "", "")
 	if m == nil {
 		t.Fatal("NewRebaseInteractiveModel returned nil")
 	}
@@ -155,7 +161,7 @@ func TestRebaseInteractiveModel_Update_EnterWithCommits_Success(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~1")
+	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~1", "")
 
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
@@ -176,7 +182,7 @@ func TestRebaseInteractiveModel_Update_EnterWithCommits_Failure(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~1")
+	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~1", "")
 
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
@@ -192,7 +198,7 @@ func TestRebaseInteractiveModel_Update_SpaceCyclesAction(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~1")
+	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~1", "")
 
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	view1 := m.View()
@@ -229,7 +235,7 @@ func TestRebaseInteractiveModel_Update_SetActionKeys(t *testing.T) {
 			}
 			cfg := config.NewDefault()
 			renderer := &diff.PlainRenderer{}
-			m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~1")
+			m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~1", "")
 
 			_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 			cmd := m.Update(tea.KeyPressMsg{Code: tc.key, Text: tc.text})
@@ -249,7 +255,7 @@ func TestRebaseInteractiveModel_Update_MoveUp(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~2")
+	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~2", "")
 
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 
@@ -271,7 +277,7 @@ func TestRebaseInteractiveModel_Update_MoveDown(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~2")
+	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~2", "")
 
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 
@@ -291,7 +297,7 @@ func TestRebaseInteractiveModel_Update_MoveUp_AtTop(_ *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~2")
+	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~2", "")
 
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	// K at top (selectedIdx=0) should be a no-op
@@ -306,7 +312,7 @@ func TestRebaseInteractiveModel_Update_MoveDown_AtBottom(_ *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~2")
+	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~2", "")
 
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	_ = m.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
@@ -322,7 +328,7 @@ func TestRebaseInteractiveModel_Update_CtrlUp(_ *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~2")
+	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~2", "")
 
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	_ = m.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
@@ -338,7 +344,7 @@ func TestRebaseInteractiveModel_Update_CtrlDown(_ *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~2")
+	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~2", "")
 
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	// Ctrl+Down should move commit down
@@ -353,7 +359,7 @@ func TestRebaseInteractiveModel_Update_UpArrowWithoutCtrl(_ *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~2")
+	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~2", "")
 
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	// Plain up arrow (no Ctrl) should navigate list, not move commit
@@ -369,7 +375,7 @@ func TestRebaseInteractiveModel_RenderSelectedDiff_ErrorPath(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~1")
+	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~1", "")
 
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	view := m.View()
@@ -427,7 +433,7 @@ func TestRebaseInteractiveModel_Update_NavigationJ(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~2")
+	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~2", "")
 
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	_ = m.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
@@ -435,4 +441,104 @@ func TestRebaseInteractiveModel_Update_NavigationJ(t *testing.T) {
 	if view == "" {
 		t.Error("View() returned empty string after navigating with j")
 	}
+}
+
+// --- Editor mode tests (tasks 2.1, 3.1, 3.2) ---
+
+func TestNewRebaseInteractiveModel_EditorMode_ParsesTodoFile(t *testing.T) {
+	t.Parallel()
+	// Create a temp todo file with native git format
+	dir := t.TempDir()
+	todoPath := filepath.Join(dir, "git-rebase-todo")
+	todoContent := "pick abc1234 feat: first\nreword bbb5678 fix: second\n"
+	require.NoError(t, os.WriteFile(todoPath, []byte(todoContent), 0o644))
+
+	// Runner only needs branch name (no git log call in editor mode)
+	runner := &testhelper.FakeRunner{Outputs: []string{"main", "diff content"}}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "", todoPath)
+
+	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	view := m.View()
+	// Should NOT show the no-commits message since we parsed the todo file
+	assert.NotEqual(t, "No commits to rebase. Specify a valid base revision.", view)
+	assert.NotEmpty(t, view)
+}
+
+func TestRebaseInteractiveModel_EditorMode_ConfirmWritesFile(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	todoPath := filepath.Join(dir, "git-rebase-todo")
+	todoContent := "pick abc1234 feat: first\npick bbb5678 fix: second\n"
+	require.NoError(t, os.WriteFile(todoPath, []byte(todoContent), 0o644))
+
+	runner := &testhelper.FakeRunner{Outputs: []string{"main", "diff content"}}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "", todoPath)
+
+	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	// Change second entry's action to squash
+	_ = m.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
+	_ = m.Update(tea.KeyPressMsg{Code: 's', Text: "s"})
+
+	// Confirm rebase (Enter)
+	cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	require.NotNil(t, cmd, "confirmRebase should return a command")
+
+	// The todo file should be written back with the modified entries
+	written, err := os.ReadFile(todoPath)
+	require.NoError(t, err)
+
+	expected := git.FormatTodo([]git.RebaseTodoEntry{
+		{Action: git.ActionPick, Hash: "abc1234", Subject: "feat: first"},
+		{Action: git.ActionSquash, Hash: "bbb5678", Subject: "fix: second"},
+	})
+	assert.Equal(t, expected, string(written))
+
+	// Should NOT have called ExecuteRebaseInteractive (no rebase -i call)
+	for _, call := range runner.Calls {
+		for _, arg := range call.Args {
+			assert.NotEqual(t, "rebase", arg, "editor mode should not call git rebase")
+		}
+	}
+}
+
+func TestRebaseInteractiveModel_EditorMode_AbortExitsNonZero(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	todoPath := filepath.Join(dir, "git-rebase-todo")
+	todoContent := "pick abc1234 feat: first\n"
+	require.NoError(t, os.WriteFile(todoPath, []byte(todoContent), 0o644))
+
+	runner := &testhelper.FakeRunner{Outputs: []string{"main", "diff content"}}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "", todoPath)
+
+	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	// Press q to abort
+	cmd := m.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
+	require.NotNil(t, cmd)
+	msg := cmd()
+
+	// In editor mode, abort should emit AbortEditorMsg (not PopModelMsg)
+	_, isAbort := msg.(commands.AbortEditorMsg)
+	assert.True(t, isAbort, "expected AbortEditorMsg, got %T", msg)
+}
+
+func TestRebaseInteractiveModel_StandaloneMode_QuitEmitsPopModel(t *testing.T) {
+	t.Parallel()
+	m := newFakeRebaseModel(t, "", "main", "HEAD~5")
+
+	cmd := m.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
+	require.NotNil(t, cmd)
+	msg := cmd()
+
+	// In standalone mode, quit should still emit PopModelMsg
+	_, isPop := msg.(app.PopModelMsg)
+	assert.True(t, isPop, "expected PopModelMsg in standalone mode, got %T", msg)
 }

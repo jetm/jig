@@ -105,6 +105,66 @@ func NextAction(a RebaseAction) RebaseAction {
 	return ActionPick
 }
 
+// shortActionAliases maps single-char aliases to full action names.
+var shortActionAliases = map[string]RebaseAction{
+	"p": ActionPick,
+	"r": ActionReword,
+	"e": ActionEdit,
+	"s": ActionSquash,
+	"f": ActionFixup,
+	"d": ActionDrop,
+}
+
+// longActions maps full action names for validation.
+var longActions = map[string]RebaseAction{
+	"pick":   ActionPick,
+	"reword": ActionReword,
+	"edit":   ActionEdit,
+	"squash": ActionSquash,
+	"fixup":  ActionFixup,
+	"drop":   ActionDrop,
+}
+
+// ParseNativeTodo parses git's native rebase todo format (action hash subject).
+// It skips comment lines (starting with #), blank lines, and malformed lines.
+// Short aliases (p, r, e, s, f, d) are normalized to full action names.
+func ParseNativeTodo(raw string) []RebaseTodoEntry {
+	if raw == "" {
+		return nil
+	}
+	var entries []RebaseTodoEntry
+	for line := range strings.SplitSeq(raw, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		// Need at least 3 fields: action hash subject
+		action, rest, ok := strings.Cut(line, " ")
+		if !ok {
+			continue
+		}
+		hash, subject, ok := strings.Cut(rest, " ")
+		if !ok {
+			continue
+		}
+		// Resolve action (short alias or full name)
+		var resolved RebaseAction
+		if a, found := shortActionAliases[action]; found {
+			resolved = a
+		} else if a, found := longActions[action]; found {
+			resolved = a
+		} else {
+			continue // unknown action, skip
+		}
+		entries = append(entries, RebaseTodoEntry{
+			Action:  resolved,
+			Hash:    hash,
+			Subject: subject,
+		})
+	}
+	return entries
+}
+
 // parseRebaseTodo parses git log output into RebaseTodoEntry slice.
 func parseRebaseTodo(raw string) []RebaseTodoEntry {
 	if raw == "" {

@@ -71,11 +71,8 @@ func splitOnMarker(raw, marker string) []string {
 
 // parseOneFileDiff parses a single diff block including the "diff --git" header.
 func parseOneFileDiff(block string) FileDiff {
-	lines := strings.SplitN(block, "\n", 2)
-	header := lines[0]
-
-	// Extract paths from "diff --git a/old b/new"
-	oldPath, newPath := extractPaths(header)
+	// Extract paths from ---/+++ lines (primary) or diff --git header (fallback).
+	oldPath, newPath := extractPaths(block)
 
 	fd := FileDiff{
 		OldPath: oldPath,
@@ -99,12 +96,61 @@ func parseOneFileDiff(block string) FileDiff {
 	return fd
 }
 
-// extractPaths parses "diff --git a/path1 b/path2" into (path1, path2).
-func extractPaths(header string) (string, string) {
-	// Remove "diff --git " prefix
+// extractPaths extracts file paths from a diff block. It parses ---/+++ lines
+// as the primary source (works with all prefix formats: standard a/b/, mnemonic
+// i/w/c/o/, and noprefix). Falls back to the diff --git header if ---/+++ lines
+// are not found.
+func extractPaths(block string) (string, string) {
+	var rawOld, rawNew string
+	for line := range strings.SplitSeq(block, "\n") {
+		if strings.HasPrefix(line, "--- ") && rawOld == "" {
+			rawOld = line[4:]
+		} else if strings.HasPrefix(line, "+++ ") && rawNew == "" {
+			rawNew = line[4:]
+			break
+		}
+	}
+
+	if rawOld == "" && rawNew == "" {
+		return extractPathsFromHeader(block)
+	}
+
+	// Handle /dev/null (new or deleted files).
+	if rawOld == "/dev/null" {
+		path := stripDiffPrefix(rawNew)
+		return path, path
+	}
+	if rawNew == "/dev/null" {
+		path := stripDiffPrefix(rawOld)
+		return path, path
+	}
+
+	// Both paths present: if they have different single-letter prefixes, strip them.
+	if len(rawOld) > 2 && len(rawNew) > 2 &&
+		rawOld[1] == '/' && rawNew[1] == '/' &&
+		rawOld[0] != rawNew[0] {
+		return rawOld[2:], rawNew[2:]
+	}
+
+	// No prefix (noprefix mode) or same prefix letter - use paths as-is.
+	return rawOld, rawNew
+}
+
+// stripDiffPrefix removes a single-letter git diff prefix (a/, b/, i/, w/, c/, o/)
+// from a path. Used for /dev/null cases where only one path is available.
+func stripDiffPrefix(path string) string {
+	if len(path) > 2 && path[1] == '/' {
+		return path[2:]
+	}
+	return path
+}
+
+// extractPathsFromHeader parses paths from "diff --git a/path1 b/path2" header.
+// This is the fallback for diff blocks without ---/+++ lines (e.g., binary files).
+func extractPathsFromHeader(block string) (string, string) {
+	header := strings.SplitN(block, "\n", 2)[0]
 	rest := strings.TrimPrefix(header, "diff --git ")
 
-	// Find the " b/" separator. The paths are "a/..." and "b/..."
 	idx := strings.Index(rest, " b/")
 	if idx < 0 {
 		return "", ""

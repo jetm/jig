@@ -206,8 +206,8 @@ func (m *CheckoutModel) View() string {
 		leftBorder, rightBorder = tui.StyleDimBorder, tui.StyleFocusBorder
 	}
 
-	leftPanel := leftBorder.Width(leftW).Height(contentHeight).Render(m.fileTree.View())
-	rightPanel := rightBorder.Width(rightW).Height(contentHeight).Render(m.diffView.View())
+	leftPanel := leftBorder.Width(leftW).Height(contentHeight).MaxHeight(contentHeight).Render(m.fileTree.View())
+	rightPanel := rightBorder.Width(rightW).Height(contentHeight).MaxHeight(contentHeight).Render(m.diffView.View())
 
 	panels := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
 

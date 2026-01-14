@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -541,6 +542,53 @@ func TestAddModel_SpaceWorksFromRightPanel(t *testing.T) {
 	m.Update(tea.KeyPressMsg{Code: ' ', Text: " "})
 	if len(m.fileTree.CheckedPaths()) != 1 {
 		t.Error("Space from right panel should toggle selection on left panel item")
+	}
+}
+
+func TestAddModel_View_StatusBarPresentWithManyFiles(t *testing.T) {
+	t.Parallel()
+	// Create many files in nested directories to stress the layout.
+	var nameStatus strings.Builder
+	for i := range 50 {
+		fmt.Fprintf(&nameStatus, "M\tdir%d/subdir/file%d.go\n", i, i)
+	}
+	m := newTestAddModel(t, nameStatus.String(), "")
+	m.width = 120
+	m.height = 25 // Short terminal
+
+	view := m.View()
+
+	// Status bar must always be present.
+	if !strings.Contains(view, "add") {
+		t.Error("View() should contain status bar with mode 'add'")
+	}
+
+	// Output must not exceed terminal height.
+	lines := strings.Split(view, "\n")
+	if len(lines) > m.height {
+		t.Errorf("View() output has %d lines, exceeds terminal height %d", len(lines), m.height)
+	}
+}
+
+func TestAddModel_SpaceOnDirectoryTogglesAllChildren(t *testing.T) {
+	t.Parallel()
+	// Files in a directory: cursor starts on dir node.
+	m := newTestAddModel(t, "M\tdir/file1.go\nM\tdir/file2.go\n", "")
+	m.width = 120
+	m.height = 40
+
+	// Cursor is on the "dir" DirNode. Space should check all children.
+	m.Update(tea.KeyPressMsg{Code: ' ', Text: " "})
+	checked := m.fileTree.CheckedPaths()
+	if len(checked) != 2 {
+		t.Errorf("expected 2 checked files after space on dir, got %d: %v", len(checked), checked)
+	}
+
+	// Space again: all checked, should uncheck all.
+	m.Update(tea.KeyPressMsg{Code: ' ', Text: " "})
+	checked = m.fileTree.CheckedPaths()
+	if len(checked) != 0 {
+		t.Errorf("expected 0 checked files after second space on dir, got %d: %v", len(checked), checked)
 	}
 }
 

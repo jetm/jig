@@ -386,12 +386,41 @@ func countVisible(nodes tree.Nodes) int {
 	return count
 }
 
-// ToggleChecked toggles the checked state of the selected file node.
+// ToggleChecked toggles the checked state of the selected node.
+// For FileNode: toggles the individual file.
+// For DirNode: if all descendants are checked, unchecks all; otherwise checks all.
 func (ft *FileTree) ToggleChecked() {
 	node := ft.selectedNode()
-	if fn, ok := node.(*FileNode); ok {
-		fn.checked = !fn.checked
+	switch n := node.(type) {
+	case *FileNode:
+		n.checked = !n.checked
+	case *DirNode:
+		if !ft.showCheckbox {
+			return
+		}
+		if allDescendantsChecked(n.children) {
+			setCheckedRecursive(n.children, false)
+		} else {
+			setCheckedRecursive(n.children, true)
+		}
 	}
+}
+
+// allDescendantsChecked returns true if every FileNode under nodes is checked.
+func allDescendantsChecked(nodes tree.Nodes) bool {
+	for _, n := range nodes {
+		switch node := n.(type) {
+		case *FileNode:
+			if !node.checked {
+				return false
+			}
+		case *DirNode:
+			if !allDescendantsChecked(node.children) {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // SetAllChecked sets all file nodes to the given checked state.

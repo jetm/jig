@@ -132,6 +132,138 @@ func TestParseFileDiffs(t *testing.T) {
 				{oldPath: "old.go", newPath: "new.go", status: Renamed},
 			},
 		},
+		{
+			name: "mnemonic prefix format",
+			input: "diff --git i/.gitconfig w/.gitconfig\n" +
+				"index 1234567..abcdefg 100644\n" +
+				"--- i/.gitconfig\n" +
+				"+++ w/.gitconfig\n" +
+				"@@ -1,3 +1,4 @@\n" +
+				" [user]\n" +
+				"+    name = test\n" +
+				"     email = test@example.com\n",
+			wantLen: 1,
+			wantDiff: []struct {
+				oldPath string
+				newPath string
+				status  FileStatus
+			}{
+				{oldPath: ".gitconfig", newPath: ".gitconfig", status: Modified},
+			},
+		},
+		{
+			name: "no-prefix format",
+			input: "diff --git .gitconfig .gitconfig\n" +
+				"index 1234567..abcdefg 100644\n" +
+				"--- .gitconfig\n" +
+				"+++ .gitconfig\n" +
+				"@@ -1,3 +1,4 @@\n" +
+				" [user]\n" +
+				"+    name = test\n" +
+				"     email = test@example.com\n",
+			wantLen: 1,
+			wantDiff: []struct {
+				oldPath string
+				newPath string
+				status  FileStatus
+			}{
+				{oldPath: ".gitconfig", newPath: ".gitconfig", status: Modified},
+			},
+		},
+		{
+			name: "new file with mnemonic prefix",
+			input: "diff --git i/new.go w/new.go\n" +
+				"new file mode 100644\n" +
+				"index 0000000..abcdefg\n" +
+				"--- /dev/null\n" +
+				"+++ w/new.go\n" +
+				"@@ -0,0 +1,3 @@\n" +
+				"+package main\n",
+			wantLen: 1,
+			wantDiff: []struct {
+				oldPath string
+				newPath string
+				status  FileStatus
+			}{
+				{oldPath: "new.go", newPath: "new.go", status: Added},
+			},
+		},
+		{
+			name: "deleted file with mnemonic prefix",
+			input: "diff --git i/old.go w/old.go\n" +
+				"deleted file mode 100644\n" +
+				"index abcdefg..0000000\n" +
+				"--- i/old.go\n" +
+				"+++ /dev/null\n" +
+				"@@ -1,3 +0,0 @@\n" +
+				"-package main\n",
+			wantLen: 1,
+			wantDiff: []struct {
+				oldPath string
+				newPath string
+				status  FileStatus
+			}{
+				{oldPath: "old.go", newPath: "old.go", status: Deleted},
+			},
+		},
+		{
+			name: "file path with spaces and standard prefix",
+			input: "diff --git a/my file.go b/my file.go\n" +
+				"index 1234567..abcdefg 100644\n" +
+				"--- a/my file.go\n" +
+				"+++ b/my file.go\n" +
+				"@@ -1 +1 @@\n" +
+				"-old\n" +
+				"+new\n",
+			wantLen: 1,
+			wantDiff: []struct {
+				oldPath string
+				newPath string
+				status  FileStatus
+			}{
+				{oldPath: "my file.go", newPath: "my file.go", status: Modified},
+			},
+		},
+		{
+			name: "file in subdirectory with mnemonic prefix",
+			input: "diff --git i/internal/commands/add.go w/internal/commands/add.go\n" +
+				"index 1234567..abcdefg 100644\n" +
+				"--- i/internal/commands/add.go\n" +
+				"+++ w/internal/commands/add.go\n" +
+				"@@ -1,3 +1,4 @@\n" +
+				" package commands\n" +
+				"+// added\n" +
+				" import (\n",
+			wantLen: 1,
+			wantDiff: []struct {
+				oldPath string
+				newPath string
+				status  FileStatus
+			}{
+				{oldPath: "internal/commands/add.go", newPath: "internal/commands/add.go", status: Modified},
+			},
+		},
+		{
+			name: "renamed file with mnemonic prefix",
+			input: "diff --git i/old.go w/new.go\n" +
+				"similarity index 95%\n" +
+				"rename from old.go\n" +
+				"rename to new.go\n" +
+				"index 1234567..abcdefg 100644\n" +
+				"--- i/old.go\n" +
+				"+++ w/new.go\n" +
+				"@@ -1 +1 @@\n" +
+				"-old\n" +
+				"+new\n",
+			wantLen: 1,
+			wantDiff: []struct {
+				oldPath string
+				newPath string
+				status  FileStatus
+			}{
+				{oldPath: "old.go", newPath: "new.go", status: Renamed},
+			},
+		},
 	}
 
 	for _, tc := range tests {

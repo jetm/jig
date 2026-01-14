@@ -527,19 +527,72 @@ func TestFileTree_SelectedNode_EmptyTree(t *testing.T) {
 	assert.Empty(t, ft.SelectedPath())
 }
 
-func TestFileTree_ToggleChecked_OnDir(t *testing.T) {
+func TestFileTree_ToggleChecked_DirAllUnchecked_ChecksAll(t *testing.T) {
 	t.Parallel()
 	entries := []FileEntry{
-		{Path: "dir/file.go", Status: git.Modified},
+		{Path: "dir/file1.go", Status: git.Modified},
+		{Path: "dir/file2.go", Status: git.Added},
 	}
 	ft := NewFileTree(entries, true)
 	ft.SetWidth(80)
 	ft.SetHeight(24)
 
-	// Cursor is on dir node - toggle should be a no-op.
+	// Cursor is on dir node - should check all descendants.
+	ft.ToggleChecked()
+	paths := ft.CheckedPaths()
+	assert.ElementsMatch(t, []string{"dir/file1.go", "dir/file2.go"}, paths)
+}
+
+func TestFileTree_ToggleChecked_DirAllChecked_UnchecksAll(t *testing.T) {
+	t.Parallel()
+	entries := []FileEntry{
+		{Path: "dir/file1.go", Status: git.Modified},
+		{Path: "dir/file2.go", Status: git.Added},
+	}
+	ft := NewFileTree(entries, true)
+	ft.SetWidth(80)
+	ft.SetHeight(24)
+
+	// Check all first.
+	ft.SetAllChecked(true)
+	// Cursor is on dir node - all checked, should uncheck all.
 	ft.ToggleChecked()
 	paths := ft.CheckedPaths()
 	assert.Empty(t, paths)
+}
+
+func TestFileTree_ToggleChecked_DirMixed_ChecksAll(t *testing.T) {
+	t.Parallel()
+	entries := []FileEntry{
+		{Path: "dir/file1.go", Status: git.Modified},
+		{Path: "dir/file2.go", Status: git.Added},
+	}
+	ft := NewFileTree(entries, true)
+	ft.SetWidth(80)
+	ft.SetHeight(24)
+
+	// Check only one file.
+	ft.SetCheckedByPath("dir/file1.go", true)
+	// Cursor is on dir node - mixed state, should check all.
+	ft.ToggleChecked()
+	paths := ft.CheckedPaths()
+	assert.ElementsMatch(t, []string{"dir/file1.go", "dir/file2.go"}, paths)
+}
+
+func TestFileTree_ToggleChecked_DirNestedSubdirs(t *testing.T) {
+	t.Parallel()
+	entries := []FileEntry{
+		{Path: "dir/sub1/file1.go", Status: git.Modified},
+		{Path: "dir/sub2/file2.go", Status: git.Added},
+	}
+	ft := NewFileTree(entries, true)
+	ft.SetWidth(80)
+	ft.SetHeight(24)
+
+	// Cursor is on top-level dir - should recursively check all nested files.
+	ft.ToggleChecked()
+	paths := ft.CheckedPaths()
+	assert.ElementsMatch(t, []string{"dir/sub1/file1.go", "dir/sub2/file2.go"}, paths)
 }
 
 func TestCountVisible_WithHiddenNodes(t *testing.T) {

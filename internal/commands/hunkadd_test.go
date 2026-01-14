@@ -689,6 +689,65 @@ func TestHunkAddModel_SyncFileSelection_NilItem(t *testing.T) {
 	m.syncFileSelection()
 }
 
+func TestHunkAddModel_MnemonicPrefix_FileTreeShowsCorrectNames(t *testing.T) {
+	t.Parallel()
+	// Simulate git diff output with mnemonicPrefix=true (i/ and w/ prefixes).
+	mnemonicDiff := "diff --git i/.gitconfig w/.gitconfig\n" +
+		"index 111..222 100644\n" +
+		"--- i/.gitconfig\n" +
+		"+++ w/.gitconfig\n" +
+		"@@ -83,6 +83,9 @@\n" +
+		"     ignore = \"!gi() { curl -sL; }; gi\"\n" +
+		"+    check-series = \"!f() { b4 prep; }; f\"\n" +
+		"+\n" +
+		" [core]\n"
+
+	m, _ := newHunkAddTestModel(t, mnemonicDiff)
+	m.width = 120
+	m.height = 40
+
+	if len(m.files) != 1 {
+		t.Fatalf("expected 1 file, got %d", len(m.files))
+	}
+	// File path should be ".gitconfig", not "" or "."
+	if m.files[0].DisplayPath() != ".gitconfig" {
+		t.Errorf("file DisplayPath() = %q, want %q", m.files[0].DisplayPath(), ".gitconfig")
+	}
+
+	// The file tree View should render the actual filename, not "."
+	view := m.View()
+	if !strings.Contains(view, ".gitconfig") {
+		t.Errorf("View() should contain '.gitconfig', got:\n%s", view)
+	}
+	if strings.Contains(view, "└─  .") {
+		t.Error("View() should NOT show '└─  .' (empty path rendering)")
+	}
+}
+
+func TestHunkAddModel_NoPrefixFormat_FileTreeShowsCorrectNames(t *testing.T) {
+	t.Parallel()
+	// Simulate git diff output with diff.noprefix=true (no prefix at all).
+	noPrefixDiff := "diff --git .gitconfig .gitconfig\n" +
+		"index 111..222 100644\n" +
+		"--- .gitconfig\n" +
+		"+++ .gitconfig\n" +
+		"@@ -1,3 +1,4 @@\n" +
+		" [user]\n" +
+		"+    name = test\n" +
+		"     email = test@example.com\n"
+
+	m, _ := newHunkAddTestModel(t, noPrefixDiff)
+	m.width = 120
+	m.height = 40
+
+	if len(m.files) != 1 {
+		t.Fatalf("expected 1 file, got %d", len(m.files))
+	}
+	if m.files[0].DisplayPath() != ".gitconfig" {
+		t.Errorf("file DisplayPath() = %q, want %q", m.files[0].DisplayPath(), ".gitconfig")
+	}
+}
+
 func TestHunkAddModel_PatchHeader(t *testing.T) {
 	t.Parallel()
 	m, _ := newHunkAddTestModel(t, singleHunkDiff)

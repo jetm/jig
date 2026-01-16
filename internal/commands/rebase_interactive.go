@@ -181,7 +181,7 @@ func (m *RebaseInteractiveModel) Update(msg tea.Msg) tea.Cmd {
 		return sbCmd
 
 	case tea.KeyPressMsg:
-		if msg.Text == "?" {
+		if msg.String() == "?" {
 			m.help.Toggle()
 			return sbCmd
 		}
@@ -190,13 +190,12 @@ func (m *RebaseInteractiveModel) Update(msg tea.Msg) tea.Cmd {
 			return sbCmd
 		}
 
-		if msg.Code == tea.KeyTab {
+		switch msg.String() {
+		case "tab":
 			m.focusRight = !m.focusRight
 			return sbCmd
-		}
 
-		switch msg.Code {
-		case 'q', tea.KeyEscape:
+		case "q", "esc":
 			if m.todoFilePath != "" {
 				return func() tea.Msg { return AbortEditorMsg{} }
 			}
@@ -204,63 +203,59 @@ func (m *RebaseInteractiveModel) Update(msg tea.Msg) tea.Cmd {
 				return app.PopModelMsg{MutatedGit: false}
 			}
 
-		case tea.KeyEnter:
+		case "enter":
 			return m.confirmRebase()
 
-		case ' ':
+		case "space":
 			m.cycleAction()
 			m.refreshList()
 			return sbCmd
 
-		case 'p':
+		case "p":
 			m.setAction(git.ActionPick)
 			m.refreshList()
 			return sbCmd
 
-		case 'r':
+		case "r":
 			m.setAction(git.ActionReword)
 			m.refreshList()
 			return sbCmd
 
-		case 'e':
+		case "e":
 			m.setAction(git.ActionEdit)
 			m.refreshList()
 			return sbCmd
 
-		case 's':
+		case "s":
 			m.setAction(git.ActionSquash)
 			m.refreshList()
 			return sbCmd
 
-		case 'f':
+		case "f":
 			m.setAction(git.ActionFixup)
 			m.refreshList()
 			return sbCmd
 
-		case 'd':
+		case "d":
 			m.setAction(git.ActionDrop)
 			m.refreshList()
 			return sbCmd
 
-		case 'K':
+		case "K":
 			m.moveUp()
 			return sbCmd
 
-		case 'J':
+		case "J":
 			m.moveDown()
 			return sbCmd
 
-		case tea.KeyUp:
-			if msg.Mod.Contains(tea.ModCtrl) {
-				m.moveUp()
-				return sbCmd
-			}
+		case "ctrl+up":
+			m.moveUp()
+			return sbCmd
 
-		case tea.KeyDown:
-			if msg.Mod.Contains(tea.ModCtrl) {
-				m.moveDown()
-				return sbCmd
-			}
+		case "ctrl+down":
+			m.moveDown()
+			return sbCmd
 		}
 
 		if m.focusRight {

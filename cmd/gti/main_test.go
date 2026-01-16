@@ -3,11 +3,14 @@ package main
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/jetm/gti/internal/commands"
 	"github.com/jetm/gti/internal/config"
@@ -54,6 +57,133 @@ func TestRun_Success(t *testing.T) {
 	if err := run(); err != nil {
 		t.Fatalf("run() returned error: %v", err)
 	}
+}
+
+func TestHunkAddAndFixup_RejectArgs(t *testing.T) {
+	t.Parallel()
+	for _, name := range []string{"hunk-add", "fixup"} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			root := newRootCmd()
+			buf := new(bytes.Buffer)
+			root.SetOut(buf)
+			root.SetErr(buf)
+			root.SetArgs([]string{name, "somefile.go"})
+			err := root.Execute()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "unknown command", "expected args rejection, got: %v", err)
+		})
+	}
+}
+
+func TestAddCmd_DirectMode(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{
+			"",                     // git add -- paths
+			"file1.go\nfile2.go\n", // git diff --name-only --cached
+		},
+	}
+	ctx := context.Background()
+	var buf bytes.Buffer
+	err := addDirect(ctx, runner, []string{"file1.go", "file2.go"}, &buf)
+	require.NoError(t, err)
+
+	// Verify StageFiles was called with correct args
+	require.GreaterOrEqual(t, len(runner.Calls), 1)
+	assert.Equal(t, []string{"add", "--", "file1.go", "file2.go"}, runner.Calls[0].Args)
+
+	// Verify output
+	assert.Contains(t, buf.String(), "Staged 2 file(s)")
+}
+
+func TestResetCmd_DirectMode(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{
+			"",                             // git reset HEAD -- paths
+			" M file1.go\n?? newfile.go\n", // git status --short
+		},
+	}
+	ctx := context.Background()
+	var buf bytes.Buffer
+	err := resetDirect(ctx, runner, []string{"file1.go"}, &buf)
+	require.NoError(t, err)
+
+	// Verify UnstageFiles was called
+	require.GreaterOrEqual(t, len(runner.Calls), 1)
+	assert.Equal(t, []string{"reset", "HEAD", "--", "file1.go"}, runner.Calls[0].Args)
+
+	// Verify status output is printed
+	assert.Contains(t, buf.String(), "M file1.go")
+}
+
+func TestCheckoutCmd_DirectMode_Confirmed(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{
+			"file1.go\n", // git diff --name-only -- paths
+			"",           // git checkout -- paths
+		},
+	}
+	ctx := context.Background()
+	var buf bytes.Buffer
+	in := strings.NewReader("y\n")
+	err := checkoutDirect(ctx, runner, []string{"file1.go"}, in, &buf)
+	require.NoError(t, err)
+
+	// Verify prompt was shown
+	assert.Contains(t, buf.String(), "Discard changes to 1 file(s)?")
+	// Verify discard happened
+	assert.Contains(t, buf.String(), "Discarded changes to 1 file(s)")
+	require.GreaterOrEqual(t, len(runner.Calls), 2)
+	assert.Equal(t, []string{"checkout", "--", "file1.go"}, runner.Calls[1].Args)
+}
+
+func TestCheckoutCmd_DirectMode_Denied(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{
+			"file1.go\n", // git diff --name-only -- paths
+		},
+	}
+	ctx := context.Background()
+	var buf bytes.Buffer
+	in := strings.NewReader("n\n")
+	err := checkoutDirect(ctx, runner, []string{"file1.go"}, in, &buf)
+	require.NoError(t, err)
+
+	assert.Contains(t, buf.String(), "Aborted")
+	// Only one call (diff), no checkout call
+	assert.Len(t, runner.Calls, 1)
+}
+
+func TestCheckoutCmd_DirectMode_NoChanges(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{
+			"", // git diff --name-only -- paths (empty = no changes)
+		},
+	}
+	ctx := context.Background()
+	var buf bytes.Buffer
+	in := strings.NewReader("")
+	err := checkoutDirect(ctx, runner, []string{"file1.go"}, in, &buf)
+	require.NoError(t, err)
+
+	assert.Contains(t, buf.String(), "No changes to discard")
+}
+
+func TestAddCmd_DirectMode_StageError(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{""},
+		Errors:  []error{fmt.Errorf("fatal: not a git repository")},
+	}
+	ctx := context.Background()
+	var buf bytes.Buffer
+	err := addDirect(ctx, runner, []string{"file1.go"}, &buf)
+	require.Error(t, err)
 }
 
 func TestRun_UnknownCommandError(t *testing.T) {

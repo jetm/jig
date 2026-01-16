@@ -262,7 +262,7 @@ func TestRebaseInteractiveModel_Update_MoveUp(t *testing.T) {
 	// Navigate down to second commit first
 	_ = m.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
 	// Press K to move commit up
-	_ = m.Update(tea.KeyPressMsg{Code: 'K', Text: "K"})
+	_ = m.Update(tea.KeyPressMsg{Code: 'k', ShiftedCode: 'K', Mod: tea.ModShift, Text: "K"})
 
 	view := m.View()
 	if view == "" {
@@ -282,7 +282,7 @@ func TestRebaseInteractiveModel_Update_MoveDown(t *testing.T) {
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 
 	// Press J to move first commit down
-	_ = m.Update(tea.KeyPressMsg{Code: 'J', Text: "J"})
+	_ = m.Update(tea.KeyPressMsg{Code: 'j', ShiftedCode: 'J', Mod: tea.ModShift, Text: "J"})
 
 	view := m.View()
 	if view == "" {
@@ -301,7 +301,7 @@ func TestRebaseInteractiveModel_Update_MoveUp_AtTop(_ *testing.T) {
 
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	// K at top (selectedIdx=0) should be a no-op
-	_ = m.Update(tea.KeyPressMsg{Code: 'K', Text: "K"})
+	_ = m.Update(tea.KeyPressMsg{Code: 'k', ShiftedCode: 'K', Mod: tea.ModShift, Text: "K"})
 	_ = m.View() // no panic
 }
 
@@ -317,7 +317,7 @@ func TestRebaseInteractiveModel_Update_MoveDown_AtBottom(_ *testing.T) {
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	_ = m.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
 	// J at bottom should be a no-op
-	_ = m.Update(tea.KeyPressMsg{Code: 'J', Text: "J"})
+	_ = m.Update(tea.KeyPressMsg{Code: 'j', ShiftedCode: 'J', Mod: tea.ModShift, Text: "J"})
 	_ = m.View() // no panic
 }
 

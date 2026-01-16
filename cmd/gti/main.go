@@ -2,9 +2,12 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"os"
+	"strings"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/spf13/cobra"
@@ -109,14 +112,18 @@ func (d *diffTeaModel) View() tea.View {
 
 func newAddCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "add",
+		Use:   "add [paths...]",
 		Short: "Interactively stage files",
-		Args:  cobra.NoArgs,
-		RunE: func(_ *cobra.Command, _ []string) error {
+		Args:  cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := context.Background()
 			runner, err := git.NewExecRunner(ctx)
 			if err != nil {
 				return fmt.Errorf("initializing git runner: %w", err)
+			}
+
+			if len(args) > 0 {
+				return addDirect(ctx, runner, args, cmd.OutOrStdout())
 			}
 
 			cfg, err := config.Load()
@@ -134,6 +141,24 @@ func newAddCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+func addDirect(ctx context.Context, runner git.Runner, paths []string, w io.Writer) error {
+	if err := git.StageFiles(ctx, runner, paths); err != nil {
+		return fmt.Errorf("staging files: %w", err)
+	}
+	staged, err := runner.Run(ctx, "diff", "--name-only", "--cached")
+	if err != nil {
+		return fmt.Errorf("listing staged files: %w", err)
+	}
+	var count int
+	for line := range strings.SplitSeq(staged, "\n") {
+		if strings.TrimSpace(line) != "" {
+			count++
+		}
+	}
+	_, _ = fmt.Fprintf(w, "Staged %d file(s)\n", count)
+	return nil
 }
 
 // addTeaModel wraps AddModel (child component pattern) as a tea.Model for AppModel.
@@ -158,14 +183,18 @@ func (a *addTeaModel) View() tea.View {
 
 func newCheckoutCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "checkout",
+		Use:   "checkout [paths...]",
 		Short: "Interactively discard file changes",
-		Args:  cobra.NoArgs,
-		RunE: func(_ *cobra.Command, _ []string) error {
+		Args:  cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := context.Background()
 			runner, err := git.NewExecRunner(ctx)
 			if err != nil {
 				return fmt.Errorf("initializing git runner: %w", err)
+			}
+
+			if len(args) > 0 {
+				return checkoutDirect(ctx, runner, args, cmd.InOrStdin(), cmd.OutOrStdout())
 			}
 
 			cfg, err := config.Load()
@@ -183,6 +212,43 @@ func newCheckoutCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+func checkoutDirect(ctx context.Context, runner git.Runner, paths []string, in io.Reader, w io.Writer) error {
+	// Show what will be discarded
+	diffArgs := append([]string{"diff", "--name-only", "--"}, paths...)
+	affected, err := runner.Run(ctx, diffArgs...)
+	if err != nil {
+		return fmt.Errorf("listing changed files: %w", err)
+	}
+	var count int
+	for line := range strings.SplitSeq(affected, "\n") {
+		if strings.TrimSpace(line) != "" {
+			count++
+		}
+	}
+	if count == 0 {
+		_, _ = fmt.Fprintln(w, "No changes to discard")
+		return nil
+	}
+
+	_, _ = fmt.Fprintf(w, "Discard changes to %d file(s)? [y/N] ", count)
+	scanner := bufio.NewScanner(in)
+	if !scanner.Scan() {
+		_, _ = fmt.Fprintln(w, "Aborted")
+		return nil
+	}
+	answer := strings.TrimSpace(scanner.Text())
+	if !strings.EqualFold(answer, "y") && !strings.EqualFold(answer, "yes") {
+		_, _ = fmt.Fprintln(w, "Aborted")
+		return nil
+	}
+
+	if err := git.DiscardFiles(ctx, runner, paths); err != nil {
+		return fmt.Errorf("discarding files: %w", err)
+	}
+	_, _ = fmt.Fprintf(w, "Discarded changes to %d file(s)\n", count)
+	return nil
 }
 
 // checkoutTeaModel wraps CheckoutModel (child component pattern) as a tea.Model for AppModel.
@@ -359,14 +425,18 @@ func (l *logTeaModel) View() tea.View {
 
 func newResetCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "reset",
+		Use:   "reset [paths...]",
 		Short: "Interactively unstage files",
-		Args:  cobra.NoArgs,
-		RunE: func(_ *cobra.Command, _ []string) error {
+		Args:  cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := context.Background()
 			runner, err := git.NewExecRunner(ctx)
 			if err != nil {
 				return fmt.Errorf("initializing git runner: %w", err)
+			}
+
+			if len(args) > 0 {
+				return resetDirect(ctx, runner, args, cmd.OutOrStdout())
 			}
 
 			cfg, err := config.Load()
@@ -384,6 +454,18 @@ func newResetCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+func resetDirect(ctx context.Context, runner git.Runner, paths []string, w io.Writer) error {
+	if err := git.UnstageFiles(ctx, runner, paths); err != nil {
+		return fmt.Errorf("unstaging files: %w", err)
+	}
+	status, err := runner.Run(ctx, "status", "--short")
+	if err != nil {
+		return fmt.Errorf("getting status: %w", err)
+	}
+	_, _ = fmt.Fprint(w, status)
+	return nil
 }
 
 // resetTeaModel wraps ResetModel (child component pattern) as a tea.Model for AppModel.

@@ -22,16 +22,16 @@ make snapshot   # produces binaries in dist/
 
 ## Commands
 
-| Command | Description |
-|---------|-------------|
-| `gti diff [revision]` | Interactive side-by-side diff viewer. Use `--staged` for cached changes. |
-| `gti add` | Interactively stage files |
-| `gti reset` | Interactively unstage files |
-| `gti checkout` | Interactively discard file changes |
-| `gti hunk-add` | Interactively stage individual hunks |
-| `gti fixup` | Interactively create a fixup commit targeting a recent commit |
-| `gti log [revision]` | Interactive commit log browser |
-| `gti rebase-interactive [revision]` | Interactive rebase todo editor |
+| Command | Description | Replaces |
+|---------|-------------|----------|
+| `gti add` | Interactively stage files | [forgit](https://github.com/wfxr/forgit) add |
+| `gti hunk-add` | Interactively stage individual hunks | `git add -p` / [git-add--interactive](https://github.com/cwarden/git-add--interactive) |
+| `gti checkout` | Interactively discard file changes | `git restore` |
+| `gti diff [revision]` | Interactive side-by-side diff viewer | [diffnav](https://github.com/dlvhdr/diffnav) |
+| `gti fixup` | Interactively create a fixup commit | [forgit](https://github.com/wfxr/forgit) fixup |
+| `gti log [revision]` | Interactive commit log browser | [tig](https://github.com/jonas/tig) / `git log` |
+| `gti rebase-interactive [revision]` | Interactive rebase todo editor | [git-interactive-rebase-tool](https://github.com/MitMaro/git-interactive-rebase-tool) |
+| `gti reset` | Interactively unstage files | [forgit](https://github.com/wfxr/forgit) reset |
 
 ## Configuration
 
@@ -74,30 +74,10 @@ Environment variables take precedence over the config file:
 
 Generate and install completions for your shell:
 
-### bash
-
-```sh
-gti completion bash > /etc/bash_completion.d/gti
-# or for the current user:
-gti completion bash > ~/.local/share/bash-completion/completions/gti
-```
-
-### zsh
-
-```sh
-gti completion zsh > "${fpath[1]}/_gti"
-```
-
 ### fish
 
 ```sh
 gti completion fish > ~/.config/fish/completions/gti.fish
-```
-
-### PowerShell
-
-```powershell
-gti completion powershell | Out-String | Invoke-Expression
 ```
 
 ## Development
@@ -109,3 +89,7 @@ make lint     # run golangci-lint
 make fmt      # run gofmt + goimports
 make clean    # remove build artifacts
 ```
+
+## License
+
+[MIT](LICENSE)

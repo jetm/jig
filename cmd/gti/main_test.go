@@ -429,12 +429,24 @@ func TestCheckoutTeaModel_View(t *testing.T) {
 }
 
 // newFakeFixupModel creates a FixupModel with no real git calls.
+// Call sequence:
+//   - output[0]: diff --cached --quiet (HasStagedChanges: error = staged)
+//   - output[1]: rev-parse --show-toplevel (IsRebaseInProgress->RepoRoot)
+//   - output[2]: git log (RecentCommits, empty)
+//   - output[3]: rev-parse --abbrev-ref HEAD (BranchName)
 func newFakeFixupModel(t *testing.T) *commands.FixupModel {
 	t.Helper()
-	runner := &testhelper.FakeRunner{Outputs: []string{"", "main"}}
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{"", "/fake/repo", "", "main"},
+		Errors:  []error{fmt.Errorf("staged"), nil, nil, nil},
+	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	return commands.NewFixupModel(context.Background(), runner, cfg, renderer)
+	m, err := commands.NewFixupModel(context.Background(), runner, cfg, renderer)
+	if err != nil {
+		t.Fatalf("NewFixupModel unexpectedly returned error: %v", err)
+	}
+	return m
 }
 
 func TestFixupTeaModel_InitReturnsNil(t *testing.T) {

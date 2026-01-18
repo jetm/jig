@@ -1,6 +1,6 @@
 # gti
 
-An interactive TUI for git workflows, built with [Bubble Tea](https://github.com/charmbracelet/bubbletea).
+An interactive TUI for git workflows, built with [Bubble Tea](https://github.com/charmbracelet/bubbletea). One tool replacing the features I use most from [forgit](https://github.com/wfxr/forgit), [diffnav](https://github.com/dlvhdr/diffnav), [tig](https://github.com/jonas/tig), and [git-interactive-rebase-tool](https://github.com/MitMaro/git-interactive-rebase-tool).
 
 ## Installation
 

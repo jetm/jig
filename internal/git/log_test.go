@@ -225,3 +225,44 @@ func TestCreateFixupCommit_ReturnsErrorOnFailure(t *testing.T) {
 		t.Error("expected error, got nil")
 	}
 }
+
+func TestAutosquashRebase_SuccessPath(t *testing.T) {
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{"Successfully rebased"},
+	}
+	err := git.AutosquashRebase(context.Background(), runner, "abc1234")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Verify the call used RunWithEnv with --autosquash, --interactive, and hash^
+	testhelper.MustHaveCall(t, runner, "rebase", "--interactive", "--autosquash", "abc1234^")
+	testhelper.MustHaveEnv(t, runner, "GIT_SEQUENCE_EDITOR=true")
+}
+
+func TestAutosquashRebase_ErrorPath(t *testing.T) {
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{""},
+		Errors:  []error{&git.ExecError{Args: []string{"rebase"}, ExitCode: 1, Stderr: "conflict"}},
+	}
+	err := git.AutosquashRebase(context.Background(), runner, "abc1234")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "rebase") {
+		t.Errorf("error should mention rebase, got: %v", err)
+	}
+}
+
+func TestAutosquashRebase_RootCommitFallback(t *testing.T) {
+	// First call (hash^) fails, second call (--root) succeeds.
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{"", "Successfully rebased"},
+		Errors:  []error{&git.ExecError{Args: []string{"rebase"}, ExitCode: 128, Stderr: "unknown revision abc1234^"}, nil},
+	}
+	err := git.AutosquashRebase(context.Background(), runner, "abc1234")
+	if err != nil {
+		t.Fatalf("unexpected error on root-commit fallback: %v", err)
+	}
+	// Second call should use --root
+	testhelper.MustHaveCall(t, runner, "rebase", "--interactive", "--autosquash", "--root")
+}

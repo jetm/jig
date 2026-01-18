@@ -337,7 +337,10 @@ func newFixupCmd() *cobra.Command {
 				return fmt.Errorf("loading config: %w", err)
 			}
 			renderer := diff.Chain(cfg)
-			fixupModel := commands.NewFixupModel(ctx, runner, cfg, renderer)
+			fixupModel, err := commands.NewFixupModel(ctx, runner, cfg, renderer)
+			if err != nil {
+				return fmt.Errorf("fixup: %w", err)
+			}
 
 			appModel := app.New(newFixupTeaModel(fixupModel), runner, cfg)
 			p := tea.NewProgram(appModel)

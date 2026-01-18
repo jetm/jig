@@ -55,14 +55,29 @@ type FixupModel struct {
 }
 
 // NewFixupModel creates a FixupModel by loading recent commits from git log.
+// It returns an error if preconditions are not met (nothing staged, rebase in
+// progress) or if git commands fail during initialization.
 func NewFixupModel(
 	ctx context.Context,
 	runner git.Runner,
 	_ config.Config,
 	renderer diff.Renderer,
-) *FixupModel {
-	commits, _ := git.RecentCommits(ctx, runner, defaultFixupCommitLimit)
-	branchName, _ := git.BranchName(ctx, runner)
+) (*FixupModel, error) {
+	if !git.HasStagedChanges(ctx, runner) {
+		return nil, fmt.Errorf("nothing staged")
+	}
+	if git.IsRebaseInProgress(ctx, runner) {
+		return nil, fmt.Errorf("rebase in progress")
+	}
+
+	commits, err := git.RecentCommits(ctx, runner, defaultFixupCommitLimit)
+	if err != nil {
+		return nil, fmt.Errorf("loading commits: %w", err)
+	}
+	branchName, err := git.BranchName(ctx, runner)
+	if err != nil {
+		return nil, fmt.Errorf("getting branch: %w", err)
+	}
 
 	items := make([]list.Item, len(commits))
 	for i, c := range commits {
@@ -107,7 +122,7 @@ func NewFixupModel(
 		m.renderSelectedDiff()
 	}
 
-	return m
+	return m, nil
 }
 
 // Update handles messages and returns commands.
@@ -199,16 +214,18 @@ func (m *FixupModel) View() string {
 	return panels + "\n" + m.statusBar.View()
 }
 
-// confirmFixup creates a fixup! commit for the currently selected commit.
+// confirmFixup creates a fixup! commit for the currently selected commit,
+// then runs an autosquash rebase to squash it into the target.
 func (m *FixupModel) confirmFixup() tea.Cmd {
 	if len(m.commits) == 0 || m.selectedIdx >= len(m.commits) {
 		return nil
 	}
 	hash := m.commits[m.selectedIdx].Hash
-	err := git.CreateFixupCommit(m.ctx, m.runner, hash)
-	if err != nil {
-		errCmd := m.statusBar.SetMessage(fmt.Sprintf("Fixup failed: %v", err), components.Error)
-		return errCmd
+	if err := git.CreateFixupCommit(m.ctx, m.runner, hash); err != nil {
+		return m.statusBar.SetMessage(fmt.Sprintf("Fixup failed: %v", err), components.Error)
+	}
+	if err := git.AutosquashRebase(m.ctx, m.runner, hash); err != nil {
+		return m.statusBar.SetMessage(fmt.Sprintf("Rebase failed: %v", err), components.Error)
 	}
 	return func() tea.Msg {
 		return app.PopModelMsg{MutatedGit: true}

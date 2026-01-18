@@ -3,31 +3,99 @@ package commands_test
 import (
 	"context"
 	"fmt"
+	"os"
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/jetm/gti/internal/app"
 	"github.com/jetm/gti/internal/commands"
 	"github.com/jetm/gti/internal/config"
 	"github.com/jetm/gti/internal/diff"
 	"github.com/jetm/gti/internal/testhelper"
 )
 
-// fakeFixupOutputs returns the scripted outputs for NewFixupModel:
-//   - output[0]: git log output (commits)
-//   - output[1]: git rev-parse --abbrev-ref HEAD (branch name)
-//   - output[2]: git show <hash> (diff for the first commit, if commits non-empty)
+// newFakeFixupModel creates a FixupModel with scripted FakeRunner outputs.
+// Call sequence in NewFixupModel:
+//   - output[0]: git diff --cached --quiet (HasStagedChanges: error = staged, nil = none)
+//   - output[1]: git rev-parse --show-toplevel (IsRebaseInProgress->RepoRoot)
+//   - output[2]: git log (RecentCommits)
+//   - output[3]: git rev-parse --abbrev-ref HEAD (BranchName)
+//   - output[4]: git show <hash> (renderSelectedDiff, only if commits non-empty)
 func newFakeFixupModel(t *testing.T, logOutput, branch string) *commands.FixupModel {
 	t.Helper()
-	outputs := []string{logOutput, branch}
+	// HasStagedChanges: return error so staged changes are detected
+	// IsRebaseInProgress->RepoRoot: return a path (filesystem won't have .git/rebase-merge)
+	outputs := []string{"", "/fake/repo", logOutput, branch}
+	errors := []error{fmt.Errorf("staged"), nil, nil, nil}
 	if logOutput != "" {
 		// First commit diff will be fetched on init
 		outputs = append(outputs, "diff --git a/foo.go b/foo.go\n--- a/foo.go\n+++ b/foo.go\n@@ -1 +1 @@\n-old\n+new")
+		errors = append(errors, nil)
 	}
-	runner := &testhelper.FakeRunner{Outputs: outputs}
+	runner := &testhelper.FakeRunner{Outputs: outputs, Errors: errors}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	return commands.NewFixupModel(context.Background(), runner, cfg, renderer)
+	m, err := commands.NewFixupModel(context.Background(), runner, cfg, renderer)
+	if err != nil {
+		t.Fatalf("NewFixupModel unexpectedly returned error: %v", err)
+	}
+	return m
+}
+
+func TestNewFixupModel_GitLogFails_ReturnsError(t *testing.T) {
+	// staged-check (staged), reporoot, then git log fails
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{"", "/fake/repo", ""},
+		Errors:  []error{fmt.Errorf("staged"), nil, fmt.Errorf("not a git repository")},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	_, err := commands.NewFixupModel(context.Background(), runner, cfg, renderer)
+	if err == nil {
+		t.Fatal("expected error when git log fails, got nil")
+	}
+}
+
+func TestNewFixupModel_NoStagedChanges_ReturnsError(t *testing.T) {
+	// HasStagedChanges returns nil (no staged changes) -> error expected
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{""},
+		Errors:  []error{nil},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	_, err := commands.NewFixupModel(context.Background(), runner, cfg, renderer)
+	if err == nil {
+		t.Fatal("expected error when no staged changes, got nil")
+	}
+	if !strings.Contains(err.Error(), "nothing staged") {
+		t.Errorf("error should say 'nothing staged', got: %v", err)
+	}
+}
+
+func TestNewFixupModel_RebaseInProgress_ReturnsError(t *testing.T) {
+	// HasStagedChanges: staged (returns error)
+	// IsRebaseInProgress->RepoRoot: returns a path that has .git/rebase-merge
+	// We need a real temp dir with .git/rebase-merge to trigger this path.
+	tmpDir := t.TempDir()
+	if err := os.MkdirAll(tmpDir+"/.git/rebase-merge", 0o755); err != nil {
+		t.Fatalf("failed to create .git/rebase-merge: %v", err)
+	}
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{"", tmpDir},
+		Errors:  []error{fmt.Errorf("staged"), nil},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	_, err := commands.NewFixupModel(context.Background(), runner, cfg, renderer)
+	if err == nil {
+		t.Fatal("expected error when rebase in progress, got nil")
+	}
+	if !strings.Contains(err.Error(), "rebase") {
+		t.Errorf("error should mention rebase, got: %v", err)
+	}
 }
 
 func TestNewFixupModel_NoCommits(t *testing.T) {
@@ -148,13 +216,16 @@ func TestFixupModel_Update_EnterWithCommits_Failure(t *testing.T) {
 	// Provide commits but make git commit --fixup fail
 	logOutput := "abc1234\x1ffeat: something\x1fAlice\x1f2 hours ago\x00"
 	runner := &testhelper.FakeRunner{
-		// outputs: log, branch, show (init), then "" for failed commit
-		Outputs: []string{logOutput, "main", "diff content", ""},
-		Errors:  []error{nil, nil, nil, fmt.Errorf("nothing to commit")},
+		// outputs: staged-check, reporoot, log, branch, show (init), then "" for failed commit
+		Outputs: []string{"", "/fake/repo", logOutput, "main", "diff content", ""},
+		Errors:  []error{fmt.Errorf("staged"), nil, nil, nil, nil, fmt.Errorf("nothing to commit")},
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewFixupModel(context.Background(), runner, cfg, renderer)
+	m, err := commands.NewFixupModel(context.Background(), runner, cfg, renderer)
+	if err != nil {
+		t.Fatalf("NewFixupModel unexpectedly returned error: %v", err)
+	}
 
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Text: ""})
@@ -166,11 +237,16 @@ func TestFixupModel_Update_EnterWithCommits_Failure(t *testing.T) {
 func TestFixupModel_Update_EnterWithCommits_Success(t *testing.T) {
 	logOutput := "abc1234\x1ffeat: something\x1fAlice\x1f2 hours ago\x00"
 	runner := &testhelper.FakeRunner{
-		Outputs: []string{logOutput, "main", "diff content", "[main def5678] fixup! feat: something"},
+		// staged-check, reporoot, log, branch, show (init), fixup commit, autosquash rebase
+		Outputs: []string{"", "/fake/repo", logOutput, "main", "diff content", "[main def5678] fixup! feat: something", ""},
+		Errors:  []error{fmt.Errorf("staged"), nil, nil, nil, nil, nil, nil},
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewFixupModel(context.Background(), runner, cfg, renderer)
+	m, err := commands.NewFixupModel(context.Background(), runner, cfg, renderer)
+	if err != nil {
+		t.Fatalf("NewFixupModel unexpectedly returned error: %v", err)
+	}
 
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Text: ""})
@@ -187,13 +263,16 @@ func TestFixupModel_RenderSelectedDiff_ErrorPath(t *testing.T) {
 	// Make git show return an error so renderSelectedDiff shows an error message
 	logOutput := "abc1234\x1ffeat: something\x1fAlice\x1f2 hours ago\x00"
 	runner := &testhelper.FakeRunner{
-		// log, branch, then error on show
-		Outputs: []string{logOutput, "main", ""},
-		Errors:  []error{nil, nil, fmt.Errorf("bad object abc1234")},
+		// staged-check, reporoot, log, branch, then error on show
+		Outputs: []string{"", "/fake/repo", logOutput, "main", ""},
+		Errors:  []error{fmt.Errorf("staged"), nil, nil, nil, fmt.Errorf("bad object abc1234")},
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewFixupModel(context.Background(), runner, cfg, renderer)
+	m, err := commands.NewFixupModel(context.Background(), runner, cfg, renderer)
+	if err != nil {
+		t.Fatalf("NewFixupModel unexpectedly returned error: %v", err)
+	}
 
 	// View should render without panicking even with a diff error
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
@@ -218,11 +297,16 @@ func TestFixupModel_TabThenQuitFromRightPanel(t *testing.T) {
 func TestFixupModel_TabThenEnterFromRightPanel(t *testing.T) {
 	logOutput := "abc1234\x1ffeat: first\x1fAlice\x1f2 hours ago\x00"
 	runner := &testhelper.FakeRunner{
-		Outputs: []string{logOutput, "main", "diff content", "[main def5678] fixup!"},
+		// staged-check, reporoot, log, branch, show (init), fixup commit, autosquash rebase
+		Outputs: []string{"", "/fake/repo", logOutput, "main", "diff content", "[main def5678] fixup!", ""},
+		Errors:  []error{fmt.Errorf("staged"), nil, nil, nil, nil, nil, nil},
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewFixupModel(context.Background(), runner, cfg, renderer)
+	m, err := commands.NewFixupModel(context.Background(), runner, cfg, renderer)
+	if err != nil {
+		t.Fatalf("NewFixupModel unexpectedly returned error: %v", err)
+	}
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 
 	_ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
@@ -233,16 +317,80 @@ func TestFixupModel_TabThenEnterFromRightPanel(t *testing.T) {
 	}
 }
 
+func TestFixupModel_ConfirmFixup_CallsAutosquashRebase(t *testing.T) {
+	logOutput := "abc1234\x1ffeat: something\x1fAlice\x1f2 hours ago\x00"
+	runner := &testhelper.FakeRunner{
+		// staged-check, reporoot, log, branch, show (init), fixup commit, autosquash rebase
+		Outputs: []string{"", "/fake/repo", logOutput, "main", "diff content", "[main def5678] fixup! feat: something", ""},
+		Errors:  []error{fmt.Errorf("staged"), nil, nil, nil, nil, nil, nil},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m, err := commands.NewFixupModel(context.Background(), runner, cfg, renderer)
+	if err != nil {
+		t.Fatalf("NewFixupModel unexpectedly returned error: %v", err)
+	}
+
+	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Text: ""})
+	if cmd == nil {
+		t.Fatal("expected a command after fixup, got nil")
+	}
+	// The command should emit PopModelMsg on success
+	msg := cmd()
+	if msg == nil {
+		t.Fatal("expected PopModelMsg, got nil")
+	}
+	// Verify autosquash rebase was called via RunWithEnv
+	testhelper.MustHaveCall(t, runner, "rebase", "--interactive", "--autosquash", "abc1234^")
+	testhelper.MustHaveEnv(t, runner, "GIT_SEQUENCE_EDITOR=true")
+}
+
+func TestFixupModel_ConfirmFixup_AutosquashFailure_ShowsError(t *testing.T) {
+	logOutput := "abc1234\x1ffeat: something\x1fAlice\x1f2 hours ago\x00"
+	runner := &testhelper.FakeRunner{
+		// staged-check, reporoot, log, branch, show (init), fixup commit succeeds, autosquash rebase fails
+		Outputs: []string{"", "/fake/repo", logOutput, "main", "diff content", "[main def5678] fixup! feat: something", ""},
+		Errors:  []error{fmt.Errorf("staged"), nil, nil, nil, nil, nil, fmt.Errorf("conflict during rebase")},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m, err := commands.NewFixupModel(context.Background(), runner, cfg, renderer)
+	if err != nil {
+		t.Fatalf("NewFixupModel unexpectedly returned error: %v", err)
+	}
+
+	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Text: ""})
+	if cmd == nil {
+		t.Fatal("expected an error-message command after autosquash failure, got nil")
+	}
+	// Should NOT be a PopModelMsg - should be an error display command
+	msg := cmd()
+	if msg == nil {
+		t.Fatal("expected a message from the command")
+	}
+	// The message should not be a PopModelMsg
+	if _, ok := msg.(app.PopModelMsg); ok {
+		t.Error("autosquash failure should NOT emit PopModelMsg")
+	}
+}
+
 func TestFixupModel_Update_NavigationJ(t *testing.T) {
 	logOutput := "abc1234\x1ffeat: first\x1fAlice\x1f2 hours ago\x00" +
 		"bbb5678\x1ffeat: second\x1fBob\x1f3 hours ago\x00"
 	// Need diff fetches: initial for abc1234, then after j pressed for bbb5678
 	runner := &testhelper.FakeRunner{
-		Outputs: []string{logOutput, "main", "diff for abc1234", "diff for bbb5678"},
+		// staged-check, reporoot, log, branch, show(abc1234), show(bbb5678)
+		Outputs: []string{"", "/fake/repo", logOutput, "main", "diff for abc1234", "diff for bbb5678"},
+		Errors:  []error{fmt.Errorf("staged"), nil, nil, nil, nil, nil},
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewFixupModel(context.Background(), runner, cfg, renderer)
+	m, err := commands.NewFixupModel(context.Background(), runner, cfg, renderer)
+	if err != nil {
+		t.Fatalf("NewFixupModel unexpectedly returned error: %v", err)
+	}
 
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	// Press j to move down — selection should still render without panic

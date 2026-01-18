@@ -56,6 +56,30 @@ func CreateFixupCommit(ctx context.Context, r Runner, hash string) error {
 	return nil
 }
 
+// AutosquashRebase runs a non-interactive autosquash rebase to squash fixup!
+// commits into their targets. It uses GIT_SEQUENCE_EDITOR=true so git applies
+// the reorder without prompting. For root commits (no parent), it retries with
+// --root when the <hash>^ reference fails.
+func AutosquashRebase(ctx context.Context, r Runner, hash string) error {
+	env := []string{"GIT_SEQUENCE_EDITOR=true"}
+	_, err := r.RunWithEnv(ctx, env, "rebase", "--interactive", "--autosquash", hash+"^")
+	if err == nil {
+		return nil
+	}
+	// If the first attempt failed because the parent ref doesn't exist (exit
+	// code 128 = invalid object), retry with --root to handle the case where
+	// hash is the initial commit (no parent). Other errors (e.g. conflicts,
+	// exit code 1) are returned directly.
+	if execErr, ok := err.(*ExecError); ok && execErr.ExitCode == 128 {
+		_, retryErr := r.RunWithEnv(ctx, env, "rebase", "--interactive", "--autosquash", "--root")
+		if retryErr == nil {
+			return nil
+		}
+		return fmt.Errorf("git rebase --autosquash: %w", retryErr)
+	}
+	return fmt.Errorf("git rebase --autosquash: %w", err)
+}
+
 // parseCommitLog parses NUL-separated commit log output into CommitEntry slice.
 func parseCommitLog(raw string) []CommitEntry {
 	if raw == "" {

@@ -230,15 +230,15 @@ func TestCheckoutModel_SpaceTogglesSelection(t *testing.T) {
 	m.width = 120
 	m.height = 40
 
-	if len(m.fileTree.CheckedPaths()) != 0 {
+	if len(m.fileList.CheckedPaths()) != 0 {
 		t.Fatal("no files should be checked initially")
 	}
 	m.Update(tea.KeyPressMsg{Code: ' ', Text: " "})
-	if len(m.fileTree.CheckedPaths()) != 1 {
+	if len(m.fileList.CheckedPaths()) != 1 {
 		t.Error("foo.go should be checked after Space")
 	}
 	m.Update(tea.KeyPressMsg{Code: ' ', Text: " "})
-	if len(m.fileTree.CheckedPaths()) != 0 {
+	if len(m.fileList.CheckedPaths()) != 0 {
 		t.Error("foo.go should be unchecked after second Space")
 	}
 }
@@ -250,7 +250,7 @@ func TestCheckoutModel_SelectAll(t *testing.T) {
 	m.height = 40
 
 	m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
-	checked := m.fileTree.CheckedPaths()
+	checked := m.fileList.CheckedPaths()
 	if len(checked) != 2 {
 		t.Errorf("expected 2 checked files after pressing a, got %d", len(checked))
 	}
@@ -264,7 +264,7 @@ func TestCheckoutModel_DeselectAll(t *testing.T) {
 
 	m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
 	m.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})
-	checked := m.fileTree.CheckedPaths()
+	checked := m.fileList.CheckedPaths()
 	if len(checked) != 0 {
 		t.Errorf("expected 0 checked files after pressing d, got %d", len(checked))
 	}

@@ -22,7 +22,7 @@ type AddModel struct {
 	runner     git.Runner
 	renderer   diff.Renderer
 	files      []git.StatusFile
-	fileTree   components.FileTree
+	fileList   components.FileList
 	diffView   components.DiffView
 	statusBar  components.StatusBar
 	help       components.HelpOverlay
@@ -52,7 +52,7 @@ func NewAddModel(
 		runner:    runner,
 		renderer:  renderer,
 		files:     files,
-		fileTree:  components.NewFileTree(entries, true),
+		fileList:  components.NewFileList(entries, true),
 		diffView:  components.NewDiffView(80, 20),
 		statusBar: components.NewStatusBar(120),
 		help: components.NewHelpOverlay([]components.KeyGroup{
@@ -126,15 +126,15 @@ func (m *AddModel) Update(msg tea.Msg) tea.Cmd {
 			return m.stageSelected()
 
 		case ' ':
-			m.fileTree.ToggleChecked()
+			m.fileList.ToggleChecked()
 			return sbCmd
 
 		case 'a':
-			m.fileTree.SetAllChecked(true)
+			m.fileList.SetAllChecked(true)
 			return sbCmd
 
 		case 'd':
-			m.fileTree.SetAllChecked(false)
+			m.fileList.SetAllChecked(false)
 			return sbCmd
 		}
 
@@ -143,7 +143,7 @@ func (m *AddModel) Update(msg tea.Msg) tea.Cmd {
 			return tea.Batch(sbCmd, dvCmd)
 		}
 
-		treeCmd := m.fileTree.Update(msg)
+		treeCmd := m.fileList.Update(msg)
 		m.renderSelectedDiff()
 		return tea.Batch(sbCmd, treeCmd)
 	}
@@ -171,8 +171,8 @@ func (m *AddModel) View() string {
 	leftW--
 	rightW--
 
-	m.fileTree.SetWidth(leftW)
-	m.fileTree.SetHeight(contentHeight)
+	m.fileList.SetWidth(leftW)
+	m.fileList.SetHeight(contentHeight)
 	m.diffView.SetWidth(rightW)
 	m.diffView.SetHeight(contentHeight)
 
@@ -181,7 +181,7 @@ func (m *AddModel) View() string {
 		leftBorder, rightBorder = tui.StyleDimBorder, tui.StyleFocusBorder
 	}
 
-	leftPanel := leftBorder.Width(leftW).Height(contentHeight).MaxHeight(contentHeight).Render(m.fileTree.View())
+	leftPanel := leftBorder.Width(leftW).Height(contentHeight).MaxHeight(contentHeight).Render(m.fileList.View())
 	rightPanel := rightBorder.Width(rightW).Height(contentHeight).MaxHeight(contentHeight).Render(m.diffView.View())
 
 	panels := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
@@ -193,12 +193,12 @@ func (m *AddModel) View() string {
 // selectedPaths returns the paths of all checked files.
 // If none are checked, returns the focused file's path (single-file shortcut).
 func (m *AddModel) selectedPaths() []string {
-	paths := m.fileTree.CheckedPaths()
+	paths := m.fileList.CheckedPaths()
 	if len(paths) > 0 {
 		return paths
 	}
 	// Fallback: stage focused file
-	if path := m.fileTree.SelectedPath(); path != "" {
+	if path := m.fileList.SelectedPath(); path != "" {
 		return []string{path}
 	}
 	return nil
@@ -224,7 +224,7 @@ func (m *AddModel) stageSelected() tea.Cmd {
 
 // renderSelectedDiff renders the diff for the currently focused file.
 func (m *AddModel) renderSelectedDiff() {
-	path := m.fileTree.SelectedPath()
+	path := m.fileList.SelectedPath()
 	if path == "" {
 		return
 	}
@@ -280,8 +280,8 @@ func (m *AddModel) resize() {
 	leftW--
 	rightW--
 
-	m.fileTree.SetWidth(leftW)
-	m.fileTree.SetHeight(contentHeight)
+	m.fileList.SetWidth(leftW)
+	m.fileList.SetHeight(contentHeight)
 	m.diffView.SetWidth(rightW)
 	m.diffView.SetHeight(contentHeight)
 	m.statusBar.SetWidth(m.width)

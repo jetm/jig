@@ -24,7 +24,7 @@ type HunkAddModel struct {
 	renderer diff.Renderer
 
 	files      []git.FileDiff
-	fileTree   components.FileTree
+	fileList   components.FileList
 	diffView   components.DiffView
 	statusBar  components.StatusBar
 	help       components.HelpOverlay
@@ -62,7 +62,7 @@ func NewHunkAddModel(
 		runner:    runner,
 		renderer:  renderer,
 		files:     files,
-		fileTree:  components.NewFileTree(entries, false),
+		fileList:  components.NewFileList(entries, false),
 		diffView:  components.NewDiffView(80, 20),
 		statusBar: components.NewStatusBar(120),
 		help: components.NewHelpOverlay([]components.KeyGroup{
@@ -153,7 +153,7 @@ func (m *HunkAddModel) Update(msg tea.Msg) tea.Cmd {
 		}
 
 		// Forward navigation (j/k) to the file tree
-		treeCmd := m.fileTree.Update(msg)
+		treeCmd := m.fileList.Update(msg)
 		m.syncFileSelection()
 		return tea.Batch(sbCmd, treeCmd)
 	}
@@ -181,8 +181,8 @@ func (m *HunkAddModel) View() string {
 	leftW--
 	rightW--
 
-	m.fileTree.SetWidth(leftW)
-	m.fileTree.SetHeight(contentHeight)
+	m.fileList.SetWidth(leftW)
+	m.fileList.SetHeight(contentHeight)
 	m.diffView.SetWidth(rightW)
 	m.diffView.SetHeight(contentHeight)
 
@@ -191,7 +191,7 @@ func (m *HunkAddModel) View() string {
 		leftBorder, rightBorder = tui.StyleDimBorder, tui.StyleFocusBorder
 	}
 
-	leftPanel := leftBorder.Width(leftW).Height(contentHeight).MaxHeight(contentHeight).Render(m.fileTree.View())
+	leftPanel := leftBorder.Width(leftW).Height(contentHeight).MaxHeight(contentHeight).Render(m.fileList.View())
 	rightPanel := rightBorder.Width(rightW).Height(contentHeight).MaxHeight(contentHeight).Render(m.diffView.View())
 
 	panels := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
@@ -442,7 +442,7 @@ func (m *HunkAddModel) anyStagedDecision() bool {
 
 // syncFileSelection detects if the tree cursor moved to a different file and loads its hunks.
 func (m *HunkAddModel) syncFileSelection() {
-	path := m.fileTree.SelectedPath()
+	path := m.fileList.SelectedPath()
 	if path == "" {
 		return
 	}
@@ -469,8 +469,8 @@ func (m *HunkAddModel) resize() {
 	leftW--
 	rightW--
 
-	m.fileTree.SetWidth(leftW)
-	m.fileTree.SetHeight(contentHeight)
+	m.fileList.SetWidth(leftW)
+	m.fileList.SetHeight(contentHeight)
 	m.diffView.SetWidth(rightW)
 	m.diffView.SetHeight(contentHeight)
 	m.statusBar.SetWidth(m.width)

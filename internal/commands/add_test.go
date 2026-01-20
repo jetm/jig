@@ -131,17 +131,17 @@ func TestAddModel_SpaceTogglesSelection(t *testing.T) {
 	m.width = 120
 	m.height = 40
 
-	if len(m.fileTree.CheckedPaths()) != 0 {
+	if len(m.fileList.CheckedPaths()) != 0 {
 		t.Fatal("no files should be checked initially")
 	}
 
 	m.Update(tea.KeyPressMsg{Code: ' ', Text: " "})
-	if len(m.fileTree.CheckedPaths()) != 1 {
+	if len(m.fileList.CheckedPaths()) != 1 {
 		t.Error("foo.go should be checked after pressing Space")
 	}
 
 	m.Update(tea.KeyPressMsg{Code: ' ', Text: " "})
-	if len(m.fileTree.CheckedPaths()) != 0 {
+	if len(m.fileList.CheckedPaths()) != 0 {
 		t.Error("foo.go should be unchecked after pressing Space again")
 	}
 }
@@ -154,7 +154,7 @@ func TestAddModel_SelectAll(t *testing.T) {
 
 	m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
 
-	checked := m.fileTree.CheckedPaths()
+	checked := m.fileList.CheckedPaths()
 	if len(checked) != 2 {
 		t.Errorf("expected 2 checked files after pressing a, got %d", len(checked))
 	}
@@ -169,7 +169,7 @@ func TestAddModel_DeselectAll(t *testing.T) {
 	m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
 	m.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})
 
-	checked := m.fileTree.CheckedPaths()
+	checked := m.fileList.CheckedPaths()
 	if len(checked) != 0 {
 		t.Errorf("expected 0 checked files after pressing d, got %d", len(checked))
 	}
@@ -540,7 +540,7 @@ func TestAddModel_SpaceWorksFromRightPanel(t *testing.T) {
 
 	m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	m.Update(tea.KeyPressMsg{Code: ' ', Text: " "})
-	if len(m.fileTree.CheckedPaths()) != 1 {
+	if len(m.fileList.CheckedPaths()) != 1 {
 		t.Error("Space from right panel should toggle selection on left panel item")
 	}
 }
@@ -570,25 +570,26 @@ func TestAddModel_View_StatusBarPresentWithManyFiles(t *testing.T) {
 	}
 }
 
-func TestAddModel_SpaceOnDirectoryTogglesAllChildren(t *testing.T) {
+func TestAddModel_SpaceTogglesEachFileIndividually(t *testing.T) {
 	t.Parallel()
-	// Files in a directory: cursor starts on dir node.
+	// FileList shows all files flat - space toggles the cursor file only.
 	m := newTestAddModel(t, "M\tdir/file1.go\nM\tdir/file2.go\n", "")
 	m.width = 120
 	m.height = 40
 
-	// Cursor is on the "dir" DirNode. Space should check all children.
+	// Cursor is on first file. Space checks it.
 	m.Update(tea.KeyPressMsg{Code: ' ', Text: " "})
-	checked := m.fileTree.CheckedPaths()
-	if len(checked) != 2 {
-		t.Errorf("expected 2 checked files after space on dir, got %d: %v", len(checked), checked)
+	checked := m.fileList.CheckedPaths()
+	if len(checked) != 1 {
+		t.Errorf("expected 1 checked file after first space, got %d: %v", len(checked), checked)
 	}
 
-	// Space again: all checked, should uncheck all.
+	// Move to second file and check it.
+	m.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
 	m.Update(tea.KeyPressMsg{Code: ' ', Text: " "})
-	checked = m.fileTree.CheckedPaths()
-	if len(checked) != 0 {
-		t.Errorf("expected 0 checked files after second space on dir, got %d: %v", len(checked), checked)
+	checked = m.fileList.CheckedPaths()
+	if len(checked) != 2 {
+		t.Errorf("expected 2 checked files after checking both, got %d: %v", len(checked), checked)
 	}
 }
 

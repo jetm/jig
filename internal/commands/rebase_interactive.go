@@ -82,6 +82,7 @@ type RebaseInteractiveModel struct {
 	width        int
 	height       int
 	focusRight   bool
+	showDiff     bool
 }
 
 // NewRebaseInteractiveModel creates a RebaseInteractiveModel.
@@ -136,6 +137,7 @@ func NewRebaseInteractiveModel(
 					{Key: "Tab", Desc: "switch panel"},
 					{Key: "Ctrl+Up / K", Desc: "move commit up"},
 					{Key: "Ctrl+Down / J", Desc: "move commit down"},
+					{Key: "D", Desc: "toggle diff"},
 					{Key: "?", Desc: "toggle help"},
 				},
 			},
@@ -158,13 +160,9 @@ func NewRebaseInteractiveModel(
 		selectedIdx: 0,
 	}
 
-	m.statusBar.SetHints("Space: cycle action  p/r/e/s/f/d: set action  K/J: reorder  Tab: panel  Enter: confirm  ?: help  q: quit")
+	m.statusBar.SetHints("Space: cycle action  p/r/e/s/f/d: set action  K/J: reorder  Tab: panel  D: diff  Enter: confirm  ?: help  q: quit")
 	m.statusBar.SetBranch(branchName)
 	m.statusBar.SetMode("rebase-interactive")
-
-	if len(entries) > 0 {
-		m.renderSelectedDiff()
-	}
 
 	return m
 }
@@ -192,7 +190,9 @@ func (m *RebaseInteractiveModel) Update(msg tea.Msg) tea.Cmd {
 
 		switch msg.String() {
 		case "tab":
-			m.focusRight = !m.focusRight
+			if m.showDiff {
+				m.focusRight = !m.focusRight
+			}
 			return sbCmd
 
 		case "q", "esc":
@@ -241,6 +241,13 @@ func (m *RebaseInteractiveModel) Update(msg tea.Msg) tea.Cmd {
 			m.refreshList()
 			return sbCmd
 
+		case "D":
+			m.showDiff = !m.showDiff
+			if m.showDiff && len(m.entries) > 0 {
+				m.renderSelectedDiff()
+			}
+			return sbCmd
+
 		case "K":
 			m.moveUp()
 			return sbCmd
@@ -286,8 +293,19 @@ func (m *RebaseInteractiveModel) View() string {
 		return "No commits to rebase. Specify a valid base revision."
 	}
 
-	leftW, rightW := tui.Columns(m.width)
 	contentHeight := m.height - 1 // reserve 1 row for status bar
+	m.statusBar.SetWidth(m.width)
+
+	if !m.showDiff {
+		// Single-panel mode: left panel fills the full terminal width
+		panelW := m.width - 1
+		m.commitList.SetWidth(panelW)
+		m.commitList.SetHeight(contentHeight)
+		leftPanel := tui.StyleFocusBorder.Width(panelW).Height(contentHeight).MaxHeight(contentHeight).Render(m.commitList.View())
+		return leftPanel + "\n" + m.statusBar.View()
+	}
+
+	leftW, rightW := tui.ColumnsWide(m.width)
 
 	leftW--
 	rightW--
@@ -307,7 +325,6 @@ func (m *RebaseInteractiveModel) View() string {
 
 	panels := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
 
-	m.statusBar.SetWidth(m.width)
 	return panels + "\n" + m.statusBar.View()
 }
 
@@ -364,7 +381,9 @@ func (m *RebaseInteractiveModel) moveUp() {
 	m.entries[m.selectedIdx], m.entries[m.selectedIdx-1] = m.entries[m.selectedIdx-1], m.entries[m.selectedIdx]
 	m.selectedIdx--
 	m.refreshList()
-	m.renderSelectedDiff()
+	if m.showDiff {
+		m.renderSelectedDiff()
+	}
 }
 
 // moveDown swaps the selected entry with the one below it (reorders commits downward).
@@ -375,7 +394,9 @@ func (m *RebaseInteractiveModel) moveDown() {
 	m.entries[m.selectedIdx], m.entries[m.selectedIdx+1] = m.entries[m.selectedIdx+1], m.entries[m.selectedIdx]
 	m.selectedIdx++
 	m.refreshList()
-	m.renderSelectedDiff()
+	if m.showDiff {
+		m.renderSelectedDiff()
+	}
 }
 
 // refreshList rebuilds the list items from entries and keeps the cursor at selectedIdx.
@@ -401,7 +422,9 @@ func (m *RebaseInteractiveModel) checkSelectionChange() {
 	for i, e := range m.entries {
 		if e.Hash == ri.entry.Hash && i != m.selectedIdx {
 			m.selectedIdx = i
-			m.renderSelectedDiff()
+			if m.showDiff {
+				m.renderSelectedDiff()
+			}
 			return
 		}
 	}
@@ -427,8 +450,17 @@ func (m *RebaseInteractiveModel) renderSelectedDiff() {
 
 // resize recalculates component dimensions after a terminal resize.
 func (m *RebaseInteractiveModel) resize() {
-	leftW, rightW := tui.Columns(m.width)
 	contentHeight := m.height - 1
+	m.statusBar.SetWidth(m.width)
+
+	if !m.showDiff {
+		panelW := m.width - 1
+		m.commitList.SetWidth(panelW)
+		m.commitList.SetHeight(contentHeight)
+		return
+	}
+
+	leftW, rightW := tui.ColumnsWide(m.width)
 
 	leftW--
 	rightW--
@@ -437,5 +469,4 @@ func (m *RebaseInteractiveModel) resize() {
 	m.commitList.SetHeight(contentHeight)
 	m.diffView.SetWidth(rightW)
 	m.diffView.SetHeight(contentHeight)
-	m.statusBar.SetWidth(m.width)
 }

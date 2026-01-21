@@ -1,61 +1,47 @@
-package tui
+package tui_test
 
-import "testing"
+import (
+	"testing"
 
-func TestColumnsAt60(t *testing.T) {
-	left, right := Columns(60)
-	if left < 28 {
-		t.Errorf("left = %d, want >= 28", left)
+	"github.com/jetm/gti/internal/tui"
+)
+
+func TestColumnsWide_Standard120(t *testing.T) {
+	left, right := tui.ColumnsWide(120)
+	if left != 54 {
+		t.Errorf("ColumnsWide(120) left = %d, want 54", left)
 	}
-	if left+right != 60 {
-		t.Errorf("left+right = %d, want 60", left+right)
+	if right != 66 {
+		t.Errorf("ColumnsWide(120) right = %d, want 66", right)
 	}
 }
 
-func TestColumnsAt80(t *testing.T) {
-	left, right := Columns(80)
-	if left < 28 {
-		t.Errorf("left = %d, want >= 28", left)
+func TestColumnsWide_NarrowFallsToMinimum(t *testing.T) {
+	left, right := tui.ColumnsWide(60)
+	if left != 28 {
+		t.Errorf("ColumnsWide(60) left = %d, want 28 (minimum)", left)
 	}
-	if left+right != 80 {
-		t.Errorf("left+right = %d, want 80", left+right)
-	}
-}
-
-func TestColumnsAt120(t *testing.T) {
-	left, right := Columns(120)
-	if left != 36 {
-		t.Errorf("left = %d, want 36", left)
-	}
-	if right != 84 {
-		t.Errorf("right = %d, want 84", right)
+	if right != 32 {
+		t.Errorf("ColumnsWide(60) right = %d, want 32", right)
 	}
 }
 
-func TestColumnsAt200(t *testing.T) {
-	left, right := Columns(200)
-	if left != 60 {
-		t.Errorf("left = %d, want 60", left)
-	}
-	if right != 140 {
-		t.Errorf("right = %d, want 140", right)
-	}
-}
-
-func TestIsTerminalTooSmallAdequate(t *testing.T) {
-	if IsTerminalTooSmall(80, 24) {
-		t.Error("80x24 should be adequate")
+func TestColumnsWide_SumEqualsTotal(t *testing.T) {
+	for _, w := range []int{60, 80, 100, 120, 160, 200} {
+		left, right := tui.ColumnsWide(w)
+		if left+right != w {
+			t.Errorf("ColumnsWide(%d): left+right = %d+%d = %d, want %d", w, left, right, left+right, w)
+		}
 	}
 }
 
-func TestIsTerminalTooSmallTooNarrow(t *testing.T) {
-	if !IsTerminalTooSmall(50, 24) {
-		t.Error("50x24 should be too small")
+func TestColumnsWide_Wide200(t *testing.T) {
+	left, right := tui.ColumnsWide(200)
+	// 45% of 200 = 90
+	if left != 90 {
+		t.Errorf("ColumnsWide(200) left = %d, want 90", left)
 	}
-}
-
-func TestIsTerminalTooSmallTooShort(t *testing.T) {
-	if !IsTerminalTooSmall(80, 8) {
-		t.Error("80x8 should be too small")
+	if right != 110 {
+		t.Errorf("ColumnsWide(200) right = %d, want 110", right)
 	}
 }

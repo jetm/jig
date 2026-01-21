@@ -23,13 +23,12 @@ import (
 // The FakeRunner receives calls in order:
 //   - output[0]: git log --reverse ... (commits for rebase)
 //   - output[1]: git rev-parse --abbrev-ref HEAD (branch name)
-//   - output[2+]: git show <hash> (diff for first commit, if any)
+//
+// Diff output is NOT included because the constructor no longer fetches the diff at startup
+// (showDiff defaults to false). Tests that need diff output should construct the model directly.
 func newFakeRebaseModel(t *testing.T, logOutput, branch, base string) *commands.RebaseInteractiveModel {
 	t.Helper()
 	outputs := []string{logOutput, branch}
-	if logOutput != "" {
-		outputs = append(outputs, "diff --git a/foo.go b/foo.go\n--- a/foo.go\n+++ b/foo.go\n@@ -1 +1 @@\n-old\n+new")
-	}
 	runner := &testhelper.FakeRunner{Outputs: outputs}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
@@ -157,7 +156,7 @@ func TestRebaseInteractiveModel_Update_EnterNoCommits(t *testing.T) {
 func TestRebaseInteractiveModel_Update_EnterWithCommits_Success(t *testing.T) {
 	logOutput := "abc1234\x1ffeat: first\n"
 	runner := &testhelper.FakeRunner{
-		Outputs: []string{logOutput, "main", "diff content", ""},
+		Outputs: []string{logOutput, "main", ""},
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
@@ -177,8 +176,8 @@ func TestRebaseInteractiveModel_Update_EnterWithCommits_Success(t *testing.T) {
 func TestRebaseInteractiveModel_Update_EnterWithCommits_Failure(t *testing.T) {
 	logOutput := "abc1234\x1ffeat: first\n"
 	runner := &testhelper.FakeRunner{
-		Outputs: []string{logOutput, "main", "diff content", ""},
-		Errors:  []error{nil, nil, nil, fmt.Errorf("rebase conflict")},
+		Outputs: []string{logOutput, "main", ""},
+		Errors:  []error{nil, nil, fmt.Errorf("rebase conflict")},
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
@@ -194,7 +193,7 @@ func TestRebaseInteractiveModel_Update_EnterWithCommits_Failure(t *testing.T) {
 func TestRebaseInteractiveModel_Update_SpaceCyclesAction(t *testing.T) {
 	logOutput := "abc1234\x1ffeat: first\n"
 	runner := &testhelper.FakeRunner{
-		Outputs: []string{logOutput, "main", "diff content"},
+		Outputs: []string{logOutput, "main"},
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
@@ -231,7 +230,7 @@ func TestRebaseInteractiveModel_Update_SetActionKeys(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(string(tc.key), func(t *testing.T) {
 			runner := &testhelper.FakeRunner{
-				Outputs: []string{logOutput, "main", "diff content"},
+				Outputs: []string{logOutput, "main"},
 			}
 			cfg := config.NewDefault()
 			renderer := &diff.PlainRenderer{}
@@ -378,6 +377,8 @@ func TestRebaseInteractiveModel_RenderSelectedDiff_ErrorPath(t *testing.T) {
 	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~1", "")
 
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	// Press D to show the diff panel; this triggers renderSelectedDiff which will get the error
+	_ = m.Update(tea.KeyPressMsg{Code: 'D', ShiftedCode: 'D', Mod: tea.ModShift, Text: "D"})
 	view := m.View()
 	if view == "" {
 		t.Error("View() returned empty string even with diff error")
@@ -402,9 +403,16 @@ func TestRebaseInteractiveModel_SetAction_NoCommits(t *testing.T) {
 
 func TestRebaseInteractiveModel_TabThenQuitFromRightPanel(t *testing.T) {
 	logOutput := "abc1234\x1ffeat: first\n"
-	m := newFakeRebaseModel(t, logOutput, "main", "HEAD~1")
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{logOutput, "main", "diff content"},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~1", "")
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 
+	// Must show diff panel first before Tab can switch focus to right panel
+	_ = m.Update(tea.KeyPressMsg{Code: 'D', ShiftedCode: 'D', Mod: tea.ModShift, Text: "D"})
 	_ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	cmd := m.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
 	if cmd == nil {
@@ -414,9 +422,16 @@ func TestRebaseInteractiveModel_TabThenQuitFromRightPanel(t *testing.T) {
 
 func TestRebaseInteractiveModel_ActionKeysWorkFromRightPanel(t *testing.T) {
 	logOutput := "abc1234\x1ffeat: first\n"
-	m := newFakeRebaseModel(t, logOutput, "main", "HEAD~1")
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{logOutput, "main", "diff content"},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~1", "")
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 
+	// Must show diff panel first before Tab can switch focus to right panel
+	_ = m.Update(tea.KeyPressMsg{Code: 'D', ShiftedCode: 'D', Mod: tea.ModShift, Text: "D"})
 	_ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	// Action keys (p/r/e/s/f/d) should still work from right panel
 	_ = m.Update(tea.KeyPressMsg{Code: 'r', Text: "r"})
@@ -453,8 +468,8 @@ func TestNewRebaseInteractiveModel_EditorMode_ParsesTodoFile(t *testing.T) {
 	todoContent := "pick abc1234 feat: first\nreword bbb5678 fix: second\n"
 	require.NoError(t, os.WriteFile(todoPath, []byte(todoContent), 0o644))
 
-	// Runner only needs branch name (no git log call in editor mode)
-	runner := &testhelper.FakeRunner{Outputs: []string{"main", "diff content"}}
+	// Runner only needs branch name (no git log call in editor mode; diff not fetched at startup)
+	runner := &testhelper.FakeRunner{Outputs: []string{"main"}}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
 	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "", todoPath)
@@ -473,7 +488,7 @@ func TestRebaseInteractiveModel_EditorMode_ConfirmWritesFile(t *testing.T) {
 	todoContent := "pick abc1234 feat: first\npick bbb5678 fix: second\n"
 	require.NoError(t, os.WriteFile(todoPath, []byte(todoContent), 0o644))
 
-	runner := &testhelper.FakeRunner{Outputs: []string{"main", "diff content"}}
+	runner := &testhelper.FakeRunner{Outputs: []string{"main"}}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
 	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "", todoPath)
@@ -513,7 +528,7 @@ func TestRebaseInteractiveModel_EditorMode_AbortExitsNonZero(t *testing.T) {
 	todoContent := "pick abc1234 feat: first\n"
 	require.NoError(t, os.WriteFile(todoPath, []byte(todoContent), 0o644))
 
-	runner := &testhelper.FakeRunner{Outputs: []string{"main", "diff content"}}
+	runner := &testhelper.FakeRunner{Outputs: []string{"main"}}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
 	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "", todoPath)
@@ -541,4 +556,155 @@ func TestRebaseInteractiveModel_StandaloneMode_QuitEmitsPopModel(t *testing.T) {
 	// In standalone mode, quit should still emit PopModelMsg
 	_, isPop := msg.(app.PopModelMsg)
 	assert.True(t, isPop, "expected PopModelMsg in standalone mode, got %T", msg)
+}
+
+// --- Diff toggle tests ---
+
+func TestNewRebaseInteractiveModel_ShowDiffFalseByDefault(t *testing.T) {
+	// Observable behavior: diff panel is not shown at startup.
+	// With diff hidden, Tab has no effect on focus (focusRight stays false),
+	// and the view renders as a single panel (no right border/content).
+	logOutput := "abc1234\x1ffeat: first\n"
+	m := newFakeRebaseModel(t, logOutput, "main", "HEAD~1")
+	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	// Tab should be a no-op when diff is hidden (showDiff=false by default)
+	_ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+
+	// View should still be single-panel (not two-panel) after Tab
+	view := m.View()
+	assert.NotEmpty(t, view)
+	// With diff hidden, the right panel border should not appear
+	assert.NotContains(t, view, "could not load diff", "diff should not be fetched at startup")
+}
+
+func TestRebaseInteractiveModel_DKey_ShowsDiff(t *testing.T) {
+	logOutput := "abc1234\x1ffeat: first\n"
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{logOutput, "main", "diff --git a/foo.go b/foo.go\n+new line"},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~1", "")
+	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	viewBefore := m.View()
+
+	// Press D to show the diff panel
+	_ = m.Update(tea.KeyPressMsg{Code: 'D', ShiftedCode: 'D', Mod: tea.ModShift, Text: "D"})
+
+	viewAfter := m.View()
+	assert.NotEqual(t, viewBefore, viewAfter, "View() should change after D toggles diff on")
+}
+
+func TestRebaseInteractiveModel_DKey_HidesDiff(t *testing.T) {
+	logOutput := "abc1234\x1ffeat: first\n"
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{logOutput, "main", "diff --git a/foo.go b/foo.go\n+new line"},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~1", "")
+	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	viewHidden := m.View()
+
+	// Show diff
+	_ = m.Update(tea.KeyPressMsg{Code: 'D', ShiftedCode: 'D', Mod: tea.ModShift, Text: "D"})
+	// Hide diff again
+	_ = m.Update(tea.KeyPressMsg{Code: 'D', ShiftedCode: 'D', Mod: tea.ModShift, Text: "D"})
+
+	viewHiddenAgain := m.View()
+	assert.Equal(t, viewHidden, viewHiddenAgain, "View() should return to single-panel after D pressed twice")
+}
+
+func TestRebaseInteractiveModel_DKey_NoCommits_IsNoop(t *testing.T) {
+	// D with no entries should not fetch any diff
+	runner := &testhelper.FakeRunner{Outputs: []string{"", "main"}}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~5", "")
+	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	callsBefore := len(runner.Calls)
+	_ = m.Update(tea.KeyPressMsg{Code: 'D', ShiftedCode: 'D', Mod: tea.ModShift, Text: "D"})
+	callsAfter := len(runner.Calls)
+
+	assert.Equal(t, callsBefore, callsAfter, "D with no entries should not trigger any git calls")
+}
+
+func TestRebaseInteractiveModel_Tab_NoopWhenDiffHidden(t *testing.T) {
+	logOutput := "abc1234\x1ffeat: first\n"
+	m := newFakeRebaseModel(t, logOutput, "main", "HEAD~1")
+	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	// showDiff is false by default; Tab should not move focus to right panel
+	view1 := m.View()
+	_ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	view2 := m.View()
+
+	// View should be unchanged - Tab had no effect
+	assert.Equal(t, view1, view2, "Tab should be a no-op when diff panel is hidden")
+}
+
+func TestRebaseInteractiveModel_Tab_WorksWhenDiffVisible(t *testing.T) {
+	logOutput := "abc1234\x1ffeat: first\n"
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{logOutput, "main", "diff --git a/foo.go b/foo.go\n+new line"},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~1", "")
+	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	// Show the diff panel first
+	_ = m.Update(tea.KeyPressMsg{Code: 'D', ShiftedCode: 'D', Mod: tea.ModShift, Text: "D"})
+
+	view1 := m.View()
+	// Tab should now switch focus (border styles change)
+	_ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	view2 := m.View()
+
+	assert.NotEqual(t, view1, view2, "Tab should change focus when diff panel is visible")
+}
+
+func TestRebaseInteractiveModel_View_SinglePanelWhenDiffHidden(t *testing.T) {
+	logOutput := "abc1234\x1ffeat: first\n"
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{logOutput, "main", "diff --git a/foo.go b/foo.go\n+new"},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~1", "")
+	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	viewHidden := m.View()
+
+	// Show the diff
+	_ = m.Update(tea.KeyPressMsg{Code: 'D', ShiftedCode: 'D', Mod: tea.ModShift, Text: "D"})
+	viewShown := m.View()
+
+	// The two-panel view must be wider (longer lines or more content) than single-panel
+	assert.NotEqual(t, viewHidden, viewShown, "View() must differ between single and two panel modes")
+}
+
+func TestRebaseInteractiveModel_HelpIncludesDToggle(t *testing.T) {
+	m := newFakeRebaseModel(t, "", "main", "HEAD~5")
+	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	// Open help overlay
+	_ = m.Update(tea.KeyPressMsg{Code: '?', Text: "?"})
+	view := m.View()
+
+	assert.Contains(t, view, "D", "help overlay must mention D keybinding")
+	assert.Contains(t, view, "toggle diff", "help overlay must describe D as toggle diff")
+}
+
+func TestRebaseInteractiveModel_StatusBarHintIncludesD(t *testing.T) {
+	logOutput := "abc1234\x1ffeat: first\n"
+	m := newFakeRebaseModel(t, logOutput, "main", "HEAD~1")
+	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	view := m.View()
+	assert.Contains(t, view, "D: diff", "status bar hints must include 'D: diff'")
 }

@@ -1,3 +1,18 @@
+# Commands
+
+| Command              | Replaces                            |
+|----------------------|-------------------------------------|
+| `add`                | forgit add                          |
+| `hunk-add`           | git add -p / git add --interactive  |
+| `checkout`           | git restore (working tree)          |
+| `diff`               | diffnav                             |
+| `fixup`              | manual git commit --fixup + rebase  |
+| `rebase-interactive` | git-interactive-rebase-tool         |
+| `reset`              | git reset --soft/--mixed/--hard     |
+| `log`                | tig / git log (visual browser)      |
+
+---
+
 # Command Specifications
 
 Detailed command specifications for gti. Each command includes keybindings, UI layout, state transitions, edge cases, and git commands used.
@@ -291,19 +306,33 @@ When called with a file path argument, reads existing todo file, presents editor
 
 **Mode detection:** inspects first argument via `os.Stat()`. Existing file → Path B; otherwise → Path A.
 
-Left panel: ordered todo list.
-Right panel: `git show <hash>` of commit under cursor.
+Left panel: ordered todo list (full terminal width by default).
+Right panel: `git show <hash>` of commit under cursor (hidden on startup — press `D` to show).
+
+The diff panel is hidden by default so the command launches instantly without fetching diffs. Press `D` to toggle it on; the layout switches to a 45/55 left/right split to give commit subjects more room.
 
 ```
-+------------------------+-----------------------------------------------+
-| 5 commits on feature   |  commit a1b2c3                                |
-|  pick   a1b2c3 fix wifi|  diff --git a/driver.c b/driver.c             |
-|  pick   d4e5f6 add init|  @@ -42,7 ...                                |
-|  squash 7g8h9i cleanup |  ...                                          |
-|  drop   0j1k2l debug   |                                               |
-|  pick   3m4n5o add probe                                               |
-+------------------------+-----------------------------------------------+
-| p r e s f d  j/k move  V visual  u undo  b break  ! edit  ⏎ go  q   |
++------------------------------------------------------+
+| 5 commits on feature                                 |
+|  pick   a1b2c3 fix wifi scan in mt7927               |
+|  pick   d4e5f6 add init sequence                     |
+|  squash 7g8h9i cleanup headers                       |
+|  drop   0j1k2l debug logging                         |
+|  pick   3m4n5o add probe callbacks                   |
++------------------------------------------------------+
+| p r e s f d  K/J reorder  D: diff  ⏎ go  q          |
+```
+
+With diff visible (`D` pressed):
+
+```
++----------------------+-----------------------------------+
+| 5 commits on feature |  commit a1b2c3                    |
+|  pick   a1b2c3 ...   |  diff --git a/driver.c b/driver.c |
+|  pick   d4e5f6 ...   |  @@ -42,7 ...                    |
+|  squash 7g8h9i ...   |  ...                              |
++----------------------+-----------------------------------+
+| p r e s f d  K/J reorder  D: diff  Tab: panel  ⏎ go  q |
 ```
 
 ### Action keybindings
@@ -322,6 +351,8 @@ Right panel: `git show <hash>` of commit under cursor.
 - `k` / `j`: move row up / down (reorder, swap with adjacent row)
 - `↑` / `↓`: navigate cursor between rows
 - `Home` / `End`: jump to first / last entry
+- `D`: toggle diff panel. Hidden on startup. When shown, uses a 45/55 split; `Tab` to switch focus between panels.
+- `Tab`: switch focus between left and right panels (only active when diff panel is visible)
 - `V`: enter visual mode — select range of rows
 - `u`: undo last action (self-inverting toggle)
 - `b`: insert `break` line below cursor (pause point)

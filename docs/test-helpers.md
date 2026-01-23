@@ -212,3 +212,25 @@ These simulate real user sessions crossing command boundaries via the `app.Model
 6. **Log → diff (read-only, no refresh)** — log → D → diff → q → verify no re-fetch
 7. **Partial staging visibility in add** — hunk stage → add shows file in both sections
 8. **Checkout bulk restore** — double-A confirm pattern → verify all restored
+
+### TUI startup assertion pattern
+
+Integration tests for TUI commands use `runTUI` (in `helpers_test.go`) which launches the binary with `TERM=dumb`, pipes `"q\n"` to stdin, and captures stderr. The key assertion is:
+
+```go
+stderr, _ := runTUI(t, repoDir, "fixup")
+assert.Empty(t, stderr, "should start without errors")
+```
+
+**Why stderr, not exit code?** Bubbletea may exit non-zero in dumb terminals (no TTY). That's fine. But pre-TUI failures - git command errors, precondition checks - cause cobra to print `Error: <message>` to stderr before the TUI ever starts. Asserting stderr is empty catches these startup bugs.
+
+**TTY error filtering:** In environments without `/dev/tty` (CI, sandboxes), bubbletea itself produces a TTY error on stderr. `filterTTYError()` strips this known-benign output so it doesn't cause false failures. Real errors (e.g. `fork/exec: invalid argument` from a bad git format string) never contain "could not open TTY" and pass through unfiltered.
+
+**Editor-mode tests** (rebase-interactive with a todo file path) can't use `runTUI` because they need custom stdin. These capture stderr manually and call `filterTTYError` directly:
+
+```go
+var stderrBuf bytes.Buffer
+cmd.Stderr = &stderrBuf
+_ = cmd.Run()
+assert.Empty(t, filterTTYError(stderrBuf.String()), "should start without errors")
+```

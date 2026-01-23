@@ -90,6 +90,26 @@ func TestRebaseInteractive_EditorMode_WritesBackTodo(t *testing.T) {
 	assert.NotEmpty(t, string(written), "todo file should not be empty after invocation")
 }
 
+func TestRebase_ExitsCleanly(t *testing.T) {
+	repoDir := testhelper.NewTempRepo(t)
+	testhelper.WriteFile(t, repoDir, "a.txt", "content a\n")
+	testhelper.AddCommit(t, repoDir, "add a.txt")
+	testhelper.WriteFile(t, repoDir, "b.txt", "content b\n")
+	testhelper.AddCommit(t, repoDir, "add b.txt")
+
+	// Invoke in standalone TUI mode (HEAD~1 is a revision, not a file path)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, gtiBinary, "rebase-interactive", "HEAD~1")
+	cmd.Dir = repoDir
+	cmd.Stdin = strings.NewReader("q\n")
+	cmd.Env = append(os.Environ(), "TERM=dumb")
+	_ = cmd.Run()
+
+	assert.NoError(t, ctx.Err(), "process should not hang in standalone TUI mode")
+}
+
 func TestRebaseInteractive_EditorMode_AbortExitsNonZero(t *testing.T) {
 	repoDir := testhelper.NewTempRepo(t)
 	testhelper.WriteFile(t, repoDir, "a.txt", "content a\n")

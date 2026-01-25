@@ -3,12 +3,7 @@
 package integration_test
 
 import (
-	"context"
-	"os"
-	"os/exec"
-	"strings"
 	"testing"
-	"time"
 
 	"github.com/jetm/gti/internal/testhelper"
 	"github.com/stretchr/testify/assert"
@@ -19,31 +14,17 @@ func TestLog_ExitsCleanly(t *testing.T) {
 	testhelper.WriteFile(t, repoDir, "file1.txt", "content\n")
 	testhelper.AddCommit(t, repoDir, "add file1.txt")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, gtiBinary, "log")
-	cmd.Dir = repoDir
-	cmd.Stdin = strings.NewReader("q\n")
-	cmd.Env = append(os.Environ(), "TERM=dumb")
-	_ = cmd.Run()
-
-	assert.NoError(t, ctx.Err(), "process should not hang")
+	stderr, _ := runTUI(t, repoDir, "log")
+	assert.Empty(t, stderr, "should start without errors")
 }
 
-func TestLog_AllFlag(t *testing.T) {
+func TestLog_AllFlag_UnknownFlag(t *testing.T) {
 	repoDir := testhelper.NewTempRepo(t)
 	testhelper.WriteFile(t, repoDir, "file1.txt", "content\n")
 	testhelper.AddCommit(t, repoDir, "add file1.txt")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, gtiBinary, "log", "--all")
-	cmd.Dir = repoDir
-	cmd.Stdin = strings.NewReader("q\n")
-	cmd.Env = append(os.Environ(), "TERM=dumb")
-	_ = cmd.Run()
-
-	assert.NoError(t, ctx.Err(), "process should not hang with --all flag")
+	// --all is not implemented; gti log should reject it
+	stderr, err := runTUI(t, repoDir, "log", "--all")
+	assert.Error(t, err, "unknown flag should exit non-zero")
+	assert.Contains(t, stderr, "unknown flag", "should report unknown flag")
 }

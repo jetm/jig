@@ -24,9 +24,9 @@ func RecentCommits(ctx context.Context, r Runner, n int) ([]CommitEntry, error) 
 // the given revision ref (e.g. "HEAD", "main", "v1.0"). An empty ref defaults
 // to HEAD (standard git log behaviour).
 func RecentCommitsFrom(ctx context.Context, r Runner, n int, ref string) ([]CommitEntry, error) {
-	// Use NUL-separated format to safely handle special chars in subjects.
-	// Format: hash\x1fsubject\x1fauthor\x1freldate\x00 per commit.
-	format := "--format=%h\x1f%s\x1f%an\x1f%ar\x00"
+	// Use RS-separated format to safely handle special chars in subjects.
+	// Format: hash\x1fsubject\x1fauthor\x1freldate\x1e per commit.
+	format := "--format=%h\x1f%s\x1f%an\x1f%ar\x1e"
 	args := []string{"log", fmt.Sprintf("-n%d", n), format}
 	if ref != "" {
 		args = append(args, ref)
@@ -87,7 +87,7 @@ func parseCommitLog(raw string) []CommitEntry {
 	}
 
 	var entries []CommitEntry
-	records := strings.SplitSeq(raw, "\x00")
+	records := strings.SplitSeq(raw, "\x1e")
 	for rec := range records {
 		rec = strings.TrimSpace(rec)
 		if rec == "" {

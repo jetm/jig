@@ -38,7 +38,7 @@ func TestNewLogModel_NoCommits(t *testing.T) {
 }
 
 func TestNewLogModel_WithCommits(t *testing.T) {
-	logOutput := "abc1234\x1ffeat: something\x1fAlice\x1f2 hours ago\x00"
+	logOutput := "abc1234\x1ffeat: something\x1fAlice\x1f2 hours ago\x1e"
 	m := newFakeLogModel(t, logOutput, "main", "")
 	if m == nil {
 		t.Fatal("NewLogModel returned nil")
@@ -46,7 +46,7 @@ func TestNewLogModel_WithCommits(t *testing.T) {
 }
 
 func TestNewLogModel_WithRef(t *testing.T) {
-	logOutput := "abc1234\x1ffeat: something\x1fAlice\x1f2 hours ago\x00"
+	logOutput := "abc1234\x1ffeat: something\x1fAlice\x1f2 hours ago\x1e"
 	m := newFakeLogModel(t, logOutput, "main", "v1.0")
 	if m == nil {
 		t.Fatal("NewLogModel returned nil with ref")
@@ -72,7 +72,7 @@ func TestLogModel_View_NoCommits(t *testing.T) {
 }
 
 func TestLogModel_View_WithCommits(t *testing.T) {
-	logOutput := "abc1234\x1ffeat: something\x1fAlice\x1f2 hours ago\x00"
+	logOutput := "abc1234\x1ffeat: something\x1fAlice\x1f2 hours ago\x1e"
 	m := newFakeLogModel(t, logOutput, "main", "")
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	view := m.View()
@@ -144,7 +144,7 @@ func TestLogModel_Update_HelpHidesNavigation(t *testing.T) {
 
 func TestLogModel_RenderSelectedDiff_ErrorPath(t *testing.T) {
 	// Make git show return an error so renderSelectedDiff shows an error message.
-	logOutput := "abc1234\x1ffeat: something\x1fAlice\x1f2 hours ago\x00"
+	logOutput := "abc1234\x1ffeat: something\x1fAlice\x1f2 hours ago\x1e"
 	runner := &testhelper.FakeRunner{
 		Outputs: []string{logOutput, "main", ""},
 		Errors:  []error{nil, nil, fmt.Errorf("bad object abc1234")},
@@ -161,7 +161,7 @@ func TestLogModel_RenderSelectedDiff_ErrorPath(t *testing.T) {
 }
 
 func TestLogModel_TabThenQuitFromRightPanel(t *testing.T) {
-	logOutput := "abc1234\x1ffeat: first\x1fAlice\x1f2 hours ago\x00"
+	logOutput := "abc1234\x1ffeat: first\x1fAlice\x1f2 hours ago\x1e"
 	m := newFakeLogModel(t, logOutput, "main", "")
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 
@@ -175,7 +175,7 @@ func TestLogModel_TabThenQuitFromRightPanel(t *testing.T) {
 }
 
 func TestLogModel_TabThenJScrollsDiff(t *testing.T) {
-	logOutput := "abc1234\x1ffeat: first\x1fAlice\x1f2 hours ago\x00"
+	logOutput := "abc1234\x1ffeat: first\x1fAlice\x1f2 hours ago\x1e"
 	m := newFakeLogModel(t, logOutput, "main", "")
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 
@@ -189,8 +189,8 @@ func TestLogModel_TabThenJScrollsDiff(t *testing.T) {
 }
 
 func TestLogModel_Update_NavigationJ(t *testing.T) {
-	logOutput := "abc1234\x1ffeat: first\x1fAlice\x1f2 hours ago\x00" +
-		"bbb5678\x1ffeat: second\x1fBob\x1f3 hours ago\x00"
+	logOutput := "abc1234\x1ffeat: first\x1fAlice\x1f2 hours ago\x1e" +
+		"bbb5678\x1ffeat: second\x1fBob\x1f3 hours ago\x1e"
 	// Need diff fetches: initial for abc1234, then after j pressed for bbb5678
 	runner := &testhelper.FakeRunner{
 		Outputs: []string{logOutput, "main", "diff for abc1234", "diff for bbb5678"},

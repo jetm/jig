@@ -3,12 +3,9 @@
 package integration_test
 
 import (
-	"context"
 	"os"
 	"os/exec"
-	"strings"
 	"testing"
-	"time"
 
 	"github.com/jetm/gti/internal/testhelper"
 	"github.com/stretchr/testify/assert"
@@ -36,14 +33,6 @@ func TestFixup_ExitsCleanly(t *testing.T) {
 	out, err := exec.Command("git", "-C", repoDir, "add", "file1.txt").CombinedOutput()
 	require.NoError(t, err, "staging file: %s", out)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, gtiBinary, "fixup")
-	cmd.Dir = repoDir
-	cmd.Stdin = strings.NewReader("q\n")
-	cmd.Env = append(os.Environ(), "TERM=dumb")
-	_ = cmd.Run()
-
-	assert.NoError(t, ctx.Err(), "process should not hang")
+	stderr, _ := runTUI(t, repoDir, "fixup")
+	assert.Empty(t, stderr, "should start without errors")
 }

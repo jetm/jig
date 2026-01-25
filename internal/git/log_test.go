@@ -22,8 +22,8 @@ func TestParseCommitLog_Empty(t *testing.T) {
 }
 
 func TestParseCommitLog_SingleCommit(t *testing.T) {
-	// Simulate git log output: hash\x1fsubject\x1fauthor\x1freldate\x00
-	raw := "abc1234\x1ffeat: add fixup command\x1fJane Doe\x1f2 hours ago\x00"
+	// Simulate git log output: hash\x1fsubject\x1fauthor\x1freldate\x1e
+	raw := "abc1234\x1ffeat: add fixup command\x1fJane Doe\x1f2 hours ago\x1e"
 	runner := &testhelper.FakeRunner{Outputs: []string{raw}}
 	commits, err := git.RecentCommits(context.Background(), runner, 20)
 	if err != nil {
@@ -48,8 +48,8 @@ func TestParseCommitLog_SingleCommit(t *testing.T) {
 }
 
 func TestParseCommitLog_MultipleCommits(t *testing.T) {
-	raw := "aaa0001\x1ffirst commit\x1fAlice\x1f1 day ago\x00" +
-		"bbb0002\x1fsecond commit\x1fBob\x1f3 hours ago\x00"
+	raw := "aaa0001\x1ffirst commit\x1fAlice\x1f1 day ago\x1e" +
+		"bbb0002\x1fsecond commit\x1fBob\x1f3 hours ago\x1e"
 	runner := &testhelper.FakeRunner{Outputs: []string{raw}}
 	commits, err := git.RecentCommits(context.Background(), runner, 20)
 	if err != nil {
@@ -68,9 +68,9 @@ func TestParseCommitLog_MultipleCommits(t *testing.T) {
 
 func TestParseCommitLog_SkipsMalformedRecords(t *testing.T) {
 	// A record without the correct number of fields is silently skipped.
-	raw := "aaa0001\x1ffirst commit\x1fAlice\x1f1 day ago\x00" +
-		"malformed\x00" +
-		"bbb0002\x1fsecond commit\x1fBob\x1f3 hours ago\x00"
+	raw := "aaa0001\x1ffirst commit\x1fAlice\x1f1 day ago\x1e" +
+		"malformed\x1e" +
+		"bbb0002\x1fsecond commit\x1fBob\x1f3 hours ago\x1e"
 	runner := &testhelper.FakeRunner{Outputs: []string{raw}}
 	commits, err := git.RecentCommits(context.Background(), runner, 20)
 	if err != nil {
@@ -151,7 +151,7 @@ func TestCreateFixupCommit_UsesFixupFlag(t *testing.T) {
 }
 
 func TestRecentCommitsFrom_NoRef(t *testing.T) {
-	raw := "abc1234\x1ffeat: add log command\x1fJane Doe\x1f1 hour ago\x00"
+	raw := "abc1234\x1ffeat: add log command\x1fJane Doe\x1f1 hour ago\x1e"
 	runner := &testhelper.FakeRunner{Outputs: []string{raw}}
 	commits, err := git.RecentCommitsFrom(context.Background(), runner, 20, "")
 	if err != nil {
@@ -163,7 +163,7 @@ func TestRecentCommitsFrom_NoRef(t *testing.T) {
 }
 
 func TestRecentCommitsFrom_WithRef(t *testing.T) {
-	raw := "def5678\x1ffeat: old commit\x1fBob\x1f5 days ago\x00"
+	raw := "def5678\x1ffeat: old commit\x1fBob\x1f5 days ago\x1e"
 	runner := &testhelper.FakeRunner{Outputs: []string{raw}}
 	commits, err := git.RecentCommitsFrom(context.Background(), runner, 20, "v1.0")
 	if err != nil {
@@ -202,9 +202,9 @@ func TestParseCommitLog_WhitespaceOnly(t *testing.T) {
 	}
 }
 
-func TestParseCommitLog_TrailingNulSeparators(t *testing.T) {
-	// Extra NUL separators should be treated as empty records and skipped.
-	raw := "abc1234\x1ffeat: test\x1fAlice\x1f1 day ago\x00\x00\x00"
+func TestParseCommitLog_TrailingRecordSeparators(t *testing.T) {
+	// Extra record separators should be treated as empty records and skipped.
+	raw := "abc1234\x1ffeat: test\x1fAlice\x1f1 day ago\x1e\x1e\x1e"
 	runner := &testhelper.FakeRunner{Outputs: []string{raw}}
 	commits, err := git.RecentCommits(context.Background(), runner, 20)
 	if err != nil {

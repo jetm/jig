@@ -106,7 +106,7 @@ func TestNewFixupModel_NoCommits(t *testing.T) {
 }
 
 func TestNewFixupModel_WithCommits(t *testing.T) {
-	logOutput := "abc1234\x1ffeat: something\x1fAlice\x1f2 hours ago\x00"
+	logOutput := "abc1234\x1ffeat: something\x1fAlice\x1f2 hours ago\x1e"
 	m := newFakeFixupModel(t, logOutput, "main")
 	if m == nil {
 		t.Fatal("NewFixupModel returned nil")
@@ -133,7 +133,7 @@ func TestFixupModel_View_NoCommits(t *testing.T) {
 }
 
 func TestFixupModel_View_WithCommits(t *testing.T) {
-	logOutput := "abc1234\x1ffeat: something\x1fAlice\x1f2 hours ago\x00"
+	logOutput := "abc1234\x1ffeat: something\x1fAlice\x1f2 hours ago\x1e"
 	m := newFakeFixupModel(t, logOutput, "main")
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	view := m.View()
@@ -214,7 +214,7 @@ func TestFixupModel_Update_EnterNoCommits(t *testing.T) {
 
 func TestFixupModel_Update_EnterWithCommits_Failure(t *testing.T) {
 	// Provide commits but make git commit --fixup fail
-	logOutput := "abc1234\x1ffeat: something\x1fAlice\x1f2 hours ago\x00"
+	logOutput := "abc1234\x1ffeat: something\x1fAlice\x1f2 hours ago\x1e"
 	runner := &testhelper.FakeRunner{
 		// outputs: staged-check, reporoot, log, branch, show (init), then "" for failed commit
 		Outputs: []string{"", "/fake/repo", logOutput, "main", "diff content", ""},
@@ -235,7 +235,7 @@ func TestFixupModel_Update_EnterWithCommits_Failure(t *testing.T) {
 }
 
 func TestFixupModel_Update_EnterWithCommits_Success(t *testing.T) {
-	logOutput := "abc1234\x1ffeat: something\x1fAlice\x1f2 hours ago\x00"
+	logOutput := "abc1234\x1ffeat: something\x1fAlice\x1f2 hours ago\x1e"
 	runner := &testhelper.FakeRunner{
 		// staged-check, reporoot, log, branch, show (init), fixup commit, autosquash rebase
 		Outputs: []string{"", "/fake/repo", logOutput, "main", "diff content", "[main def5678] fixup! feat: something", ""},
@@ -261,7 +261,7 @@ func TestFixupModel_Update_EnterWithCommits_Success(t *testing.T) {
 
 func TestFixupModel_RenderSelectedDiff_ErrorPath(t *testing.T) {
 	// Make git show return an error so renderSelectedDiff shows an error message
-	logOutput := "abc1234\x1ffeat: something\x1fAlice\x1f2 hours ago\x00"
+	logOutput := "abc1234\x1ffeat: something\x1fAlice\x1f2 hours ago\x1e"
 	runner := &testhelper.FakeRunner{
 		// staged-check, reporoot, log, branch, then error on show
 		Outputs: []string{"", "/fake/repo", logOutput, "main", ""},
@@ -283,7 +283,7 @@ func TestFixupModel_RenderSelectedDiff_ErrorPath(t *testing.T) {
 }
 
 func TestFixupModel_TabThenQuitFromRightPanel(t *testing.T) {
-	logOutput := "abc1234\x1ffeat: first\x1fAlice\x1f2 hours ago\x00"
+	logOutput := "abc1234\x1ffeat: first\x1fAlice\x1f2 hours ago\x1e"
 	m := newFakeFixupModel(t, logOutput, "main")
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 
@@ -295,7 +295,7 @@ func TestFixupModel_TabThenQuitFromRightPanel(t *testing.T) {
 }
 
 func TestFixupModel_TabThenEnterFromRightPanel(t *testing.T) {
-	logOutput := "abc1234\x1ffeat: first\x1fAlice\x1f2 hours ago\x00"
+	logOutput := "abc1234\x1ffeat: first\x1fAlice\x1f2 hours ago\x1e"
 	runner := &testhelper.FakeRunner{
 		// staged-check, reporoot, log, branch, show (init), fixup commit, autosquash rebase
 		Outputs: []string{"", "/fake/repo", logOutput, "main", "diff content", "[main def5678] fixup!", ""},
@@ -318,7 +318,7 @@ func TestFixupModel_TabThenEnterFromRightPanel(t *testing.T) {
 }
 
 func TestFixupModel_ConfirmFixup_CallsAutosquashRebase(t *testing.T) {
-	logOutput := "abc1234\x1ffeat: something\x1fAlice\x1f2 hours ago\x00"
+	logOutput := "abc1234\x1ffeat: something\x1fAlice\x1f2 hours ago\x1e"
 	runner := &testhelper.FakeRunner{
 		// staged-check, reporoot, log, branch, show (init), fixup commit, autosquash rebase
 		Outputs: []string{"", "/fake/repo", logOutput, "main", "diff content", "[main def5678] fixup! feat: something", ""},
@@ -347,7 +347,7 @@ func TestFixupModel_ConfirmFixup_CallsAutosquashRebase(t *testing.T) {
 }
 
 func TestFixupModel_ConfirmFixup_AutosquashFailure_ShowsError(t *testing.T) {
-	logOutput := "abc1234\x1ffeat: something\x1fAlice\x1f2 hours ago\x00"
+	logOutput := "abc1234\x1ffeat: something\x1fAlice\x1f2 hours ago\x1e"
 	runner := &testhelper.FakeRunner{
 		// staged-check, reporoot, log, branch, show (init), fixup commit succeeds, autosquash rebase fails
 		Outputs: []string{"", "/fake/repo", logOutput, "main", "diff content", "[main def5678] fixup! feat: something", ""},
@@ -377,8 +377,8 @@ func TestFixupModel_ConfirmFixup_AutosquashFailure_ShowsError(t *testing.T) {
 }
 
 func TestFixupModel_Update_NavigationJ(t *testing.T) {
-	logOutput := "abc1234\x1ffeat: first\x1fAlice\x1f2 hours ago\x00" +
-		"bbb5678\x1ffeat: second\x1fBob\x1f3 hours ago\x00"
+	logOutput := "abc1234\x1ffeat: first\x1fAlice\x1f2 hours ago\x1e" +
+		"bbb5678\x1ffeat: second\x1fBob\x1f3 hours ago\x1e"
 	// Need diff fetches: initial for abc1234, then after j pressed for bbb5678
 	runner := &testhelper.FakeRunner{
 		// staged-check, reporoot, log, branch, show(abc1234), show(bbb5678)

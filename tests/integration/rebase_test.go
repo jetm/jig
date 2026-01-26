@@ -75,6 +75,58 @@ func TestRebase_ExitsCleanly(t *testing.T) {
 	assert.Empty(t, stderr, "should start without errors")
 }
 
+func TestRebaseInteractive_TUI_SetSquashAction(t *testing.T) {
+	repoDir := testhelper.NewTempRepo(t)
+	testhelper.WriteFile(t, repoDir, "a.txt", "content a\n")
+	testhelper.AddCommit(t, repoDir, "add a.txt")
+	testhelper.WriteFile(t, repoDir, "b.txt", "content b\n")
+	testhelper.AddCommit(t, repoDir, "add b.txt")
+
+	tm := newRebaseInteractiveTestModel(t, repoDir, "HEAD~2")
+
+	// Wait for commits to render
+	tm.waitFor(t, containsOutput("add a.txt"))
+
+	// Press 's' to set squash action on the selected commit
+	sendKey(tm, 's')
+
+	// Wait for the output to show "squash"
+	tm.waitFor(t, containsOutput("squash"))
+
+	tm.quit(t)
+}
+
+func TestRebaseInteractive_TUI_ReorderCommits(t *testing.T) {
+	repoDir := testhelper.NewTempRepo(t)
+	testhelper.WriteFile(t, repoDir, "a.txt", "content a\n")
+	testhelper.AddCommit(t, repoDir, "commit-alpha")
+	testhelper.WriteFile(t, repoDir, "b.txt", "content b\n")
+	testhelper.AddCommit(t, repoDir, "commit-beta")
+
+	tm := newRebaseInteractiveTestModel(t, repoDir, "HEAD~2")
+
+	// Wait for both commits to render. Rebase shows oldest first:
+	// commit-alpha (index 0, cursor starts here)
+	// commit-beta  (index 1)
+	tm.waitFor(t, containsOutput("commit-alpha"))
+	tm.waitFor(t, containsOutput("commit-beta"))
+
+	// Move cursor down to commit-beta, then K to move it up.
+	// After K, order should be: commit-beta, commit-alpha.
+	sendKey(tm, 'j')
+	time.Sleep(100 * time.Millisecond)
+	sendKey(tm, 'K')
+
+	// Wait for re-render where commit-beta appears before commit-alpha
+	tm.waitFor(t, func(out string) bool {
+		betaIdx := strings.LastIndex(out, "commit-beta")
+		alphaIdx := strings.LastIndex(out, "commit-alpha")
+		return betaIdx >= 0 && alphaIdx >= 0 && betaIdx < alphaIdx
+	})
+
+	tm.quit(t)
+}
+
 func TestRebaseInteractive_EditorMode_AbortExitsNonZero(t *testing.T) {
 	repoDir := testhelper.NewTempRepo(t)
 	testhelper.WriteFile(t, repoDir, "a.txt", "content a\n")

@@ -46,3 +46,32 @@ func TestDiff_Revision(t *testing.T) {
 	stderr, _ := runTUI(t, repoDir, "diff", "HEAD~1")
 	assert.Empty(t, stderr, "should start without errors")
 }
+
+func TestDiff_TUI_ShowsModifiedFiles(t *testing.T) {
+	repoDir := testhelper.NewTempRepo(t)
+	testhelper.WriteFile(t, repoDir, "changed.txt", "original\n")
+	testhelper.AddCommit(t, repoDir, "add changed.txt")
+	testhelper.WriteFile(t, repoDir, "changed.txt", "modified\n")
+
+	tm := newDiffTestModel(t, repoDir, "", false)
+
+	// Wait for the TUI to render the modified file name
+	tm.waitFor(t, containsOutput("changed.txt"))
+
+	tm.quit(t)
+}
+
+func TestDiff_TUI_StagedFlag_ShowsStagedFiles(t *testing.T) {
+	repoDir := testhelper.NewTempRepo(t)
+	testhelper.WriteFile(t, repoDir, "staged.txt", "original\n")
+	testhelper.AddCommit(t, repoDir, "add staged.txt")
+	testhelper.WriteFile(t, repoDir, "staged.txt", "modified\n")
+	testhelper.StageFile(t, repoDir, "staged.txt")
+
+	tm := newDiffTestModel(t, repoDir, "", true)
+
+	// Wait for the TUI to render the staged file name
+	tm.waitFor(t, containsOutput("staged.txt"))
+
+	tm.quit(t)
+}

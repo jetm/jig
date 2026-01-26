@@ -234,3 +234,106 @@ cmd.Stderr = &stderrBuf
 _ = cmd.Run()
 assert.Empty(t, filterTTYError(stderrBuf.String()), "should start without errors")
 ```
+
+### In-process TUI interaction tests (`teatest_helpers_test.go`)
+
+The third test layer exercises the full `tea.Program` event loop with real git state mutations. Unlike the startup tests above (which launch the compiled binary), these construct models in-process with virtual I/O - no real TTY needed.
+
+**Why not upstream teatest?** The `github.com/charmbracelet/x/exp/teatest/v2` module imports `github.com/charmbracelet/bubbletea/v2`, but gti uses `charm.land/bubbletea/v2`. These are different Go module paths with incompatible types. The helpers in `teatest_helpers_test.go` are a ~150-line equivalent using our bubbletea directly.
+
+**Architecture:**
+
+```text
+testModel
+  ├── tea.Program (WithInput=empty, WithOutput=safeBuffer, WithoutSignals)
+  ├── safeBuffer (concurrency-safe output capture)
+  ├── modelCh (receives final model after program exits)
+  └── doneCh (signals program completion)
+```
+
+The `testModel` wraps a `tea.Program` with:
+- `bytes.NewReader(nil)` as input (no stdin - all input via `Send()`)
+- `safeBuffer` as output (concurrency-safe for reads during program execution)
+- `WithoutSignals()` to prevent signal handling interference
+- `WithWindowSize(120, 40)` for consistent rendering
+
+**Core helpers:**
+
+```go
+// testModel methods
+func (tm *testModel) send(msg tea.Msg)           // inject messages into the event loop
+func (tm *testModel) waitFor(tb, condition, ...)  // poll output until condition or 5s timeout
+func (tm *testModel) quit(tb)                     // send quit + wait for program exit
+func (tm *testModel) waitDone(tb)                 // wait for program to finish (5s timeout)
+
+// Keystroke helpers
+func sendSpace(tm *testModel)          // tea.KeySpace
+func sendEnter(tm *testModel)          // tea.KeyEnter
+func sendTab(tm *testModel)            // tea.KeyTab
+func sendKey(tm *testModel, c rune)    // printable character (e.g. 'a', 's', 'y')
+
+// Output condition helpers
+func containsOutput(substr string) func(string) bool
+```
+
+**Model construction:** Each command has a `newXxxTestModel` helper that handles the full construction chain:
+
+1. `newRunnerInDir(tb, dir)` - holds `cwdMu` during `os.Chdir` + `git.NewExecRunner` + restore
+2. `config.Load()` + `diff.PlainRenderer{}` (no delta/chroma dependency)
+3. `commands.NewXxxModel(...)` with command-specific parameters
+4. `xxxTeaModelAdapter` wrapping (duplicates unexported adapters from `cmd/gti/main.go`)
+5. `app.New(adapter, runner, cfg)` as the root model
+6. `newTestModel(tb, appModel)` starts the program in a goroutine
+
+```go
+// Available constructors
+func newAddTestModel(tb, repoDir string) *testModel
+func newCheckoutTestModel(tb, repoDir string) *testModel
+func newDiffTestModel(tb, repoDir string, revision string, staged bool) *testModel
+func newFixupTestModel(tb, repoDir string) (*testModel, error)  // fixup can fail if nothing staged
+func newHunkAddTestModel(tb, repoDir string) *testModel
+func newLogTestModel(tb, repoDir string, ref string) *testModel
+func newRebaseInteractiveTestModel(tb, repoDir string, base string) *testModel
+func newResetTestModel(tb, repoDir string) *testModel
+```
+
+**CWD safety:** `git.NewExecRunner` resolves the repo root via `git rev-parse --show-toplevel` from CWD. A package-level `cwdMu sync.Mutex` serializes all `os.Chdir` calls during runner construction. Each test gets its own temp repo and runner instance - the mutex is only held during construction, not during test execution.
+
+**Test pattern:** Wait for render, send keystrokes, assert git state.
+
+```go
+func TestAdd_TUI_StageSingleFile(t *testing.T) {
+    repoDir := testhelper.NewTempRepo(t)
+    testhelper.WriteFile(t, repoDir, "file1.txt", "hello\n")
+    testhelper.AddCommit(t, repoDir, "add file1.txt")
+    testhelper.WriteFile(t, repoDir, "file1.txt", "hello modified\n")
+
+    tm := newAddTestModel(t, repoDir)
+
+    tm.waitFor(t, containsOutput("file1.txt"))  // wait for TUI to render
+    sendSpace(tm)                                 // select file
+    sendEnter(tm)                                 // confirm staging
+    tm.waitDone(t)                                // wait for program exit
+
+    // Assert git state, not rendered output
+    cached := gitRun(t, repoDir, "diff", "--name-only", "--cached")
+    assert.Contains(t, cached, "file1.txt")
+}
+```
+
+**Test coverage by command:**
+
+| Command | Test | Interaction | Git assertion |
+|---------|------|-------------|---------------|
+| add | Stage single file | Space + Enter | `diff --cached --name-only` contains file |
+| add | Stage all files | 'a' + Enter | `diff --cached --name-only` contains all files |
+| checkout | Restore file | Space + Enter + 'y' | File content reverts to committed version |
+| diff | Show modified files | (render only) | Output contains file name |
+| diff | Staged flag | (render only) | Output contains staged file name |
+| fixup | Fixup into commit | Enter | `CommitCount` unchanged, no staged files remain |
+| hunk-add | Stage hunk | 'a' (stage all) | `diff --cached --name-only` contains file |
+| log | Render commits | (render only) | Output contains commit messages |
+| log | Tab switches panel | Tab | Output changes (panel focus styling) |
+| rebase | Set squash action | 's' | Output contains "squash" |
+| rebase | Reorder commits | 'j' + 'K' | Commit order changes in output |
+| reset | Unstage file | Space + Enter | `diff --cached --name-only` no longer contains file |

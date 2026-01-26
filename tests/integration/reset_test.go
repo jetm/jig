@@ -38,6 +38,35 @@ func TestReset_DirectMode_UnstagesFile(t *testing.T) {
 	assert.NotContains(t, string(cachedAfter), "file1.txt", "file should not be staged after gti reset")
 }
 
+func TestReset_TUI_UnstageFile(t *testing.T) {
+	repoDir := testhelper.NewTempRepo(t)
+	testhelper.WriteFile(t, repoDir, "file1.txt", "original\n")
+	testhelper.AddCommit(t, repoDir, "add file1.txt")
+
+	// Modify and stage the file
+	testhelper.WriteFile(t, repoDir, "file1.txt", "modified\n")
+	testhelper.StageFile(t, repoDir, "file1.txt")
+
+	// Verify file is staged before TUI interaction
+	cachedBefore := gitRun(t, repoDir, "diff", "--name-only", "--cached")
+	require.Contains(t, cachedBefore, "file1.txt", "file should be staged before reset")
+
+	tm := newResetTestModel(t, repoDir)
+
+	// Wait for the TUI to render the staged file
+	tm.waitFor(t, containsOutput("file1.txt"))
+
+	// Space to select, Enter to unstage
+	sendSpace(tm)
+	sendEnter(tm)
+
+	tm.waitDone(t)
+
+	// Verify file is no longer staged
+	cachedAfter := gitRun(t, repoDir, "diff", "--name-only", "--cached")
+	assert.NotContains(t, cachedAfter, "file1.txt", "file should not be staged after reset TUI")
+}
+
 func TestReset_ExitsCleanly(t *testing.T) {
 	repoDir := testhelper.NewTempRepo(t)
 	testhelper.WriteFile(t, repoDir, "file1.txt", "original\n")

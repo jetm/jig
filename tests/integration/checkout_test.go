@@ -3,7 +3,9 @@
 package integration_test
 
 import (
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -55,4 +57,33 @@ func TestCheckout_NoChanges_ExitsCleanly(t *testing.T) {
 
 	stderr, _ := runTUI(t, repoDir, "checkout")
 	assert.Empty(t, stderr, "should start without errors")
+}
+
+func TestCheckout_TUI_RestoreModifiedFile(t *testing.T) {
+	repoDir := testhelper.NewTempRepo(t)
+	testhelper.WriteFile(t, repoDir, "file1.txt", "original\n")
+	testhelper.AddCommit(t, repoDir, "add file1.txt")
+	testhelper.WriteFile(t, repoDir, "file1.txt", "modified\n")
+
+	tm := newCheckoutTestModel(t, repoDir)
+
+	// Wait for the TUI to render the file
+	tm.waitFor(t, containsOutput("file1.txt"))
+
+	// Space to select, Enter to trigger confirmation, 'y' to confirm discard
+	sendSpace(tm)
+	sendEnter(tm)
+
+	// Wait for confirmation prompt
+	tm.waitFor(t, func(out string) bool {
+		return strings.Contains(out, "Discard") || strings.Contains(out, "discard") || strings.Contains(out, "y/N")
+	})
+
+	sendKey(tm, 'y')
+	tm.waitDone(t)
+
+	// Verify file is restored to original content
+	content, err := os.ReadFile(filepath.Join(repoDir, "file1.txt"))
+	require.NoError(t, err)
+	assert.Equal(t, "original\n", string(content), "file should be restored to committed version")
 }

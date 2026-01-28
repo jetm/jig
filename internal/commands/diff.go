@@ -29,13 +29,14 @@ type DiffModel struct {
 	width        int
 	height       int
 	focusRight   bool
+	showDiff     bool
 }
 
 // NewDiffModel creates a DiffModel by running git diff and parsing the output.
 func NewDiffModel(
 	ctx context.Context,
 	runner git.Runner,
-	_ config.Config,
+	cfg config.Config,
 	renderer diff.Renderer,
 	revision string,
 	staged bool,
@@ -63,6 +64,7 @@ func NewDiffModel(
 					{Key: "j/k", Desc: "move up/down"},
 					{Key: "o", Desc: "expand/collapse"},
 					{Key: "Tab", Desc: "switch panel"},
+					{Key: "D", Desc: "toggle diff"},
 					{Key: "?", Desc: "toggle help"},
 				},
 			},
@@ -77,12 +79,14 @@ func NewDiffModel(
 		branch:   branchName,
 	}
 
-	m.statusBar.SetHints("j/k: navigate  o: expand/collapse  Tab: panel  ?: help  q: quit")
+	m.showDiff = cfg.ShowDiffPanel
+
+	m.statusBar.SetHints("j/k: navigate  o: expand/collapse  Tab: panel  D: diff  ?: help  q: quit")
 	m.statusBar.SetBranch(branchName)
 	m.statusBar.SetMode("diff")
 
-	// Render first file if available
-	if len(files) > 0 {
+	// Render first file if available and diff panel is visible
+	if len(files) > 0 && m.showDiff {
 		m.checkSelectionChange()
 	}
 
@@ -113,7 +117,17 @@ func (m *DiffModel) Update(msg tea.Msg) tea.Cmd {
 		}
 
 		if msg.Code == tea.KeyTab {
-			m.focusRight = !m.focusRight
+			if m.showDiff {
+				m.focusRight = !m.focusRight
+			}
+			return sbCmd
+		}
+
+		if msg.String() == "D" {
+			m.showDiff = !m.showDiff
+			if m.showDiff && len(m.files) > 0 {
+				m.checkSelectionChange()
+			}
 			return sbCmd
 		}
 
@@ -155,8 +169,18 @@ func (m *DiffModel) View() string {
 		return "No changes to display."
 	}
 
-	leftW, rightW := tui.Columns(m.width)
 	contentHeight := m.height - 1 // reserve 1 row for status bar
+	m.statusBar.SetWidth(m.width)
+
+	if !m.showDiff {
+		panelW := m.width - 1
+		m.fileTree.SetWidth(panelW)
+		m.fileTree.SetHeight(contentHeight)
+		leftPanel := tui.StyleFocusBorder.Width(panelW).Height(contentHeight).MaxHeight(contentHeight).Render(m.fileTree.View())
+		return leftPanel + "\n" + m.statusBar.View()
+	}
+
+	leftW, rightW := tui.Columns(m.width)
 
 	// Account for border width (1 column each)
 	leftW--
@@ -177,7 +201,6 @@ func (m *DiffModel) View() string {
 
 	panels := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
 
-	m.statusBar.SetWidth(m.width)
 	return panels + "\n" + m.statusBar.View()
 }
 
@@ -207,8 +230,17 @@ func (m *DiffModel) renderSelectedDiff() {
 
 // resize recalculates component dimensions after a terminal resize.
 func (m *DiffModel) resize() {
-	leftW, rightW := tui.Columns(m.width)
 	contentHeight := m.height - 1
+	m.statusBar.SetWidth(m.width)
+
+	if !m.showDiff {
+		panelW := m.width - 1
+		m.fileTree.SetWidth(panelW)
+		m.fileTree.SetHeight(contentHeight)
+		return
+	}
+
+	leftW, rightW := tui.Columns(m.width)
 
 	leftW--
 	rightW--
@@ -217,5 +249,4 @@ func (m *DiffModel) resize() {
 	m.fileTree.SetHeight(contentHeight)
 	m.diffView.SetWidth(rightW)
 	m.diffView.SetHeight(contentHeight)
-	m.statusBar.SetWidth(m.width)
 }

@@ -8,9 +8,9 @@ const (
 )
 
 // Columns computes left and right panel widths from the total terminal width.
-// Left panel gets 30% (minimum 28 columns), right panel gets the remainder.
+// Left panel gets 40% (minimum 28 columns), right panel gets the remainder.
 func Columns(totalWidth int) (left, right int) {
-	left = max(totalWidth*30/100, minLeftCols)
+	left = max(totalWidth*40/100, minLeftCols)
 	right = totalWidth - left
 	return left, right
 }

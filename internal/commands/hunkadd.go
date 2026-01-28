@@ -37,13 +37,14 @@ type HunkAddModel struct {
 	decided    map[int]bool // hunkIdx -> staged (true) or skipped (false); nil means undecided
 	allDecided bool         // true once all hunks in current file are decided
 	focusRight bool
+	showDiff   bool
 }
 
 // NewHunkAddModel creates a HunkAddModel by listing files with unstaged changes.
 func NewHunkAddModel(
 	ctx context.Context,
 	runner git.Runner,
-	_ config.Config,
+	cfg config.Config,
 	renderer diff.Renderer,
 ) *HunkAddModel {
 	// Only modified tracked files have patchable hunks.
@@ -72,6 +73,7 @@ func NewHunkAddModel(
 					{Key: "j/k", Desc: "move between files"},
 					{Key: "o", Desc: "expand/collapse"},
 					{Key: "Tab", Desc: "switch panel"},
+					{Key: "D", Desc: "toggle diff"},
 					{Key: "n", Desc: "skip hunk"},
 					{Key: "?", Desc: "toggle help"},
 				},
@@ -90,7 +92,9 @@ func NewHunkAddModel(
 		decided: make(map[int]bool),
 	}
 
-	m.statusBar.SetHints("y: stage  n: skip  a: all  s: split  Tab: panel  ?: help  q: quit")
+	m.showDiff = cfg.ShowDiffPanel
+
+	m.statusBar.SetHints("y: stage  n: skip  a: all  s: split  Tab: panel  D: diff  ?: help  q: quit")
 	m.statusBar.SetBranch(branchName)
 	m.statusBar.SetMode("hunk-add")
 
@@ -123,7 +127,17 @@ func (m *HunkAddModel) Update(msg tea.Msg) tea.Cmd {
 		}
 
 		if msg.Code == tea.KeyTab {
-			m.focusRight = !m.focusRight
+			if m.showDiff {
+				m.focusRight = !m.focusRight
+			}
+			return sbCmd
+		}
+
+		if msg.String() == "D" {
+			m.showDiff = !m.showDiff
+			if m.showDiff && len(m.files) > 0 {
+				m.renderCurrentHunk()
+			}
 			return sbCmd
 		}
 
@@ -175,8 +189,19 @@ func (m *HunkAddModel) View() string {
 		return "No unstaged changes to stage."
 	}
 
-	leftW, rightW := tui.Columns(m.width)
 	contentHeight := m.height - 1
+	m.statusBar.SetWidth(m.width)
+	m.statusBar.SetHints(m.hintsWithProgress())
+
+	if !m.showDiff {
+		panelW := m.width - 1
+		m.fileList.SetWidth(panelW)
+		m.fileList.SetHeight(contentHeight)
+		leftPanel := tui.StyleFocusBorder.Width(panelW).Height(contentHeight).MaxHeight(contentHeight).Render(m.fileList.View())
+		return leftPanel + "\n" + m.statusBar.View()
+	}
+
+	leftW, rightW := tui.Columns(m.width)
 
 	leftW--
 	rightW--
@@ -196,8 +221,6 @@ func (m *HunkAddModel) View() string {
 
 	panels := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
 
-	m.statusBar.SetWidth(m.width)
-	m.statusBar.SetHints(m.hintsWithProgress())
 	return panels + "\n" + m.statusBar.View()
 }
 
@@ -463,8 +486,17 @@ func (m *HunkAddModel) patchHeader(fd git.FileDiff) string {
 
 // resize recalculates component dimensions after a terminal resize.
 func (m *HunkAddModel) resize() {
-	leftW, rightW := tui.Columns(m.width)
 	contentHeight := m.height - 1
+	m.statusBar.SetWidth(m.width)
+
+	if !m.showDiff {
+		panelW := m.width - 1
+		m.fileList.SetWidth(panelW)
+		m.fileList.SetHeight(contentHeight)
+		return
+	}
+
+	leftW, rightW := tui.Columns(m.width)
 
 	leftW--
 	rightW--
@@ -473,5 +505,4 @@ func (m *HunkAddModel) resize() {
 	m.fileList.SetHeight(contentHeight)
 	m.diffView.SetWidth(rightW)
 	m.diffView.SetHeight(contentHeight)
-	m.statusBar.SetWidth(m.width)
 }

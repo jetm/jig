@@ -513,6 +513,82 @@ func TestCheckoutModel_QuitFromRightPanel(t *testing.T) {
 	}
 }
 
+func TestCheckoutModel_DKeyTogglesDiffPanel(t *testing.T) {
+	t.Parallel()
+	m := newTestCheckoutModel(t, "M\tfoo.go\n")
+	m.width = 120
+	m.height = 40
+
+	// showDiff starts true (from config default)
+	viewWith := m.View()
+
+	// Press D to hide
+	m.Update(tea.KeyPressMsg{Code: 'D', ShiftedCode: 'D', Mod: tea.ModShift, Text: "D"})
+	viewWithout := m.View()
+
+	if viewWith == viewWithout {
+		t.Error("View() should differ after D toggles diff off")
+	}
+
+	// Press D again to show
+	m.Update(tea.KeyPressMsg{Code: 'D', ShiftedCode: 'D', Mod: tea.ModShift, Text: "D"})
+	viewAgain := m.View()
+
+	if viewAgain == viewWithout {
+		t.Error("View() should differ after D toggles diff back on")
+	}
+}
+
+func TestCheckoutModel_TabNoopWhenDiffHidden(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{
+			"M\tfoo.go\n", // diff --name-status
+			"main",        // branch name
+		},
+	}
+	cfg := config.NewDefault()
+	cfg.ShowDiffPanel = false
+	renderer := &diff.PlainRenderer{}
+	m := NewCheckoutModel(context.Background(), runner, cfg, renderer)
+	m.width = 120
+	m.height = 40
+
+	if m.focusRight {
+		t.Fatal("focusRight should start false")
+	}
+
+	m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	if m.focusRight {
+		t.Error("Tab should not toggle focus when diff is hidden")
+	}
+}
+
+func TestCheckoutModel_SinglePanelViewWhenDiffHidden(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{
+			"M\tfoo.go\n", // diff --name-status
+			"main",        // branch name
+		},
+	}
+	cfg := config.NewDefault()
+	cfg.ShowDiffPanel = false
+	renderer := &diff.PlainRenderer{}
+	m := NewCheckoutModel(context.Background(), runner, cfg, renderer)
+	m.width = 120
+	m.height = 40
+
+	view := m.View()
+	if view == "" {
+		t.Fatal("View() returned empty string")
+	}
+	// Should still contain the file name in the left panel
+	if !strings.Contains(view, "foo.go") {
+		t.Error("single-panel View() should still contain file name 'foo.go'")
+	}
+}
+
 func TestCheckoutModel_KeyJForwardsToList(t *testing.T) {
 	t.Parallel()
 	runner := &testhelper.FakeRunner{

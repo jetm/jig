@@ -30,13 +30,14 @@ type AddModel struct {
 	width      int
 	height     int
 	focusRight bool
+	showDiff   bool
 }
 
 // NewAddModel creates an AddModel by listing unstaged files.
 func NewAddModel(
 	ctx context.Context,
 	runner git.Runner,
-	_ config.Config,
+	cfg config.Config,
 	renderer diff.Renderer,
 ) *AddModel {
 	files, _ := git.ListUnstagedFiles(ctx, runner)
@@ -62,6 +63,7 @@ func NewAddModel(
 					{Key: "j/k", Desc: "move up/down"},
 					{Key: "o", Desc: "expand/collapse"},
 					{Key: "Tab", Desc: "switch panel"},
+					{Key: "D", Desc: "toggle diff"},
 					{Key: "Space", Desc: "toggle selection"},
 					{Key: "a", Desc: "select all"},
 					{Key: "d", Desc: "deselect all"},
@@ -79,11 +81,13 @@ func NewAddModel(
 		branch: branchName,
 	}
 
-	m.statusBar.SetHints("Space: toggle  a: all  d: none  Tab: panel  Enter: stage  ?: help  q: quit")
+	m.showDiff = cfg.ShowDiffPanel
+
+	m.statusBar.SetHints("Space: toggle  a: all  d: none  Tab: panel  D: diff  Enter: stage  ?: help  q: quit")
 	m.statusBar.SetBranch(branchName)
 	m.statusBar.SetMode("add")
 
-	if len(files) > 0 {
+	if len(files) > 0 && m.showDiff {
 		m.renderSelectedDiff()
 	}
 
@@ -112,7 +116,17 @@ func (m *AddModel) Update(msg tea.Msg) tea.Cmd {
 		}
 
 		if msg.Code == tea.KeyTab {
-			m.focusRight = !m.focusRight
+			if m.showDiff {
+				m.focusRight = !m.focusRight
+			}
+			return sbCmd
+		}
+
+		if msg.String() == "D" {
+			m.showDiff = !m.showDiff
+			if m.showDiff && len(m.files) > 0 {
+				m.renderSelectedDiff()
+			}
 			return sbCmd
 		}
 
@@ -165,8 +179,18 @@ func (m *AddModel) View() string {
 		return "Nothing to stage."
 	}
 
-	leftW, rightW := tui.Columns(m.width)
 	contentHeight := m.height - 1
+	m.statusBar.SetWidth(m.width)
+
+	if !m.showDiff {
+		panelW := m.width - 1
+		m.fileList.SetWidth(panelW)
+		m.fileList.SetHeight(contentHeight)
+		leftPanel := tui.StyleFocusBorder.Width(panelW).Height(contentHeight).MaxHeight(contentHeight).Render(m.fileList.View())
+		return leftPanel + "\n" + m.statusBar.View()
+	}
+
+	leftW, rightW := tui.Columns(m.width)
 
 	leftW--
 	rightW--
@@ -186,7 +210,6 @@ func (m *AddModel) View() string {
 
 	panels := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
 
-	m.statusBar.SetWidth(m.width)
 	return panels + "\n" + m.statusBar.View()
 }
 
@@ -274,8 +297,17 @@ func (m *AddModel) isTracked(path string) bool {
 
 // resize recalculates component dimensions after a terminal resize.
 func (m *AddModel) resize() {
-	leftW, rightW := tui.Columns(m.width)
 	contentHeight := m.height - 1
+	m.statusBar.SetWidth(m.width)
+
+	if !m.showDiff {
+		panelW := m.width - 1
+		m.fileList.SetWidth(panelW)
+		m.fileList.SetHeight(contentHeight)
+		return
+	}
+
+	leftW, rightW := tui.Columns(m.width)
 
 	leftW--
 	rightW--
@@ -284,5 +316,4 @@ func (m *AddModel) resize() {
 	m.fileList.SetHeight(contentHeight)
 	m.diffView.SetWidth(rightW)
 	m.diffView.SetHeight(contentHeight)
-	m.statusBar.SetWidth(m.width)
 }

@@ -24,6 +24,7 @@ type Config struct {
 	LogCommitLimit    int
 	RebaseDefaultBase string
 	UITheme           string
+	ShowDiffPanel     bool
 }
 
 // NewDefault returns a Config with default values.
@@ -40,6 +41,7 @@ func NewDefault() Config {
 		LogCommitLimit:    50,
 		RebaseDefaultBase: "HEAD~10",
 		UITheme:           "dark",
+		ShowDiffPanel:     true,
 	}
 }
 
@@ -56,7 +58,8 @@ type fileConfig struct {
 		DefaultBase string `yaml:"defaultBase"`
 	} `yaml:"rebase"`
 	UI struct {
-		Theme string `yaml:"theme"`
+		Theme         string `yaml:"theme"`
+		ShowDiffPanel *bool  `yaml:"showDiffPanel"`
 	} `yaml:"ui"`
 }
 
@@ -124,6 +127,9 @@ func applyFile(cfg *Config) error {
 		if fc.UI.Theme != "" {
 			cfg.UITheme = fc.UI.Theme
 		}
+		if fc.UI.ShowDiffPanel != nil {
+			cfg.ShowDiffPanel = *fc.UI.ShowDiffPanel
+		}
 
 		return nil
 	}
@@ -149,5 +155,62 @@ func applyEnv(cfg *Config) error {
 	if v := os.Getenv("GTI_UI_THEME"); v != "" {
 		cfg.UITheme = v
 	}
+	if v := os.Getenv("GTI_SHOW_DIFF_PANEL"); v != "" {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			return fmt.Errorf("invalid GTI_SHOW_DIFF_PANEL %q: %w", v, err)
+		}
+		cfg.ShowDiffPanel = b
+	}
+	return nil
+}
+
+// saveConfig is the intermediate struct used to marshal the YAML config file.
+type saveConfig struct {
+	Diff struct {
+		Renderer string `yaml:"renderer"`
+	} `yaml:"diff"`
+	Log struct {
+		CommitLimit int `yaml:"commitLimit"`
+	} `yaml:"log"`
+	Rebase struct {
+		DefaultBase string `yaml:"defaultBase"`
+	} `yaml:"rebase"`
+	UI struct {
+		Theme         string `yaml:"theme"`
+		ShowDiffPanel bool   `yaml:"showDiffPanel"`
+	} `yaml:"ui"`
+}
+
+// Save writes the given Config to the primary config file path.
+// It creates parent directories if they do not exist.
+func Save(cfg Config) error {
+	paths := configPaths()
+	if len(paths) == 0 {
+		return fmt.Errorf("cannot determine config path")
+	}
+	path := paths[0] // primary XDG path
+
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return fmt.Errorf("creating config directory %s: %w", dir, err)
+	}
+
+	var sc saveConfig
+	sc.Diff.Renderer = cfg.DiffRenderer
+	sc.Log.CommitLimit = cfg.LogCommitLimit
+	sc.Rebase.DefaultBase = cfg.RebaseDefaultBase
+	sc.UI.Theme = cfg.UITheme
+	sc.UI.ShowDiffPanel = cfg.ShowDiffPanel
+
+	data, err := yaml.Marshal(&sc)
+	if err != nil {
+		return fmt.Errorf("marshaling config: %w", err)
+	}
+
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return fmt.Errorf("writing config file %s: %w", path, err)
+	}
+
 	return nil
 }

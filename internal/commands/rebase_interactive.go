@@ -92,7 +92,7 @@ type RebaseInteractiveModel struct {
 func NewRebaseInteractiveModel(
 	ctx context.Context,
 	runner git.Runner,
-	_ config.Config,
+	cfg config.Config,
 	renderer diff.Renderer,
 	base string,
 	todoFilePath string,
@@ -158,6 +158,14 @@ func NewRebaseInteractiveModel(
 		}),
 		branch:      branchName,
 		selectedIdx: 0,
+	}
+
+	// Editor mode always starts with diff hidden; standalone reads from config.
+	if todoFilePath == "" {
+		m.showDiff = cfg.ShowDiffPanel
+		if m.showDiff && len(entries) > 0 {
+			m.renderSelectedDiff()
+		}
 	}
 
 	m.statusBar.SetHints("Space: cycle action  p/r/e/s/f/d: set action  K/J: reorder  Tab: panel  D: diff  Enter: confirm  ?: help  q: quit")

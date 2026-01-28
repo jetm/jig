@@ -39,6 +39,9 @@ func TestNewDefault(t *testing.T) {
 	if cfg.UITheme != "dark" {
 		t.Errorf("UITheme: got %q, want %q", cfg.UITheme, "dark")
 	}
+	if !cfg.ShowDiffPanel {
+		t.Error("ShowDiffPanel: got false, want true")
+	}
 }
 
 // isolatedLoad calls Load() with HOME pointed at a temp dir so tests
@@ -256,5 +259,146 @@ func TestConfigPaths_NonEmpty(t *testing.T) {
 	paths := configPaths()
 	if len(paths) == 0 {
 		t.Fatal("configPaths() returned empty slice")
+	}
+}
+
+func TestLoad_ShowDiffPanelFromFile(t *testing.T) {
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, ".config", "gti")
+	if err := os.MkdirAll(cfgDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	content := `
+ui:
+  showDiffPanel: false
+`
+	if err := os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := isolatedLoad(t, dir)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.ShowDiffPanel {
+		t.Error("ShowDiffPanel: got true, want false")
+	}
+}
+
+func TestLoad_ShowDiffPanelEnvOverridesFile(t *testing.T) {
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, ".config", "gti")
+	if err := os.MkdirAll(cfgDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	content := `
+ui:
+  showDiffPanel: true
+`
+	if err := os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("GTI_SHOW_DIFF_PANEL", "false")
+	cfg, err := isolatedLoad(t, dir)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.ShowDiffPanel {
+		t.Error("ShowDiffPanel: got true, want false (env override)")
+	}
+}
+
+func TestLoad_ShowDiffPanelEnvOverridesDefault(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("GTI_SHOW_DIFF_PANEL", "false")
+
+	cfg, err := isolatedLoad(t, dir)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.ShowDiffPanel {
+		t.Error("ShowDiffPanel: got true, want false (env override of default)")
+	}
+}
+
+func TestLoad_ShowDiffPanelInvalidEnv(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("GTI_SHOW_DIFF_PANEL", "invalid")
+
+	_, err := isolatedLoad(t, dir)
+	if err == nil {
+		t.Fatal("expected error for invalid GTI_SHOW_DIFF_PANEL, got nil")
+	}
+}
+
+func TestSave_CreatesConfigFile(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, ".config"))
+
+	cfg := NewDefault()
+	cfg.ShowDiffPanel = false
+
+	if err := Save(cfg); err != nil {
+		t.Fatalf("Save() error: %v", err)
+	}
+
+	// Load it back and verify
+	loaded, err := isolatedLoad(t, dir)
+	if err != nil {
+		t.Fatalf("Load() after Save() error: %v", err)
+	}
+	if loaded.ShowDiffPanel {
+		t.Error("ShowDiffPanel: got true after save+load, want false")
+	}
+	if loaded.DiffRenderer != cfg.DiffRenderer {
+		t.Errorf("DiffRenderer: got %q, want %q", loaded.DiffRenderer, cfg.DiffRenderer)
+	}
+}
+
+func TestSave_OverwritesExistingConfig(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, ".config"))
+
+	cfg := NewDefault()
+	if err := Save(cfg); err != nil {
+		t.Fatalf("Save() error: %v", err)
+	}
+
+	cfg.ShowDiffPanel = false
+	if err := Save(cfg); err != nil {
+		t.Fatalf("Save() second call error: %v", err)
+	}
+
+	loaded, err := isolatedLoad(t, dir)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if loaded.ShowDiffPanel {
+		t.Error("ShowDiffPanel: got true, want false after overwrite")
+	}
+}
+
+func TestSave_CreatesParentDirectories(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, ".config"))
+
+	// Ensure the directory does not exist
+	cfgDir := filepath.Join(dir, ".config", "gti")
+	if _, err := os.Stat(cfgDir); err == nil {
+		t.Fatal("config dir should not exist before Save()")
+	}
+
+	cfg := NewDefault()
+	if err := Save(cfg); err != nil {
+		t.Fatalf("Save() error: %v", err)
+	}
+
+	// Directory should now exist
+	if _, err := os.Stat(cfgDir); err != nil {
+		t.Errorf("config dir should exist after Save(): %v", err)
 	}
 }

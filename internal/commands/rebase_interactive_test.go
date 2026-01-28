@@ -23,12 +23,14 @@ import (
 // The FakeRunner receives calls in order:
 //   - output[0]: git log --reverse ... (commits for rebase)
 //   - output[1]: git rev-parse --abbrev-ref HEAD (branch name)
-//
-// Diff output is NOT included because the constructor no longer fetches the diff at startup
-// (showDiff defaults to false). Tests that need diff output should construct the model directly.
+//   - output[2]: git show <hash> (diff for first commit, if commits non-empty;
+//     showDiff defaults to true via config so renderSelectedDiff is called at startup)
 func newFakeRebaseModel(t *testing.T, logOutput, branch, base string) *commands.RebaseInteractiveModel {
 	t.Helper()
 	outputs := []string{logOutput, branch}
+	if logOutput != "" {
+		outputs = append(outputs, "diff --git a/foo.go b/foo.go\n--- a/foo.go\n+++ b/foo.go\n@@ -1 +1 @@\n-old\n+new")
+	}
 	runner := &testhelper.FakeRunner{Outputs: outputs}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
@@ -560,22 +562,20 @@ func TestRebaseInteractiveModel_StandaloneMode_QuitEmitsPopModel(t *testing.T) {
 
 // --- Diff toggle tests ---
 
-func TestNewRebaseInteractiveModel_ShowDiffFalseByDefault(t *testing.T) {
-	// Observable behavior: diff panel is not shown at startup.
-	// With diff hidden, Tab has no effect on focus (focusRight stays false),
-	// and the view renders as a single panel (no right border/content).
+func TestNewRebaseInteractiveModel_ShowDiffTrueByDefault(t *testing.T) {
+	// Observable behavior: diff panel is shown at startup in standalone mode
+	// because Config.ShowDiffPanel defaults to true.
 	logOutput := "abc1234\x1ffeat: first\n"
 	m := newFakeRebaseModel(t, logOutput, "main", "HEAD~1")
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 
-	// Tab should be a no-op when diff is hidden (showDiff=false by default)
+	// Tab should work when diff is shown (showDiff=true by default in standalone)
+	view1 := m.View()
 	_ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	view2 := m.View()
 
-	// View should still be single-panel (not two-panel) after Tab
-	view := m.View()
-	assert.NotEmpty(t, view)
-	// With diff hidden, the right panel border should not appear
-	assert.NotContains(t, view, "could not load diff", "diff should not be fetched at startup")
+	assert.NotEmpty(t, view1)
+	assert.NotEqual(t, view1, view2, "Tab should change focus when diff panel is visible by default")
 }
 
 func TestRebaseInteractiveModel_DKey_ShowsDiff(t *testing.T) {
@@ -600,22 +600,27 @@ func TestRebaseInteractiveModel_DKey_ShowsDiff(t *testing.T) {
 func TestRebaseInteractiveModel_DKey_HidesDiff(t *testing.T) {
 	logOutput := "abc1234\x1ffeat: first\n"
 	runner := &testhelper.FakeRunner{
-		Outputs: []string{logOutput, "main", "diff --git a/foo.go b/foo.go\n+new line"},
+		// output[0]=log, output[1]=branch, output[2]=diff (constructor), output[3]=diff (D re-show)
+		Outputs: []string{logOutput, "main", "diff --git a/foo.go b/foo.go\n+new line", "diff --git a/foo.go b/foo.go\n+new line"},
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
 	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~1", "")
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 
+	viewShown := m.View() // showDiff=true by default in standalone mode
+
+	// Hide diff
+	_ = m.Update(tea.KeyPressMsg{Code: 'D', ShiftedCode: 'D', Mod: tea.ModShift, Text: "D"})
 	viewHidden := m.View()
 
-	// Show diff
-	_ = m.Update(tea.KeyPressMsg{Code: 'D', ShiftedCode: 'D', Mod: tea.ModShift, Text: "D"})
-	// Hide diff again
-	_ = m.Update(tea.KeyPressMsg{Code: 'D', ShiftedCode: 'D', Mod: tea.ModShift, Text: "D"})
+	assert.NotEqual(t, viewShown, viewHidden, "View() should differ between two-panel and single-panel")
 
-	viewHiddenAgain := m.View()
-	assert.Equal(t, viewHidden, viewHiddenAgain, "View() should return to single-panel after D pressed twice")
+	// Show diff again
+	_ = m.Update(tea.KeyPressMsg{Code: 'D', ShiftedCode: 'D', Mod: tea.ModShift, Text: "D"})
+	viewShownAgain := m.View()
+
+	assert.Equal(t, viewShown, viewShownAgain, "View() should return to two-panel after D pressed twice")
 }
 
 func TestRebaseInteractiveModel_DKey_NoCommits_IsNoop(t *testing.T) {
@@ -635,10 +640,17 @@ func TestRebaseInteractiveModel_DKey_NoCommits_IsNoop(t *testing.T) {
 
 func TestRebaseInteractiveModel_Tab_NoopWhenDiffHidden(t *testing.T) {
 	logOutput := "abc1234\x1ffeat: first\n"
-	m := newFakeRebaseModel(t, logOutput, "main", "HEAD~1")
+	// Use config with ShowDiffPanel=false to test Tab no-op behavior
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{logOutput, "main"},
+	}
+	cfg := config.NewDefault()
+	cfg.ShowDiffPanel = false
+	renderer := &diff.PlainRenderer{}
+	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~1", "")
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 
-	// showDiff is false by default; Tab should not move focus to right panel
+	// showDiff is false from config; Tab should not move focus to right panel
 	view1 := m.View()
 	_ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	view2 := m.View()
@@ -649,19 +661,12 @@ func TestRebaseInteractiveModel_Tab_NoopWhenDiffHidden(t *testing.T) {
 
 func TestRebaseInteractiveModel_Tab_WorksWhenDiffVisible(t *testing.T) {
 	logOutput := "abc1234\x1ffeat: first\n"
-	runner := &testhelper.FakeRunner{
-		Outputs: []string{logOutput, "main", "diff --git a/foo.go b/foo.go\n+new line"},
-	}
-	cfg := config.NewDefault()
-	renderer := &diff.PlainRenderer{}
-	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~1", "")
+	// showDiff starts true by default in standalone mode (from config)
+	m := newFakeRebaseModel(t, logOutput, "main", "HEAD~1")
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 
-	// Show the diff panel first
-	_ = m.Update(tea.KeyPressMsg{Code: 'D', ShiftedCode: 'D', Mod: tea.ModShift, Text: "D"})
-
 	view1 := m.View()
-	// Tab should now switch focus (border styles change)
+	// Tab should switch focus (border styles change) since diff is visible
 	_ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	view2 := m.View()
 

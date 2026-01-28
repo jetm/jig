@@ -188,6 +188,86 @@ func TestLogModel_TabThenJScrollsDiff(t *testing.T) {
 	}
 }
 
+func TestLogModel_DKeyTogglesDiffPanel(t *testing.T) {
+	logOutput := "abc1234\x1ffeat: something\x1fAlice\x1f2 hours ago\x1e"
+	// Need extra diff output for when D re-shows the panel
+	runner := &testhelper.FakeRunner{
+		// log, branch, show (init), show (D re-show)
+		Outputs: []string{logOutput, "main",
+			"diff --git a/foo.go b/foo.go\n--- a/foo.go\n+++ b/foo.go\n@@ -1 +1 @@\n-old\n+new",
+			"diff --git a/foo.go b/foo.go\n--- a/foo.go\n+++ b/foo.go\n@@ -1 +1 @@\n-old\n+new"},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m := commands.NewLogModel(context.Background(), runner, cfg, renderer, "")
+	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	// showDiff starts true (from config default)
+	viewWith := m.View()
+
+	// Press D to hide
+	_ = m.Update(tea.KeyPressMsg{Code: 'D', ShiftedCode: 'D', Mod: tea.ModShift, Text: "D"})
+	viewWithout := m.View()
+
+	if viewWith == viewWithout {
+		t.Error("View() should differ after D toggles diff off")
+	}
+
+	// Press D again to show
+	_ = m.Update(tea.KeyPressMsg{Code: 'D', ShiftedCode: 'D', Mod: tea.ModShift, Text: "D"})
+	viewAgain := m.View()
+
+	if viewAgain == viewWithout {
+		t.Error("View() should differ after D toggles diff back on")
+	}
+}
+
+func TestLogModel_TabNoopWhenDiffHidden(t *testing.T) {
+	logOutput := "abc1234\x1ffeat: something\x1fAlice\x1f2 hours ago\x1e"
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{logOutput, "main"},
+	}
+	cfg := config.NewDefault()
+	cfg.ShowDiffPanel = false
+	renderer := &diff.PlainRenderer{}
+	m := commands.NewLogModel(context.Background(), runner, cfg, renderer, "")
+	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	view1 := m.View()
+	_ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	view2 := m.View()
+
+	// View should be unchanged - Tab had no effect
+	if view1 != view2 {
+		t.Error("Tab should be a no-op when diff panel is hidden")
+	}
+}
+
+func TestLogModel_SinglePanelViewWhenDiffHidden(t *testing.T) {
+	logOutput := "abc1234\x1ffeat: something\x1fAlice\x1f2 hours ago\x1e"
+	runner := &testhelper.FakeRunner{
+		// log, branch (no diff on init since showDiff=false),
+		// then diff fetched when D pressed to show
+		Outputs: []string{logOutput, "main", "diff --git a/foo.go b/foo.go\n--- a/foo.go\n+++ b/foo.go\n@@ -1 +1 @@\n-old\n+new"},
+	}
+	cfg := config.NewDefault()
+	cfg.ShowDiffPanel = false
+	renderer := &diff.PlainRenderer{}
+	m := commands.NewLogModel(context.Background(), runner, cfg, renderer, "")
+	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	viewHidden := m.View()
+
+	// Show the diff
+	_ = m.Update(tea.KeyPressMsg{Code: 'D', ShiftedCode: 'D', Mod: tea.ModShift, Text: "D"})
+	viewShown := m.View()
+
+	// The two-panel view must differ from single-panel
+	if viewHidden == viewShown {
+		t.Error("View() must differ between single and two panel modes")
+	}
+}
+
 func TestLogModel_Update_NavigationJ(t *testing.T) {
 	logOutput := "abc1234\x1ffeat: first\x1fAlice\x1f2 hours ago\x1e" +
 		"bbb5678\x1ffeat: second\x1fBob\x1f3 hours ago\x1e"

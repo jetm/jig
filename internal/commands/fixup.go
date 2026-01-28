@@ -52,6 +52,7 @@ type FixupModel struct {
 	width       int
 	height      int
 	focusRight  bool
+	showDiff    bool
 }
 
 // NewFixupModel creates a FixupModel by loading recent commits from git log.
@@ -60,7 +61,7 @@ type FixupModel struct {
 func NewFixupModel(
 	ctx context.Context,
 	runner git.Runner,
-	_ config.Config,
+	cfg config.Config,
 	renderer diff.Renderer,
 ) (*FixupModel, error) {
 	if !git.HasStagedChanges(ctx, runner) {
@@ -98,6 +99,7 @@ func NewFixupModel(
 				Bindings: []components.KeyBinding{
 					{Key: "j/k", Desc: "move up/down"},
 					{Key: "Tab", Desc: "switch panel"},
+					{Key: "D", Desc: "toggle diff"},
 					{Key: "Enter", Desc: "create fixup commit for selected"},
 					{Key: "?", Desc: "toggle help"},
 				},
@@ -113,12 +115,14 @@ func NewFixupModel(
 		selectedIdx: 0,
 	}
 
-	m.statusBar.SetHints("j/k: navigate  Tab: panel  Enter: fixup  ?: help  q: quit")
+	m.showDiff = cfg.ShowDiffPanel
+
+	m.statusBar.SetHints("j/k: navigate  Tab: panel  D: diff  Enter: fixup  ?: help  q: quit")
 	m.statusBar.SetBranch(branchName)
 	m.statusBar.SetMode("fixup")
 
-	// Render the first commit's diff if available
-	if len(commits) > 0 {
+	// Render the first commit's diff if available and diff panel is visible
+	if len(commits) > 0 && m.showDiff {
 		m.renderSelectedDiff()
 	}
 
@@ -147,7 +151,17 @@ func (m *FixupModel) Update(msg tea.Msg) tea.Cmd {
 		}
 
 		if msg.Code == tea.KeyTab {
-			m.focusRight = !m.focusRight
+			if m.showDiff {
+				m.focusRight = !m.focusRight
+			}
+			return sbCmd
+		}
+
+		if msg.String() == "D" {
+			m.showDiff = !m.showDiff
+			if m.showDiff && len(m.commits) > 0 {
+				m.renderSelectedDiff()
+			}
 			return sbCmd
 		}
 
@@ -189,8 +203,18 @@ func (m *FixupModel) View() string {
 		return "No commits to fixup."
 	}
 
-	leftW, rightW := tui.Columns(m.width)
 	contentHeight := m.height - 1 // reserve 1 row for status bar
+	m.statusBar.SetWidth(m.width)
+
+	if !m.showDiff {
+		panelW := m.width - 1
+		m.commitList.SetWidth(panelW)
+		m.commitList.SetHeight(contentHeight)
+		leftPanel := tui.StyleFocusBorder.Width(panelW).Height(contentHeight).MaxHeight(contentHeight).Render(m.commitList.View())
+		return leftPanel + "\n" + m.statusBar.View()
+	}
+
+	leftW, rightW := tui.Columns(m.width)
 
 	leftW--
 	rightW--
@@ -210,7 +234,6 @@ func (m *FixupModel) View() string {
 
 	panels := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
 
-	m.statusBar.SetWidth(m.width)
 	return panels + "\n" + m.statusBar.View()
 }
 
@@ -271,8 +294,17 @@ func (m *FixupModel) renderSelectedDiff() {
 
 // resize recalculates component dimensions after a terminal resize.
 func (m *FixupModel) resize() {
-	leftW, rightW := tui.Columns(m.width)
 	contentHeight := m.height - 1
+	m.statusBar.SetWidth(m.width)
+
+	if !m.showDiff {
+		panelW := m.width - 1
+		m.commitList.SetWidth(panelW)
+		m.commitList.SetHeight(contentHeight)
+		return
+	}
+
+	leftW, rightW := tui.Columns(m.width)
 
 	leftW--
 	rightW--
@@ -281,5 +313,4 @@ func (m *FixupModel) resize() {
 	m.commitList.SetHeight(contentHeight)
 	m.diffView.SetWidth(rightW)
 	m.diffView.SetHeight(contentHeight)
-	m.statusBar.SetWidth(m.width)
 }

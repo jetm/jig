@@ -103,7 +103,7 @@ func NewLogModel(
 
 	m.showDiff = cfg.ShowDiffPanel
 
-	m.statusBar.SetHints("j/k: navigate  Tab: panel  D: diff  ?: help  q: quit")
+	m.updateHints()
 	m.statusBar.SetBranch(branchName)
 	m.statusBar.SetMode("log")
 
@@ -139,6 +139,7 @@ func (m *LogModel) Update(msg tea.Msg) tea.Cmd {
 		if msg.Code == tea.KeyTab {
 			if m.showDiff {
 				m.focusRight = !m.focusRight
+				m.updateHints()
 			}
 			return sbCmd
 		}
@@ -255,6 +256,20 @@ func (m *LogModel) renderSelectedDiff() {
 		rendered = raw
 	}
 	m.diffView.SetContent(rendered)
+}
+
+const (
+	logHintsLeft  = "j/k: navigate  Tab: panel  D: diff  ?: help  q: quit"
+	logHintsRight = "h/l: scroll  Tab: panel  D: diff  ?: help  q: quit"
+)
+
+// updateHints sets the status bar hints based on the current focus.
+func (m *LogModel) updateHints() {
+	if m.focusRight {
+		m.statusBar.SetHints(logHintsRight)
+	} else {
+		m.statusBar.SetHints(logHintsLeft)
+	}
 }
 
 // resize recalculates component dimensions after a terminal resize.

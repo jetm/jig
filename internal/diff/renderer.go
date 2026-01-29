@@ -24,7 +24,7 @@ var newChromaFunc = NewChromaRenderer
 func Chain(cfg config.Config) Renderer {
 	if cfg.DeltaPath != "" {
 		if _, err := exec.LookPath(cfg.DeltaPath); err == nil {
-			return NewDeltaRenderer(cfg.DeltaPath, 120)
+			return NewDeltaRenderer(cfg.DeltaPath)
 		}
 	}
 

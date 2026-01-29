@@ -4,31 +4,29 @@ import (
 	"bytes"
 	"fmt"
 	"os/exec"
-	"strconv"
 	"strings"
 )
 
 // DeltaRenderer shells out to the delta binary for diff rendering.
 type DeltaRenderer struct {
-	path  string
-	width int
+	path string
 }
 
 // NewDeltaRenderer creates a DeltaRenderer that invokes the delta binary at
-// path with the given output width.
-func NewDeltaRenderer(path string, width int) *DeltaRenderer {
-	return &DeltaRenderer{path: path, width: width}
+// the given path. No --width flag is passed so that the output is full-width
+// and the viewport can handle horizontal scrolling.
+func NewDeltaRenderer(path string) *DeltaRenderer {
+	return &DeltaRenderer{path: path}
 }
 
 // Render passes rawDiff to the delta binary via stdin and returns the
-// formatted output. The --width flag is set to prevent delta from using
-// the full terminal width.
+// formatted output.
 func (d *DeltaRenderer) Render(rawDiff string) (string, error) {
 	if rawDiff == "" {
 		return "", nil
 	}
 
-	cmd := exec.Command(d.path, "--width", strconv.Itoa(d.width))
+	cmd := exec.Command(d.path)
 	cmd.Stdin = strings.NewReader(rawDiff)
 
 	var stdout, stderr bytes.Buffer

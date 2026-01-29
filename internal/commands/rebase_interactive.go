@@ -168,7 +168,7 @@ func NewRebaseInteractiveModel(
 		}
 	}
 
-	m.statusBar.SetHints("Space: cycle action  p/r/e/s/f/d: set action  K/J: reorder  Tab: panel  D: diff  Enter: confirm  ?: help  q: quit")
+	m.updateHints()
 	m.statusBar.SetBranch(branchName)
 	m.statusBar.SetMode("rebase-interactive")
 
@@ -200,6 +200,7 @@ func (m *RebaseInteractiveModel) Update(msg tea.Msg) tea.Cmd {
 		case "tab":
 			if m.showDiff {
 				m.focusRight = !m.focusRight
+				m.updateHints()
 			}
 			return sbCmd
 
@@ -454,6 +455,20 @@ func (m *RebaseInteractiveModel) renderSelectedDiff() {
 		rendered = raw
 	}
 	m.diffView.SetContent(rendered)
+}
+
+const (
+	rebaseHintsLeft  = "Space: cycle action  p/r/e/s/f/d: set action  K/J: reorder  Tab: panel  D: diff  Enter: confirm  ?: help  q: quit"
+	rebaseHintsRight = "h/l: scroll  Tab: panel  D: diff  ?: help  q: quit"
+)
+
+// updateHints sets the status bar hints based on the current focus.
+func (m *RebaseInteractiveModel) updateHints() {
+	if m.focusRight {
+		m.statusBar.SetHints(rebaseHintsRight)
+	} else {
+		m.statusBar.SetHints(rebaseHintsLeft)
+	}
 }
 
 // resize recalculates component dimensions after a terminal resize.

@@ -94,7 +94,7 @@ func NewHunkAddModel(
 
 	m.showDiff = cfg.ShowDiffPanel
 
-	m.statusBar.SetHints("y: stage  n: skip  a: all  s: split  Tab: panel  D: diff  ?: help  q: quit")
+	m.statusBar.SetHints(m.hintsWithProgress())
 	m.statusBar.SetBranch(branchName)
 	m.statusBar.SetMode("hunk-add")
 
@@ -129,6 +129,7 @@ func (m *HunkAddModel) Update(msg tea.Msg) tea.Cmd {
 		if msg.Code == tea.KeyTab {
 			if m.showDiff {
 				m.focusRight = !m.focusRight
+				m.statusBar.SetHints(m.hintsWithProgress())
 			}
 			return sbCmd
 		}
@@ -225,7 +226,15 @@ func (m *HunkAddModel) View() string {
 }
 
 // hintsWithProgress returns the status bar hint string including hunk progress.
+// When the right panel has focus, it shows scroll hints instead of action hints.
 func (m *HunkAddModel) hintsWithProgress() string {
+	if m.focusRight {
+		if len(m.hunks) == 0 {
+			return "h/l: scroll  Tab: panel  ?: help  q: quit"
+		}
+		progress := fmt.Sprintf("Hunk %d/%d", m.hunkIdx+1, len(m.hunks))
+		return fmt.Sprintf("%s  h/l: scroll  Tab: panel  ?: help  q: quit", progress)
+	}
 	if len(m.hunks) == 0 {
 		return "y: stage  n: skip  a: all  s: split  Tab: panel  ?: help  q: quit"
 	}

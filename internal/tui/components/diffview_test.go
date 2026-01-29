@@ -71,6 +71,13 @@ func TestDiffViewANSIContentRendersWithoutCorruption(t *testing.T) {
 	}
 }
 
+func TestDiffViewXOffsetStartsAtZero(t *testing.T) {
+	dv := newTestDiffView("short line")
+	if dv.XOffset() != 0 {
+		t.Errorf("XOffset should start at 0, got %d", dv.XOffset())
+	}
+}
+
 func TestDiffViewSetWidthAndHeight(t *testing.T) {
 	dv := newTestDiffView("content")
 	dv.SetWidth(100)

@@ -83,7 +83,7 @@ func NewAddModel(
 
 	m.showDiff = cfg.ShowDiffPanel
 
-	m.statusBar.SetHints("Space: toggle  a: all  d: none  Tab: panel  D: diff  Enter: stage  ?: help  q: quit")
+	m.updateHints()
 	m.statusBar.SetBranch(branchName)
 	m.statusBar.SetMode("add")
 
@@ -118,6 +118,7 @@ func (m *AddModel) Update(msg tea.Msg) tea.Cmd {
 		if msg.Code == tea.KeyTab {
 			if m.showDiff {
 				m.focusRight = !m.focusRight
+				m.updateHints()
 			}
 			return sbCmd
 		}
@@ -293,6 +294,20 @@ func (m *AddModel) isTracked(path string) bool {
 		}
 	}
 	return false
+}
+
+const (
+	addHintsLeft  = "Space: toggle  a: all  d: none  Tab: panel  D: diff  Enter: stage  ?: help  q: quit"
+	addHintsRight = "h/l: scroll  Tab: panel  D: diff  ?: help  q: quit"
+)
+
+// updateHints sets the status bar hints based on the current focus.
+func (m *AddModel) updateHints() {
+	if m.focusRight {
+		m.statusBar.SetHints(addHintsRight)
+	} else {
+		m.statusBar.SetHints(addHintsLeft)
+	}
 }
 
 // resize recalculates component dimensions after a terminal resize.

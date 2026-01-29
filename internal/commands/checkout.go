@@ -84,7 +84,7 @@ func NewCheckoutModel(
 
 	m.showDiff = cfg.ShowDiffPanel
 
-	m.statusBar.SetHints("Space: toggle  a: all  d: none  Tab: panel  D: diff  Enter: discard  ?: help  q: quit")
+	m.updateHints()
 	m.statusBar.SetBranch(branchName)
 	m.statusBar.SetMode("checkout")
 
@@ -124,6 +124,7 @@ func (m *CheckoutModel) Update(msg tea.Msg) tea.Cmd {
 		if msg.Code == tea.KeyTab {
 			if m.showDiff {
 				m.focusRight = !m.focusRight
+				m.updateHints()
 			}
 			return sbCmd
 		}
@@ -304,6 +305,20 @@ func (m *CheckoutModel) renderSelectedDiff() {
 		rendered = raw
 	}
 	m.diffView.SetContent(rendered)
+}
+
+const (
+	checkoutHintsLeft  = "Space: toggle  a: all  d: none  Tab: panel  D: diff  Enter: discard  ?: help  q: quit"
+	checkoutHintsRight = "h/l: scroll  Tab: panel  D: diff  ?: help  q: quit"
+)
+
+// updateHints sets the status bar hints based on the current focus.
+func (m *CheckoutModel) updateHints() {
+	if m.focusRight {
+		m.statusBar.SetHints(checkoutHintsRight)
+	} else {
+		m.statusBar.SetHints(checkoutHintsLeft)
+	}
 }
 
 // resize recalculates component dimensions after a terminal resize.

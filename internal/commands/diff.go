@@ -81,7 +81,7 @@ func NewDiffModel(
 
 	m.showDiff = cfg.ShowDiffPanel
 
-	m.statusBar.SetHints("j/k: navigate  o: expand/collapse  Tab: panel  D: diff  ?: help  q: quit")
+	m.updateHints()
 	m.statusBar.SetBranch(branchName)
 	m.statusBar.SetMode("diff")
 
@@ -119,6 +119,7 @@ func (m *DiffModel) Update(msg tea.Msg) tea.Cmd {
 		if msg.Code == tea.KeyTab {
 			if m.showDiff {
 				m.focusRight = !m.focusRight
+				m.updateHints()
 			}
 			return sbCmd
 		}
@@ -225,6 +226,20 @@ func (m *DiffModel) renderSelectedDiff() {
 			m.diffView.SetContent(rendered)
 			return
 		}
+	}
+}
+
+const (
+	diffHintsLeft  = "j/k: navigate  o: expand/collapse  Tab: panel  D: diff  ?: help  q: quit"
+	diffHintsRight = "h/l: scroll  Tab: panel  D: diff  ?: help  q: quit"
+)
+
+// updateHints sets the status bar hints based on the current focus.
+func (m *DiffModel) updateHints() {
+	if m.focusRight {
+		m.statusBar.SetHints(diffHintsRight)
+	} else {
+		m.statusBar.SetHints(diffHintsLeft)
 	}
 }
 

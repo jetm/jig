@@ -83,7 +83,7 @@ func NewResetModel(
 
 	m.showDiff = cfg.ShowDiffPanel
 
-	m.statusBar.SetHints("Space: toggle  a: all  d: none  Tab: panel  D: diff  Enter: unstage  ?: help  q: quit")
+	m.updateHints()
 	m.statusBar.SetBranch(branchName)
 	m.statusBar.SetMode("reset")
 
@@ -118,6 +118,7 @@ func (m *ResetModel) Update(msg tea.Msg) tea.Cmd {
 		if msg.Code == tea.KeyTab {
 			if m.showDiff {
 				m.focusRight = !m.focusRight
+				m.updateHints()
 			}
 			return sbCmd
 		}
@@ -263,6 +264,20 @@ func (m *ResetModel) renderSelectedDiff() {
 		rendered = raw
 	}
 	m.diffView.SetContent(rendered)
+}
+
+const (
+	resetHintsLeft  = "Space: toggle  a: all  d: none  Tab: panel  D: diff  Enter: unstage  ?: help  q: quit"
+	resetHintsRight = "h/l: scroll  Tab: panel  D: diff  ?: help  q: quit"
+)
+
+// updateHints sets the status bar hints based on the current focus.
+func (m *ResetModel) updateHints() {
+	if m.focusRight {
+		m.statusBar.SetHints(resetHintsRight)
+	} else {
+		m.statusBar.SetHints(resetHintsLeft)
+	}
 }
 
 // resize recalculates component dimensions after a terminal resize.

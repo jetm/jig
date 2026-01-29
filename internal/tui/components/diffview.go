@@ -26,6 +26,9 @@ func (d *DiffView) SetContent(s string) { d.vp.SetContent(s) }
 // ScrollOffset returns the current vertical scroll offset.
 func (d *DiffView) ScrollOffset() int { return d.vp.YOffset() }
 
+// XOffset returns the current horizontal scroll offset.
+func (d *DiffView) XOffset() int { return d.vp.XOffset() }
+
 // SetWidth sets the viewport width.
 func (d *DiffView) SetWidth(w int) { d.vp.SetWidth(w) }
 

@@ -381,6 +381,308 @@ func TestSave_OverwritesExistingConfig(t *testing.T) {
 	}
 }
 
+func TestNewDefault_PanelRatio(t *testing.T) {
+	cfg := NewDefault()
+	if cfg.PanelRatio != 40 {
+		t.Errorf("PanelRatio: got %d, want 40", cfg.PanelRatio)
+	}
+}
+
+func TestLoad_PanelRatioDefault(t *testing.T) {
+	dir := t.TempDir()
+	cfg, err := isolatedLoad(t, dir)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.PanelRatio != 40 {
+		t.Errorf("PanelRatio: got %d, want 40", cfg.PanelRatio)
+	}
+}
+
+func TestLoad_PanelRatioFromFile(t *testing.T) {
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, ".config", "gti")
+	if err := os.MkdirAll(cfgDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	content := `
+ui:
+  panelRatio: 70
+`
+	if err := os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := isolatedLoad(t, dir)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.PanelRatio != 70 {
+		t.Errorf("PanelRatio: got %d, want 70", cfg.PanelRatio)
+	}
+}
+
+func TestLoad_PanelRatioFileOmitted(t *testing.T) {
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, ".config", "gti")
+	if err := os.MkdirAll(cfgDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	content := `
+ui:
+  theme: dark
+`
+	if err := os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := isolatedLoad(t, dir)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.PanelRatio != 40 {
+		t.Errorf("PanelRatio: got %d, want 40 (default when file omits it)", cfg.PanelRatio)
+	}
+}
+
+func TestLoad_PanelRatioEnvOverridesFile(t *testing.T) {
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, ".config", "gti")
+	if err := os.MkdirAll(cfgDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	content := `
+ui:
+  panelRatio: 50
+`
+	if err := os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("GTI_PANEL_RATIO", "30")
+	cfg, err := isolatedLoad(t, dir)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.PanelRatio != 30 {
+		t.Errorf("PanelRatio: got %d, want 30 (env override)", cfg.PanelRatio)
+	}
+}
+
+func TestLoad_PanelRatioEnvOverridesDefault(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("GTI_PANEL_RATIO", "25")
+	cfg, err := isolatedLoad(t, dir)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.PanelRatio != 25 {
+		t.Errorf("PanelRatio: got %d, want 25", cfg.PanelRatio)
+	}
+}
+
+func TestLoad_PanelRatioBoundaryMin(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("GTI_PANEL_RATIO", "20")
+	cfg, err := isolatedLoad(t, dir)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.PanelRatio != 20 {
+		t.Errorf("PanelRatio: got %d, want 20", cfg.PanelRatio)
+	}
+}
+
+func TestLoad_PanelRatioBoundaryMax(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("GTI_PANEL_RATIO", "80")
+	cfg, err := isolatedLoad(t, dir)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.PanelRatio != 80 {
+		t.Errorf("PanelRatio: got %d, want 80", cfg.PanelRatio)
+	}
+}
+
+func TestLoad_PanelRatioBelowMin(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("GTI_PANEL_RATIO", "10")
+	_, err := isolatedLoad(t, dir)
+	if err == nil {
+		t.Fatal("expected error for GTI_PANEL_RATIO=10 (below min 20), got nil")
+	}
+}
+
+func TestLoad_PanelRatioAboveMax(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("GTI_PANEL_RATIO", "90")
+	_, err := isolatedLoad(t, dir)
+	if err == nil {
+		t.Fatal("expected error for GTI_PANEL_RATIO=90 (above max 80), got nil")
+	}
+}
+
+func TestLoad_PanelRatioInvalidEnv(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("GTI_PANEL_RATIO", "abc")
+	_, err := isolatedLoad(t, dir)
+	if err == nil {
+		t.Fatal("expected error for invalid GTI_PANEL_RATIO, got nil")
+	}
+}
+
+func TestNewDefault_SoftWrap(t *testing.T) {
+	cfg := NewDefault()
+	if cfg.SoftWrap {
+		t.Error("SoftWrap: got true, want false")
+	}
+}
+
+func TestLoad_SoftWrapDefault(t *testing.T) {
+	dir := t.TempDir()
+	cfg, err := isolatedLoad(t, dir)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.SoftWrap {
+		t.Error("SoftWrap: got true, want false (default)")
+	}
+}
+
+func TestLoad_SoftWrapFromFile(t *testing.T) {
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, ".config", "gti")
+	if err := os.MkdirAll(cfgDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	content := `
+ui:
+  softWrap: true
+`
+	if err := os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := isolatedLoad(t, dir)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if !cfg.SoftWrap {
+		t.Error("SoftWrap: got false, want true")
+	}
+}
+
+func TestLoad_SoftWrapFileOmitted(t *testing.T) {
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, ".config", "gti")
+	if err := os.MkdirAll(cfgDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	content := `
+ui:
+  theme: dark
+`
+	if err := os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := isolatedLoad(t, dir)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.SoftWrap {
+		t.Error("SoftWrap: got true, want false (default when file omits it)")
+	}
+}
+
+func TestLoad_SoftWrapEnvOverridesFile(t *testing.T) {
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, ".config", "gti")
+	if err := os.MkdirAll(cfgDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	content := `
+ui:
+  softWrap: false
+`
+	if err := os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("GTI_SOFT_WRAP", "true")
+	cfg, err := isolatedLoad(t, dir)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if !cfg.SoftWrap {
+		t.Error("SoftWrap: got false, want true (env override)")
+	}
+}
+
+func TestLoad_SoftWrapEnvOverridesDefault(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("GTI_SOFT_WRAP", "true")
+	cfg, err := isolatedLoad(t, dir)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if !cfg.SoftWrap {
+		t.Error("SoftWrap: got false, want true (env override of default)")
+	}
+}
+
+func TestLoad_SoftWrapInvalidEnv(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("GTI_SOFT_WRAP", "invalid")
+	_, err := isolatedLoad(t, dir)
+	if err == nil {
+		t.Fatal("expected error for invalid GTI_SOFT_WRAP, got nil")
+	}
+}
+
+func TestSave_SoftWrapRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, ".config"))
+
+	cfg := NewDefault()
+	cfg.SoftWrap = true
+
+	if err := Save(cfg); err != nil {
+		t.Fatalf("Save() error: %v", err)
+	}
+
+	loaded, err := isolatedLoad(t, dir)
+	if err != nil {
+		t.Fatalf("Load() after Save() error: %v", err)
+	}
+	if !loaded.SoftWrap {
+		t.Error("SoftWrap: got false after save+load, want true")
+	}
+}
+
+func TestSave_PanelRatioRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, ".config"))
+
+	cfg := NewDefault()
+	cfg.PanelRatio = 60
+
+	if err := Save(cfg); err != nil {
+		t.Fatalf("Save() error: %v", err)
+	}
+
+	loaded, err := isolatedLoad(t, dir)
+	if err != nil {
+		t.Fatalf("Load() after Save() error: %v", err)
+	}
+	if loaded.PanelRatio != 60 {
+		t.Errorf("PanelRatio: got %d after save+load, want 60", loaded.PanelRatio)
+	}
+}
+
 func TestSave_CreatesParentDirectories(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("HOME", dir)

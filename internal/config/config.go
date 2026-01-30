@@ -25,6 +25,10 @@ type Config struct {
 	RebaseDefaultBase string
 	UITheme           string
 	ShowDiffPanel     bool
+
+	// Phase 11 fields
+	PanelRatio int
+	SoftWrap   bool
 }
 
 // NewDefault returns a Config with default values.
@@ -42,6 +46,8 @@ func NewDefault() Config {
 		RebaseDefaultBase: "HEAD~10",
 		UITheme:           "dark",
 		ShowDiffPanel:     true,
+		PanelRatio:        40,
+		SoftWrap:          false,
 	}
 }
 
@@ -60,6 +66,8 @@ type fileConfig struct {
 	UI struct {
 		Theme         string `yaml:"theme"`
 		ShowDiffPanel *bool  `yaml:"showDiffPanel"`
+		PanelRatio    int    `yaml:"panelRatio"`
+		SoftWrap      *bool  `yaml:"softWrap"`
 	} `yaml:"ui"`
 }
 
@@ -130,6 +138,15 @@ func applyFile(cfg *Config) error {
 		if fc.UI.ShowDiffPanel != nil {
 			cfg.ShowDiffPanel = *fc.UI.ShowDiffPanel
 		}
+		if fc.UI.PanelRatio != 0 {
+			if fc.UI.PanelRatio < 20 || fc.UI.PanelRatio > 80 {
+				return fmt.Errorf("config panelRatio %d out of range [20, 80]", fc.UI.PanelRatio)
+			}
+			cfg.PanelRatio = fc.UI.PanelRatio
+		}
+		if fc.UI.SoftWrap != nil {
+			cfg.SoftWrap = *fc.UI.SoftWrap
+		}
 
 		return nil
 	}
@@ -162,6 +179,23 @@ func applyEnv(cfg *Config) error {
 		}
 		cfg.ShowDiffPanel = b
 	}
+	if v := os.Getenv("GTI_PANEL_RATIO"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return fmt.Errorf("invalid GTI_PANEL_RATIO %q: %w", v, err)
+		}
+		if n < 20 || n > 80 {
+			return fmt.Errorf("GTI_PANEL_RATIO %d out of range [20, 80]", n)
+		}
+		cfg.PanelRatio = n
+	}
+	if v := os.Getenv("GTI_SOFT_WRAP"); v != "" {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			return fmt.Errorf("invalid GTI_SOFT_WRAP %q: %w", v, err)
+		}
+		cfg.SoftWrap = b
+	}
 	return nil
 }
 
@@ -179,6 +213,8 @@ type saveConfig struct {
 	UI struct {
 		Theme         string `yaml:"theme"`
 		ShowDiffPanel bool   `yaml:"showDiffPanel"`
+		PanelRatio    int    `yaml:"panelRatio"`
+		SoftWrap      bool   `yaml:"softWrap"`
 	} `yaml:"ui"`
 }
 
@@ -202,6 +238,8 @@ func Save(cfg Config) error {
 	sc.Rebase.DefaultBase = cfg.RebaseDefaultBase
 	sc.UI.Theme = cfg.UITheme
 	sc.UI.ShowDiffPanel = cfg.ShowDiffPanel
+	sc.UI.PanelRatio = cfg.PanelRatio
+	sc.UI.SoftWrap = cfg.SoftWrap
 
 	data, err := yaml.Marshal(&sc)
 	if err != nil {

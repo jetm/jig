@@ -29,7 +29,7 @@ func TestHelpOverlayToggleShowsOverlay(t *testing.T) {
 	if !h.IsVisible() {
 		t.Error("overlay should be visible after Toggle()")
 	}
-	view := h.View(80, 24)
+	view := h.View("", 80, 24)
 	if view == "" {
 		t.Error("View() should return content when visible")
 	}
@@ -47,7 +47,7 @@ func TestHelpOverlayToggleDismisses(t *testing.T) {
 func TestHelpOverlayContentReflectsBindings(t *testing.T) {
 	h := newTestOverlay()
 	h.Toggle()
-	view := h.View(80, 24)
+	view := h.View("", 80, 24)
 	expected := []string{"Navigation", "j", "down", "k", "up", "Actions", "space", "stage"}
 	for _, s := range expected {
 		if !strings.Contains(view, s) {
@@ -56,49 +56,114 @@ func TestHelpOverlayContentReflectsBindings(t *testing.T) {
 	}
 }
 
-func TestHelpOverlayHiddenReturnsEmpty(t *testing.T) {
+func TestHelpOverlayHiddenReturnsBackground(t *testing.T) {
 	h := newTestOverlay()
-	view := h.View(80, 24)
-	if view != "" {
-		t.Error("hidden overlay should return empty string")
+	bg := "background content"
+	view := h.View(bg, 80, 24)
+	if view != bg {
+		t.Errorf("hidden overlay should return background unchanged, got %q", view)
 	}
 }
 
-func TestHelpOverlayComposableWithContent(t *testing.T) {
+// TestHelpOverlayCompositesOverBackground verifies the background is visible
+// in lines not covered by the overlay box.
+func TestHelpOverlayCompositesOverBackground(t *testing.T) {
 	h := newTestOverlay()
 	h.Toggle()
-	underlying := "underlying content here"
-	overlay := h.View(80, 24)
-	// The overlay and underlying content should be independently renderable
-	composed := underlying + "\n" + overlay
-	if !strings.Contains(composed, "underlying content here") {
-		t.Error("composed view should contain underlying content")
+
+	// Build a background that spans 80x30 - put distinctive text on the first line
+	// so it will be outside the overlay box (which is centered).
+	var bgLines []string
+	bgLines = append(bgLines, "BACKGROUND_FIRST_LINE_MARKER")
+	for i := 1; i < 30; i++ {
+		bgLines = append(bgLines, strings.Repeat(" ", 80))
 	}
-	if !strings.Contains(composed, "Navigation") {
-		t.Error("composed view should contain overlay content")
+	bg := strings.Join(bgLines, "\n")
+
+	result := h.View(bg, 80, 30)
+
+	if !strings.Contains(result, "BACKGROUND_FIRST_LINE_MARKER") {
+		t.Error("composited view should contain background content outside overlay box")
+	}
+	if !strings.Contains(result, "Navigation") {
+		t.Error("composited view should contain overlay content")
 	}
 }
 
-// TestHelpOverlayKeyHandling verifies ? and esc toggle/dismiss behavior
-// as it would be handled by a parent model.
-func TestHelpOverlayKeyHandling(t *testing.T) {
+// TestHelpOverlayHandleKey_QuestionMark verifies ? toggles the overlay on/off.
+func TestHelpOverlayHandleKey_QuestionMark(t *testing.T) {
 	h := newTestOverlay()
 
-	// Simulate parent model handling ? to toggle
-	msg := tea.KeyPressMsg{Code: '?', Text: "?"}
-	if msg.String() == "?" {
-		h.Toggle()
+	// ? while hidden: show overlay, return true
+	consumed := h.HandleKey(tea.KeyPressMsg{Code: '?', Text: "?"})
+	if !consumed {
+		t.Error("HandleKey(?) while hidden should return true")
 	}
 	if !h.IsVisible() {
-		t.Error("overlay should be visible after ?")
+		t.Error("overlay should be visible after HandleKey(?)")
 	}
 
-	// Simulate parent model handling esc to dismiss
-	escMsg := tea.KeyPressMsg{Code: tea.KeyEscape}
-	if escMsg.String() == "escape" || escMsg.String() == "esc" {
-		h.Toggle()
+	// ? while visible: hide overlay, return true
+	consumed = h.HandleKey(tea.KeyPressMsg{Code: '?', Text: "?"})
+	if !consumed {
+		t.Error("HandleKey(?) while visible should return true")
 	}
 	if h.IsVisible() {
-		t.Error("overlay should be hidden after esc")
+		t.Error("overlay should be hidden after second HandleKey(?)")
+	}
+}
+
+// TestHelpOverlayHandleKey_QDismisses verifies q dismisses the overlay.
+func TestHelpOverlayHandleKey_QDismisses(t *testing.T) {
+	h := newTestOverlay()
+	h.Toggle() // show
+
+	consumed := h.HandleKey(tea.KeyPressMsg{Code: 'q', Text: "q"})
+	if !consumed {
+		t.Error("HandleKey(q) while visible should return true")
+	}
+	if h.IsVisible() {
+		t.Error("overlay should be hidden after HandleKey(q)")
+	}
+}
+
+// TestHelpOverlayHandleKey_EscDismisses verifies Esc dismisses the overlay.
+func TestHelpOverlayHandleKey_EscDismisses(t *testing.T) {
+	h := newTestOverlay()
+	h.Toggle() // show
+
+	consumed := h.HandleKey(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if !consumed {
+		t.Error("HandleKey(Esc) while visible should return true")
+	}
+	if h.IsVisible() {
+		t.Error("overlay should be hidden after HandleKey(Esc)")
+	}
+}
+
+// TestHelpOverlayHandleKey_SwallowsKeysWhenVisible verifies all keys are
+// consumed when the overlay is visible.
+func TestHelpOverlayHandleKey_SwallowsKeysWhenVisible(t *testing.T) {
+	h := newTestOverlay()
+	h.Toggle() // show
+
+	// Some random key that is not ?, q, or Esc
+	consumed := h.HandleKey(tea.KeyPressMsg{Code: 'j', Text: "j"})
+	if !consumed {
+		t.Error("HandleKey(j) while visible should return true (swallowed)")
+	}
+	if !h.IsVisible() {
+		t.Error("overlay should remain visible after non-dismiss key")
+	}
+}
+
+// TestHelpOverlayHandleKey_PassesThroughWhenHidden verifies keys are not
+// consumed when the overlay is hidden (except ?).
+func TestHelpOverlayHandleKey_PassesThroughWhenHidden(t *testing.T) {
+	h := newTestOverlay()
+
+	consumed := h.HandleKey(tea.KeyPressMsg{Code: 'j', Text: "j"})
+	if consumed {
+		t.Error("HandleKey(j) while hidden should return false")
 	}
 }

@@ -106,12 +106,7 @@ func (m *ResetModel) Update(msg tea.Msg) tea.Cmd {
 		return sbCmd
 
 	case tea.KeyPressMsg:
-		if msg.Text == "?" {
-			m.help.Toggle()
-			return sbCmd
-		}
-
-		if m.help.IsVisible() {
+		if m.help.HandleKey(msg) {
 			return sbCmd
 		}
 
@@ -166,52 +161,51 @@ func (m *ResetModel) Update(msg tea.Msg) tea.Cmd {
 	return sbCmd
 }
 
-// View renders the two-panel layout.
+// View renders the two-panel layout with the help overlay composited on top
+// when visible.
 func (m *ResetModel) View() string {
-	if m.help.IsVisible() {
-		return m.help.View(m.width, m.height)
-	}
-
 	if tui.IsTerminalTooSmall(m.width, m.height) {
 		return "Terminal too small. Please resize to at least 60x10."
 	}
 
+	var background string
 	if len(m.files) == 0 {
-		return "Nothing to unstage."
+		background = "Nothing to unstage."
+	} else {
+		contentHeight := m.height - 1
+		m.statusBar.SetWidth(m.width)
+
+		if !m.showDiff {
+			panelW := m.width - 1
+			m.fileList.SetWidth(panelW)
+			m.fileList.SetHeight(contentHeight)
+			leftPanel := tui.StyleFocusBorder.Width(panelW).Height(contentHeight).MaxHeight(contentHeight).Render(m.fileList.View())
+			background = leftPanel + "\n" + m.statusBar.View()
+		} else {
+			leftW, rightW := tui.Columns(m.width)
+
+			leftW--
+			rightW--
+
+			m.fileList.SetWidth(leftW)
+			m.fileList.SetHeight(contentHeight)
+			m.diffView.SetWidth(rightW)
+			m.diffView.SetHeight(contentHeight)
+
+			leftBorder, rightBorder := tui.StyleFocusBorder, tui.StyleDimBorder
+			if m.focusRight {
+				leftBorder, rightBorder = tui.StyleDimBorder, tui.StyleFocusBorder
+			}
+
+			leftPanel := leftBorder.Width(leftW).Height(contentHeight).MaxHeight(contentHeight).Render(m.fileList.View())
+			rightPanel := rightBorder.Width(rightW).Height(contentHeight).MaxHeight(contentHeight).Render(m.diffView.View())
+
+			panels := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
+			background = panels + "\n" + m.statusBar.View()
+		}
 	}
 
-	contentHeight := m.height - 1
-	m.statusBar.SetWidth(m.width)
-
-	if !m.showDiff {
-		panelW := m.width - 1
-		m.fileList.SetWidth(panelW)
-		m.fileList.SetHeight(contentHeight)
-		leftPanel := tui.StyleFocusBorder.Width(panelW).Height(contentHeight).MaxHeight(contentHeight).Render(m.fileList.View())
-		return leftPanel + "\n" + m.statusBar.View()
-	}
-
-	leftW, rightW := tui.Columns(m.width)
-
-	leftW--
-	rightW--
-
-	m.fileList.SetWidth(leftW)
-	m.fileList.SetHeight(contentHeight)
-	m.diffView.SetWidth(rightW)
-	m.diffView.SetHeight(contentHeight)
-
-	leftBorder, rightBorder := tui.StyleFocusBorder, tui.StyleDimBorder
-	if m.focusRight {
-		leftBorder, rightBorder = tui.StyleDimBorder, tui.StyleFocusBorder
-	}
-
-	leftPanel := leftBorder.Width(leftW).Height(contentHeight).MaxHeight(contentHeight).Render(m.fileList.View())
-	rightPanel := rightBorder.Width(rightW).Height(contentHeight).MaxHeight(contentHeight).Render(m.diffView.View())
-
-	panels := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
-
-	return panels + "\n" + m.statusBar.View()
+	return m.help.View(background, m.width, m.height)
 }
 
 // selectedPaths returns the paths of all checked files.

@@ -902,3 +902,104 @@ func newTestHunk(body string) git.Hunk {
 	header := lines[0]
 	return git.Hunk{Header: header, Body: body}
 }
+
+func TestHunkAddModel_FKeyTogglesDiffMaximized(t *testing.T) {
+	t.Parallel()
+	hunkBody := "@@ -1,3 +1,3 @@\n context\n-old\n+new\n context\n"
+	diffOutput := "diff --git a/foo.go b/foo.go\n--- a/foo.go\n+++ b/foo.go\n" + hunkBody
+	m, _ := newHunkAddTestModel(t, diffOutput)
+	m.width = 120
+	m.height = 40
+
+	if m.diffMaximized {
+		t.Fatal("diffMaximized should start false")
+	}
+	m.Update(tea.KeyPressMsg{Code: 'F', ShiftedCode: 'F', Mod: tea.ModShift, Text: "F"})
+	if !m.diffMaximized {
+		t.Error("F should set diffMaximized")
+	}
+	m.Update(tea.KeyPressMsg{Code: 'F', ShiftedCode: 'F', Mod: tea.ModShift, Text: "F"})
+	if m.diffMaximized {
+		t.Error("second F should clear diffMaximized")
+	}
+}
+
+func TestHunkAddModel_WKeyTogglesSoftWrap(t *testing.T) {
+	t.Parallel()
+	hunkBody := "@@ -1,3 +1,3 @@\n context\n-old\n+new\n context\n"
+	diffOutput := "diff --git a/foo.go b/foo.go\n--- a/foo.go\n+++ b/foo.go\n" + hunkBody
+	m, _ := newHunkAddTestModel(t, diffOutput)
+	m.width = 120
+	m.height = 40
+
+	m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	initial := m.diffView.SoftWrap()
+	m.Update(tea.KeyPressMsg{Code: 'w', Text: "w"})
+	if m.diffView.SoftWrap() == initial {
+		t.Error("w should toggle soft-wrap when right panel focused")
+	}
+}
+
+func TestHunkAddModel_BracketKeysAdjustPanelRatio(t *testing.T) {
+	t.Parallel()
+	hunkBody := "@@ -1,3 +1,3 @@\n context\n-old\n+new\n context\n"
+	diffOutput := "diff --git a/foo.go b/foo.go\n--- a/foo.go\n+++ b/foo.go\n" + hunkBody
+	m, _ := newHunkAddTestModel(t, diffOutput)
+	m.width = 120
+	m.height = 40
+
+	start := m.panelRatio
+	m.Update(tea.KeyPressMsg{Code: ']', Text: "]"})
+	if m.panelRatio != start+5 {
+		t.Errorf("] should increase panelRatio by 5: got %d want %d", m.panelRatio, start+5)
+	}
+	m.Update(tea.KeyPressMsg{Code: '[', Text: "["})
+	if m.panelRatio != start {
+		t.Errorf("[ should decrease panelRatio by 5: got %d want %d", m.panelRatio, start)
+	}
+}
+
+func TestHunkAddModel_MaximizeView(t *testing.T) {
+	t.Parallel()
+	hunkBody := "@@ -1,3 +1,3 @@\n context\n-old\n+new\n context\n"
+	diffOutput := "diff --git a/foo.go b/foo.go\n--- a/foo.go\n+++ b/foo.go\n" + hunkBody
+	m, _ := newHunkAddTestModel(t, diffOutput)
+	m.width = 120
+	m.height = 40
+
+	normalView := m.View()
+	m.Update(tea.KeyPressMsg{Code: 'F', ShiftedCode: 'F', Mod: tea.ModShift, Text: "F"})
+	maximizedView := m.View()
+	if normalView == maximizedView {
+		t.Error("maximize mode should produce a different view")
+	}
+}
+
+func TestHunkAddModel_HintsWithProgressMaximized(t *testing.T) {
+	t.Parallel()
+	hunkBody := "@@ -1,3 +1,3 @@\n context\n-old\n+new\n context\n"
+	diffOutput := "diff --git a/foo.go b/foo.go\n--- a/foo.go\n+++ b/foo.go\n" + hunkBody
+	m, _ := newHunkAddTestModel(t, diffOutput)
+	m.diffMaximized = true
+
+	hints := m.hintsWithProgress()
+	if !strings.Contains(hints, "F: restore") {
+		t.Errorf("maximize hints should include 'F: restore', got %q", hints)
+	}
+}
+
+func TestHunkAddModel_ResizeWhileMaximized(t *testing.T) {
+	t.Parallel()
+	hunkBody := "@@ -1,3 +1,3 @@\n context\n-old\n+new\n context\n"
+	diffOutput := "diff --git a/foo.go b/foo.go\n--- a/foo.go\n+++ b/foo.go\n" + hunkBody
+	m, _ := newHunkAddTestModel(t, diffOutput)
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m.Update(tea.KeyPressMsg{Code: 'F', ShiftedCode: 'F', Mod: tea.ModShift, Text: "F"})
+	// Resize while maximized exercises diffMaximized branch in resize()
+	cmd := m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	_ = cmd
+	view := m.View()
+	if view == "" {
+		t.Error("View() should not be empty after resize while maximized")
+	}
+}

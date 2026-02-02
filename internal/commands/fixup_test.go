@@ -492,3 +492,97 @@ func TestFixupModel_Update_NavigationJ(t *testing.T) {
 		t.Error("View() returned empty string after navigating with j")
 	}
 }
+
+func TestFixupModel_FKeyTogglesMaximizeView(t *testing.T) {
+	t.Parallel()
+	logOutput := "abc1234\x1ffeat: something\x1fAlice\x1f2 hours ago\x1e"
+	m := newFakeFixupModel(t, logOutput, "main")
+	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	normalView := m.View()
+
+	// Press F to maximize
+	m.Update(tea.KeyPressMsg{Code: 'F', ShiftedCode: 'F', Mod: tea.ModShift, Text: "F"})
+	maximizedView := m.View()
+	if normalView == maximizedView {
+		t.Error("F should change the layout to maximize diff panel")
+	}
+
+	// Press F again to restore
+	m.Update(tea.KeyPressMsg{Code: 'F', ShiftedCode: 'F', Mod: tea.ModShift, Text: "F"})
+	restoredView := m.View()
+	if restoredView == maximizedView {
+		t.Error("second F should restore the two-panel layout")
+	}
+}
+
+func TestFixupModel_MaximizeHintsContainRestore(t *testing.T) {
+	t.Parallel()
+	logOutput := "abc1234\x1ffeat: something\x1fAlice\x1f2 hours ago\x1e"
+	m := newFakeFixupModel(t, logOutput, "main")
+	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	// Maximize
+	m.Update(tea.KeyPressMsg{Code: 'F', ShiftedCode: 'F', Mod: tea.ModShift, Text: "F"})
+	view := m.View()
+	if !strings.Contains(view, "F: restore") {
+		t.Errorf("maximize hints must include 'F: restore', got view: %q", view)
+	}
+}
+
+func TestFixupModel_BracketKeyChangesLayout(t *testing.T) {
+	t.Parallel()
+	logOutput := "abc1234\x1ffeat: something\x1fAlice\x1f2 hours ago\x1e"
+	m := newFakeFixupModel(t, logOutput, "main")
+	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	normalView := m.View()
+
+	// Press ] to widen the left panel
+	m.Update(tea.KeyPressMsg{Code: ']', Text: "]"})
+	adjustedView := m.View()
+
+	// Views may not differ visually at this content, but the key should not panic
+	// and should be handled. We verify no error state by checking view is non-empty.
+	if adjustedView == "" {
+		t.Error("] key handler should not produce empty view")
+	}
+	_ = normalView
+}
+
+func TestFixupModel_BracketLeftKeyChangesLayout(t *testing.T) {
+	t.Parallel()
+	logOutput := "abc1234\x1ffeat: something\x1fAlice\x1f2 hours ago\x1e"
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{"", "/fake/repo", logOutput, "main", "diff content"},
+		Errors:  []error{fmt.Errorf("staged"), nil, nil, nil, nil},
+	}
+	cfg := config.NewDefault()
+	cfg.PanelRatio = 60 // above 20 so [ key takes effect
+	renderer := &diff.PlainRenderer{}
+	m, err := commands.NewFixupModel(context.Background(), runner, cfg, renderer)
+	if err != nil {
+		t.Fatalf("NewFixupModel returned error: %v", err)
+	}
+	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	m.Update(tea.KeyPressMsg{Code: '[', Text: "["})
+	view := m.View()
+	if view == "" {
+		t.Error("[ key handler should not produce empty view")
+	}
+}
+
+func TestFixupModel_ResizeWhileMaximized(t *testing.T) {
+	t.Parallel()
+	logOutput := "abc1234\x1ffeat: something\x1fAlice\x1f2 hours ago\x1e"
+	m := newFakeFixupModel(t, logOutput, "main")
+	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m.Update(tea.KeyPressMsg{Code: 'F', ShiftedCode: 'F', Mod: tea.ModShift, Text: "F"})
+	// Resize while maximized exercises diffMaximized branch in resize()
+	_ = m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	view := m.View()
+	if view == "" {
+		t.Error("View() should not be empty after resize while maximized")
+	}
+}

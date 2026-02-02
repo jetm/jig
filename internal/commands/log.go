@@ -41,18 +41,21 @@ type LogModel struct {
 	ctx      context.Context
 	runner   git.Runner
 	renderer diff.Renderer
+	cfg      config.Config
 
-	commits     []git.CommitEntry
-	commitList  components.ItemList
-	diffView    components.DiffView
-	statusBar   components.StatusBar
-	help        components.HelpOverlay
-	branch      string
-	selectedIdx int
-	width       int
-	height      int
-	focusRight  bool
-	showDiff    bool
+	commits       []git.CommitEntry
+	commitList    components.ItemList
+	diffView      components.DiffView
+	statusBar     components.StatusBar
+	help          components.HelpOverlay
+	branch        string
+	selectedIdx   int
+	width         int
+	height        int
+	panelRatio    int
+	focusRight    bool
+	showDiff      bool
+	diffMaximized bool
 }
 
 // NewLogModel creates a LogModel by loading recent commits from git log.
@@ -76,6 +79,7 @@ func NewLogModel(
 		ctx:        ctx,
 		runner:     runner,
 		renderer:   renderer,
+		cfg:        cfg,
 		commits:    commits,
 		commitList: components.NewCompactItemList(items, 40, 20),
 		diffView:   components.NewDiffView(80, 20),
@@ -93,15 +97,19 @@ func NewLogModel(
 			{
 				Name: "Actions",
 				Bindings: []components.KeyBinding{
+					{Key: "w", Desc: "toggle soft-wrap (diff panel)"},
+					{Key: "F", Desc: "maximize diff panel"},
 					{Key: "q/Esc", Desc: "quit"},
 				},
 			},
 		}),
 		branch:      branchName,
 		selectedIdx: 0,
+		panelRatio:  cfg.PanelRatio,
 	}
 
 	m.showDiff = cfg.ShowDiffPanel
+	m.diffView.SetSoftWrap(cfg.SoftWrap)
 
 	m.updateHints()
 	m.statusBar.SetBranch(branchName)
@@ -132,7 +140,7 @@ func (m *LogModel) Update(msg tea.Msg) tea.Cmd {
 		}
 
 		if msg.Code == tea.KeyTab {
-			if m.showDiff {
+			if m.showDiff && !m.diffMaximized {
 				m.focusRight = !m.focusRight
 				m.updateHints()
 			}
@@ -143,6 +151,45 @@ func (m *LogModel) Update(msg tea.Msg) tea.Cmd {
 			m.showDiff = !m.showDiff
 			if m.showDiff && len(m.commits) > 0 {
 				m.renderSelectedDiff()
+			}
+			return sbCmd
+		}
+
+		if msg.String() == "F" {
+			if m.showDiff {
+				m.diffMaximized = !m.diffMaximized
+				m.updateHints()
+			}
+			return sbCmd
+		}
+
+		if msg.String() == "w" && m.focusRight {
+			m.diffView.SetSoftWrap(!m.diffView.SoftWrap())
+			return sbCmd
+		}
+
+		if msg.String() == "[" {
+			if m.panelRatio > 20 {
+				m.panelRatio -= 5
+				if m.panelRatio < 20 {
+					m.panelRatio = 20
+				}
+				m.cfg.PanelRatio = m.panelRatio
+				_ = config.Save(m.cfg)
+				m.resize()
+			}
+			return sbCmd
+		}
+
+		if msg.String() == "]" {
+			if m.panelRatio < 80 {
+				m.panelRatio += 5
+				if m.panelRatio > 80 {
+					m.panelRatio = 80
+				}
+				m.cfg.PanelRatio = m.panelRatio
+				_ = config.Save(m.cfg)
+				m.resize()
 			}
 			return sbCmd
 		}
@@ -188,8 +235,14 @@ func (m *LogModel) View() string {
 			m.commitList.SetHeight(contentHeight)
 			leftPanel := tui.StyleFocusBorder.Width(panelW).Height(contentHeight).MaxHeight(contentHeight).Render(m.commitList.View())
 			background = leftPanel + "\n" + m.statusBar.View()
+		} else if m.diffMaximized {
+			rightW := m.width - 1
+			m.diffView.SetWidth(rightW)
+			m.diffView.SetHeight(contentHeight)
+			rightPanel := tui.StyleFocusBorder.Width(rightW).Height(contentHeight).MaxHeight(contentHeight).Render(m.diffView.View())
+			background = rightPanel + "\n" + m.statusBar.View()
 		} else {
-			leftW, rightW := tui.Columns(m.width)
+			leftW, rightW := tui.ColumnsFromConfig(m.width, m.panelRatio)
 
 			leftW--
 			rightW--
@@ -253,15 +306,19 @@ func (m *LogModel) renderSelectedDiff() {
 }
 
 const (
-	logHintsLeft  = "j/k: navigate  Tab: panel  D: diff  ?: help  q: quit"
-	logHintsRight = "h/l: scroll  Tab: panel  D: diff  ?: help  q: quit"
+	logHintsLeft     = "j/k: navigate  Tab: panel  D: diff  ?: help  q: quit"
+	logHintsRight    = "w: wrap  F: maximize  Tab: panel  ?: help  q: quit"
+	logHintsMaximize = "F: restore  ?: help  q: quit"
 )
 
-// updateHints sets the status bar hints based on the current focus.
+// updateHints sets the status bar hints based on the current focus and maximize state.
 func (m *LogModel) updateHints() {
-	if m.focusRight {
+	switch {
+	case m.diffMaximized:
+		m.statusBar.SetHints(logHintsMaximize)
+	case m.focusRight:
 		m.statusBar.SetHints(logHintsRight)
-	} else {
+	default:
 		m.statusBar.SetHints(logHintsLeft)
 	}
 }
@@ -278,7 +335,14 @@ func (m *LogModel) resize() {
 		return
 	}
 
-	leftW, rightW := tui.Columns(m.width)
+	if m.diffMaximized {
+		rightW := m.width - 1
+		m.diffView.SetWidth(rightW)
+		m.diffView.SetHeight(contentHeight)
+		return
+	}
+
+	leftW, rightW := tui.ColumnsFromConfig(m.width, m.panelRatio)
 
 	leftW--
 	rightW--

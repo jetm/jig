@@ -18,18 +18,21 @@ import (
 // DiffModel is the command model for the diff TUI.
 // It follows the child component pattern: Update returns tea.Cmd, View returns string.
 type DiffModel struct {
-	files        []git.FileDiff
-	fileTree     components.FileTree
-	diffView     components.DiffView
-	statusBar    components.StatusBar
-	help         components.HelpOverlay
-	renderer     diff.Renderer
-	branch       string
-	selectedPath string
-	width        int
-	height       int
-	focusRight   bool
-	showDiff     bool
+	files         []git.FileDiff
+	fileTree      components.FileTree
+	diffView      components.DiffView
+	statusBar     components.StatusBar
+	help          components.HelpOverlay
+	renderer      diff.Renderer
+	cfg           config.Config
+	branch        string
+	selectedPath  string
+	width         int
+	height        int
+	panelRatio    int
+	focusRight    bool
+	showDiff      bool
+	diffMaximized bool
 }
 
 // NewDiffModel creates a DiffModel by running git diff and parsing the output.
@@ -71,15 +74,20 @@ func NewDiffModel(
 			{
 				Name: "Actions",
 				Bindings: []components.KeyBinding{
+					{Key: "w", Desc: "toggle soft-wrap (diff panel)"},
+					{Key: "F", Desc: "maximize diff panel"},
 					{Key: "q/Esc", Desc: "quit"},
 				},
 			},
 		}),
-		renderer: renderer,
-		branch:   branchName,
+		renderer:   renderer,
+		cfg:        cfg,
+		branch:     branchName,
+		panelRatio: cfg.PanelRatio,
 	}
 
 	m.showDiff = cfg.ShowDiffPanel
+	m.diffView.SetSoftWrap(cfg.SoftWrap)
 
 	m.updateHints()
 	m.statusBar.SetBranch(branchName)
@@ -111,7 +119,7 @@ func (m *DiffModel) Update(msg tea.Msg) tea.Cmd {
 		}
 
 		if msg.Code == tea.KeyTab {
-			if m.showDiff {
+			if m.showDiff && !m.diffMaximized {
 				m.focusRight = !m.focusRight
 				m.updateHints()
 			}
@@ -122,6 +130,45 @@ func (m *DiffModel) Update(msg tea.Msg) tea.Cmd {
 			m.showDiff = !m.showDiff
 			if m.showDiff && len(m.files) > 0 {
 				m.checkSelectionChange()
+			}
+			return sbCmd
+		}
+
+		if msg.String() == "F" {
+			if m.showDiff {
+				m.diffMaximized = !m.diffMaximized
+				m.updateHints()
+			}
+			return sbCmd
+		}
+
+		if msg.String() == "w" && m.focusRight {
+			m.diffView.SetSoftWrap(!m.diffView.SoftWrap())
+			return sbCmd
+		}
+
+		if msg.String() == "[" {
+			if m.panelRatio > 20 {
+				m.panelRatio -= 5
+				if m.panelRatio < 20 {
+					m.panelRatio = 20
+				}
+				m.cfg.PanelRatio = m.panelRatio
+				_ = config.Save(m.cfg)
+				m.resize()
+			}
+			return sbCmd
+		}
+
+		if msg.String() == "]" {
+			if m.panelRatio < 80 {
+				m.panelRatio += 5
+				if m.panelRatio > 80 {
+					m.panelRatio = 80
+				}
+				m.cfg.PanelRatio = m.panelRatio
+				_ = config.Save(m.cfg)
+				m.resize()
 			}
 			return sbCmd
 		}
@@ -170,8 +217,14 @@ func (m *DiffModel) View() string {
 			m.fileTree.SetHeight(contentHeight)
 			leftPanel := tui.StyleFocusBorder.Width(panelW).Height(contentHeight).MaxHeight(contentHeight).Render(m.fileTree.View())
 			background = leftPanel + "\n" + m.statusBar.View()
+		} else if m.diffMaximized {
+			rightW := m.width - 1
+			m.diffView.SetWidth(rightW)
+			m.diffView.SetHeight(contentHeight)
+			rightPanel := tui.StyleFocusBorder.Width(rightW).Height(contentHeight).MaxHeight(contentHeight).Render(m.diffView.View())
+			background = rightPanel + "\n" + m.statusBar.View()
 		} else {
-			leftW, rightW := tui.Columns(m.width)
+			leftW, rightW := tui.ColumnsFromConfig(m.width, m.panelRatio)
 
 			// Account for border width (1 column each)
 			leftW--
@@ -223,15 +276,19 @@ func (m *DiffModel) renderSelectedDiff() {
 }
 
 const (
-	diffHintsLeft  = "j/k: navigate  o: expand/collapse  Tab: panel  D: diff  ?: help  q: quit"
-	diffHintsRight = "h/l: scroll  Tab: panel  D: diff  ?: help  q: quit"
+	diffHintsLeft     = "j/k: navigate  Tab: panel  D: diff  ?: help  q: quit"
+	diffHintsRight    = "w: wrap  F: maximize  Tab: panel  ?: help  q: quit"
+	diffHintsMaximize = "F: restore  ?: help  q: quit"
 )
 
-// updateHints sets the status bar hints based on the current focus.
+// updateHints sets the status bar hints based on the current focus and maximize state.
 func (m *DiffModel) updateHints() {
-	if m.focusRight {
+	switch {
+	case m.diffMaximized:
+		m.statusBar.SetHints(diffHintsMaximize)
+	case m.focusRight:
 		m.statusBar.SetHints(diffHintsRight)
-	} else {
+	default:
 		m.statusBar.SetHints(diffHintsLeft)
 	}
 }
@@ -248,7 +305,14 @@ func (m *DiffModel) resize() {
 		return
 	}
 
-	leftW, rightW := tui.Columns(m.width)
+	if m.diffMaximized {
+		rightW := m.width - 1
+		m.diffView.SetWidth(rightW)
+		m.diffView.SetHeight(contentHeight)
+		return
+	}
+
+	leftW, rightW := tui.ColumnsFromConfig(m.width, m.panelRatio)
 
 	leftW--
 	rightW--

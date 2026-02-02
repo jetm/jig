@@ -488,3 +488,86 @@ func TestDiffModel_SinglePanelViewWhenDiffHidden(t *testing.T) {
 		t.Error("single-panel View() should still contain file name 'main.go'")
 	}
 }
+
+func TestDiffModel_FKeyTogglesDiffMaximized(t *testing.T) {
+	t.Parallel()
+	rawDiff := "diff --git a/main.go b/main.go\n--- a/main.go\n+++ b/main.go\n@@ -1 +1 @@\n-old\n+new\n"
+	m := newTestModel(t, "", false, rawDiff)
+	m.width = 120
+	m.height = 40
+
+	if m.diffMaximized {
+		t.Fatal("diffMaximized should start false")
+	}
+	m.Update(tea.KeyPressMsg{Code: 'F', ShiftedCode: 'F', Mod: tea.ModShift, Text: "F"})
+	if !m.diffMaximized {
+		t.Error("F should set diffMaximized")
+	}
+	m.Update(tea.KeyPressMsg{Code: 'F', ShiftedCode: 'F', Mod: tea.ModShift, Text: "F"})
+	if m.diffMaximized {
+		t.Error("second F should clear diffMaximized")
+	}
+}
+
+func TestDiffModel_WKeyTogglesSoftWrap(t *testing.T) {
+	t.Parallel()
+	rawDiff := "diff --git a/main.go b/main.go\n--- a/main.go\n+++ b/main.go\n@@ -1 +1 @@\n-old\n+new\n"
+	m := newTestModel(t, "", false, rawDiff)
+	m.width = 120
+	m.height = 40
+
+	m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	initial := m.diffView.SoftWrap()
+	m.Update(tea.KeyPressMsg{Code: 'w', Text: "w"})
+	if m.diffView.SoftWrap() == initial {
+		t.Error("w should toggle soft-wrap when right panel focused")
+	}
+}
+
+func TestDiffModel_BracketKeysAdjustPanelRatio(t *testing.T) {
+	t.Parallel()
+	rawDiff := "diff --git a/main.go b/main.go\n--- a/main.go\n+++ b/main.go\n@@ -1 +1 @@\n-old\n+new\n"
+	m := newTestModel(t, "", false, rawDiff)
+	m.width = 120
+	m.height = 40
+
+	start := m.panelRatio
+	m.Update(tea.KeyPressMsg{Code: ']', Text: "]"})
+	if m.panelRatio != start+5 {
+		t.Errorf("] should increase panelRatio by 5: got %d want %d", m.panelRatio, start+5)
+	}
+	m.Update(tea.KeyPressMsg{Code: '[', Text: "["})
+	if m.panelRatio != start {
+		t.Errorf("[ should decrease panelRatio by 5: got %d want %d", m.panelRatio, start)
+	}
+}
+
+func TestDiffModel_MaximizeView(t *testing.T) {
+	t.Parallel()
+	rawDiff := "diff --git a/main.go b/main.go\n--- a/main.go\n+++ b/main.go\n@@ -1 +1 @@\n-old\n+new\n"
+	m := newTestModel(t, "", false, rawDiff)
+	m.width = 120
+	m.height = 40
+
+	normalView := m.View()
+	m.Update(tea.KeyPressMsg{Code: 'F', ShiftedCode: 'F', Mod: tea.ModShift, Text: "F"})
+	maximizedView := m.View()
+	if normalView == maximizedView {
+		t.Error("maximize mode should produce a different view")
+	}
+}
+
+func TestDiffModel_ResizeWhileMaximized(t *testing.T) {
+	t.Parallel()
+	rawDiff := "diff --git a/main.go b/main.go\n--- a/main.go\n+++ b/main.go\n@@ -1 +1 @@\n-old\n+new\n"
+	m := newTestModel(t, "", false, rawDiff)
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m.Update(tea.KeyPressMsg{Code: 'F', ShiftedCode: 'F', Mod: tea.ModShift, Text: "F"})
+	// Resize while maximized exercises diffMaximized branch in resize()
+	cmd := m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	_ = cmd
+	view := m.View()
+	if view == "" {
+		t.Error("View() should not be empty after resize while maximized")
+	}
+}

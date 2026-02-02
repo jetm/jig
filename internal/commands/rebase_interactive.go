@@ -69,20 +69,23 @@ type RebaseInteractiveModel struct {
 	ctx      context.Context
 	runner   git.Runner
 	renderer diff.Renderer
+	cfg      config.Config
 
-	base         string
-	todoFilePath string // non-empty = editor mode (invoked as $GIT_SEQUENCE_EDITOR)
-	entries      []git.RebaseTodoEntry
-	commitList   components.ItemList
-	diffView     components.DiffView
-	statusBar    components.StatusBar
-	help         components.HelpOverlay
-	branch       string
-	selectedIdx  int
-	width        int
-	height       int
-	focusRight   bool
-	showDiff     bool
+	base          string
+	todoFilePath  string // non-empty = editor mode (invoked as $GIT_SEQUENCE_EDITOR)
+	entries       []git.RebaseTodoEntry
+	commitList    components.ItemList
+	diffView      components.DiffView
+	statusBar     components.StatusBar
+	help          components.HelpOverlay
+	branch        string
+	selectedIdx   int
+	width         int
+	height        int
+	panelRatio    int
+	focusRight    bool
+	showDiff      bool
+	diffMaximized bool
 }
 
 // NewRebaseInteractiveModel creates a RebaseInteractiveModel.
@@ -123,6 +126,7 @@ func NewRebaseInteractiveModel(
 		ctx:          ctx,
 		runner:       runner,
 		renderer:     renderer,
+		cfg:          cfg,
 		base:         base,
 		todoFilePath: todoFilePath,
 		entries:      entries,
@@ -151,6 +155,8 @@ func NewRebaseInteractiveModel(
 					{Key: "s", Desc: "squash"},
 					{Key: "f", Desc: "fixup"},
 					{Key: "d", Desc: "drop"},
+					{Key: "w", Desc: "toggle soft-wrap (diff panel)"},
+					{Key: "F", Desc: "maximize diff panel"},
 					{Key: "Enter", Desc: "confirm & execute rebase"},
 					{Key: "q/Esc", Desc: "abort"},
 				},
@@ -158,11 +164,13 @@ func NewRebaseInteractiveModel(
 		}),
 		branch:      branchName,
 		selectedIdx: 0,
+		panelRatio:  cfg.PanelRatio,
 	}
 
 	// Editor mode always starts with diff hidden; standalone reads from config.
 	if todoFilePath == "" {
 		m.showDiff = cfg.ShowDiffPanel
+		m.diffView.SetSoftWrap(cfg.SoftWrap)
 		if m.showDiff && len(entries) > 0 {
 			m.renderSelectedDiff()
 		}
@@ -193,7 +201,7 @@ func (m *RebaseInteractiveModel) Update(msg tea.Msg) tea.Cmd {
 
 		switch msg.String() {
 		case "tab":
-			if m.showDiff {
+			if m.showDiff && !m.diffMaximized {
 				m.focusRight = !m.focusRight
 				m.updateHints()
 			}
@@ -252,6 +260,43 @@ func (m *RebaseInteractiveModel) Update(msg tea.Msg) tea.Cmd {
 			}
 			return sbCmd
 
+		case "F":
+			if m.showDiff {
+				m.diffMaximized = !m.diffMaximized
+				m.updateHints()
+			}
+			return sbCmd
+
+		case "w":
+			if m.focusRight {
+				m.diffView.SetSoftWrap(!m.diffView.SoftWrap())
+			}
+			return sbCmd
+
+		case "[":
+			if m.panelRatio > 20 {
+				m.panelRatio -= 5
+				if m.panelRatio < 20 {
+					m.panelRatio = 20
+				}
+				m.cfg.PanelRatio = m.panelRatio
+				_ = config.Save(m.cfg)
+				m.resize()
+			}
+			return sbCmd
+
+		case "]":
+			if m.panelRatio < 80 {
+				m.panelRatio += 5
+				if m.panelRatio > 80 {
+					m.panelRatio = 80
+				}
+				m.cfg.PanelRatio = m.panelRatio
+				_ = config.Save(m.cfg)
+				m.resize()
+			}
+			return sbCmd
+
 		case "K":
 			m.moveUp()
 			return sbCmd
@@ -304,8 +349,14 @@ func (m *RebaseInteractiveModel) View() string {
 			m.commitList.SetHeight(contentHeight)
 			leftPanel := tui.StyleFocusBorder.Width(panelW).Height(contentHeight).MaxHeight(contentHeight).Render(m.commitList.View())
 			background = leftPanel + "\n" + m.statusBar.View()
+		} else if m.diffMaximized {
+			rightW := m.width - 1
+			m.diffView.SetWidth(rightW)
+			m.diffView.SetHeight(contentHeight)
+			rightPanel := tui.StyleFocusBorder.Width(rightW).Height(contentHeight).MaxHeight(contentHeight).Render(m.diffView.View())
+			background = rightPanel + "\n" + m.statusBar.View()
 		} else {
-			leftW, rightW := tui.ColumnsWide(m.width)
+			leftW, rightW := tui.ColumnsFromConfig(m.width, m.panelRatio)
 
 			leftW--
 			rightW--
@@ -452,15 +503,19 @@ func (m *RebaseInteractiveModel) renderSelectedDiff() {
 }
 
 const (
-	rebaseHintsLeft  = "Space: cycle action  p/r/e/s/f/d: set action  K/J: reorder  Tab: panel  D: diff  Enter: confirm  ?: help  q: quit"
-	rebaseHintsRight = "h/l: scroll  Tab: panel  D: diff  ?: help  q: quit"
+	rebaseHintsLeft     = "Space: action  K/J: reorder  Tab: panel  ?: help  q: quit"
+	rebaseHintsRight    = "w: wrap  F: maximize  Tab: panel  ?: help  q: quit"
+	rebaseHintsMaximize = "F: restore  ?: help  q: quit"
 )
 
-// updateHints sets the status bar hints based on the current focus.
+// updateHints sets the status bar hints based on the current focus and maximize state.
 func (m *RebaseInteractiveModel) updateHints() {
-	if m.focusRight {
+	switch {
+	case m.diffMaximized:
+		m.statusBar.SetHints(rebaseHintsMaximize)
+	case m.focusRight:
 		m.statusBar.SetHints(rebaseHintsRight)
-	} else {
+	default:
 		m.statusBar.SetHints(rebaseHintsLeft)
 	}
 }
@@ -477,7 +532,14 @@ func (m *RebaseInteractiveModel) resize() {
 		return
 	}
 
-	leftW, rightW := tui.ColumnsWide(m.width)
+	if m.diffMaximized {
+		rightW := m.width - 1
+		m.diffView.SetWidth(rightW)
+		m.diffView.SetHeight(contentHeight)
+		return
+	}
+
+	leftW, rightW := tui.ColumnsFromConfig(m.width, m.panelRatio)
 
 	leftW--
 	rightW--

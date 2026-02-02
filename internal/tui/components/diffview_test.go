@@ -86,3 +86,97 @@ func TestDiffViewSetWidthAndHeight(t *testing.T) {
 		t.Error("View() should not be empty after resize")
 	}
 }
+
+func TestDiffViewSoftWrapOffStoresContentUnchanged(t *testing.T) {
+	dv := NewDiffView(20, 5)
+	long := strings.Repeat("x", 40) // longer than viewport width
+	dv.SetContent(long)
+	if dv.rawContent != long {
+		t.Errorf("rawContent should equal input, got %q", dv.rawContent)
+	}
+	if dv.SoftWrap() {
+		t.Error("softWrap should be false by default")
+	}
+}
+
+func TestDiffViewSoftWrapOnWrapsLongLines(t *testing.T) {
+	dv := NewDiffView(10, 20)
+	dv.SetSoftWrap(true)
+	// A 25-char line should be broken into multiple physical lines of <=10 chars.
+	long := strings.Repeat("a", 25)
+	dv.SetContent(long)
+	view := dv.View()
+	for line := range strings.SplitSeq(view, "\n") {
+		// viewport may pad lines but logical content lines should not exceed width
+		stripped := strings.TrimRight(line, " ")
+		if len(stripped) > 10 {
+			t.Errorf("line too long after soft-wrap: %q (len %d)", stripped, len(stripped))
+		}
+	}
+}
+
+func TestDiffViewSoftWrapToggleReappliesContent(t *testing.T) {
+	dv := NewDiffView(10, 20)
+	long := "+" + strings.Repeat("b", 30)
+	dv.SetContent(long)
+
+	// Enable soft-wrap — view should show multiple lines.
+	dv.SetSoftWrap(true)
+	wrappedView := dv.View()
+
+	// Disable soft-wrap — view should be a single long line again.
+	dv.SetSoftWrap(false)
+	unwrappedView := dv.View()
+
+	if wrappedView == unwrappedView {
+		t.Error("view should differ between wrapped and unwrapped states")
+	}
+}
+
+func TestDiffViewSoftWrapPreservesDiffPrefix(t *testing.T) {
+	dv := NewDiffView(10, 20)
+	dv.SetSoftWrap(true)
+	// diff prefix + 20 chars should wrap but keep + on first line
+	line := "+" + strings.Repeat("c", 20)
+	dv.SetContent(line)
+	view := dv.View()
+	lines := strings.SplitSeq(strings.TrimRight(view, "\n "), "\n")
+	// First non-empty line should start with +
+	for l := range lines {
+		if strings.TrimSpace(l) != "" {
+			if !strings.HasPrefix(l, "+") {
+				t.Errorf("first content line should start with '+', got %q", l)
+			}
+			break
+		}
+	}
+}
+
+func TestWrapContent_NarrowWidth(t *testing.T) {
+	result := wrapContent("abcdefghij", 5)
+	lines := strings.Split(result, "\n")
+	if len(lines) < 2 {
+		t.Errorf("expected wrapping into multiple lines, got %d: %v", len(lines), lines)
+	}
+	for _, line := range lines {
+		if len(line) > 5 {
+			t.Errorf("line %q exceeds width 5", line)
+		}
+	}
+}
+
+func TestWrapContent_ZeroWidth_NoChange(t *testing.T) {
+	input := "some content"
+	result := wrapContent(input, 0)
+	if result != input {
+		t.Errorf("wrapContent with width=0 should return input unchanged, got %q", result)
+	}
+}
+
+func TestWrapContent_ShortLine_NoWrap(t *testing.T) {
+	input := "short"
+	result := wrapContent(input, 80)
+	if result != input {
+		t.Errorf("short line should not be wrapped, got %q", result)
+	}
+}

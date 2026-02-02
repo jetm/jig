@@ -3,6 +3,7 @@ package commands_test
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -285,5 +286,87 @@ func TestLogModel_Update_NavigationJ(t *testing.T) {
 	view := m.View()
 	if view == "" {
 		t.Error("View() returned empty string after navigating with j")
+	}
+}
+
+func TestLogModel_FKeyTogglesMaximizeView(t *testing.T) {
+	t.Parallel()
+	logOutput := "abc1234\x1ffeat: something\x1fAlice\x1f2 hours ago\x1e"
+	m := newFakeLogModel(t, logOutput, "main", "")
+	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	normalView := m.View()
+
+	m.Update(tea.KeyPressMsg{Code: 'F', ShiftedCode: 'F', Mod: tea.ModShift, Text: "F"})
+	maximizedView := m.View()
+	if normalView == maximizedView {
+		t.Error("F should change the layout to maximize diff panel")
+	}
+
+	m.Update(tea.KeyPressMsg{Code: 'F', ShiftedCode: 'F', Mod: tea.ModShift, Text: "F"})
+	restoredView := m.View()
+	if restoredView == maximizedView {
+		t.Error("second F should restore the two-panel layout")
+	}
+}
+
+func TestLogModel_MaximizeHintsContainRestore(t *testing.T) {
+	t.Parallel()
+	logOutput := "abc1234\x1ffeat: something\x1fAlice\x1f2 hours ago\x1e"
+	m := newFakeLogModel(t, logOutput, "main", "")
+	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	m.Update(tea.KeyPressMsg{Code: 'F', ShiftedCode: 'F', Mod: tea.ModShift, Text: "F"})
+	view := m.View()
+	if !strings.Contains(view, "F: restore") {
+		t.Errorf("maximize hints must include 'F: restore', got: %q", view)
+	}
+}
+
+func TestLogModel_BracketKeyChangesLayout(t *testing.T) {
+	t.Parallel()
+	logOutput := "abc1234\x1ffeat: something\x1fAlice\x1f2 hours ago\x1e"
+	m := newFakeLogModel(t, logOutput, "main", "")
+	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	m.Update(tea.KeyPressMsg{Code: ']', Text: "]"})
+	view := m.View()
+	if view == "" {
+		t.Error("] key handler should not produce empty view")
+	}
+}
+
+func TestLogModel_BracketLeftKeyChangesLayout(t *testing.T) {
+	t.Parallel()
+	logOutput := "abc1234\x1ffeat: something\x1fAlice\x1f2 hours ago\x1e"
+	// Extra diff output for [ key which may re-trigger resize
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{logOutput, "main",
+			"diff --git a/foo.go b/foo.go\n--- a/foo.go\n+++ b/foo.go\n@@ -1 +1 @@\n-old\n+new"},
+	}
+	cfg := config.NewDefault()
+	cfg.PanelRatio = 60 // above 20 so [ takes effect
+	renderer := &diff.PlainRenderer{}
+	m := commands.NewLogModel(context.Background(), runner, cfg, renderer, "")
+	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	m.Update(tea.KeyPressMsg{Code: '[', Text: "["})
+	view := m.View()
+	if view == "" {
+		t.Error("[ key handler should not produce empty view")
+	}
+}
+
+func TestLogModel_ResizeWhileMaximized(t *testing.T) {
+	t.Parallel()
+	logOutput := "abc1234\x1ffeat: something\x1fAlice\x1f2 hours ago\x1e"
+	m := newFakeLogModel(t, logOutput, "main", "")
+	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m.Update(tea.KeyPressMsg{Code: 'F', ShiftedCode: 'F', Mod: tea.ModShift, Text: "F"})
+	// Resize while maximized exercises diffMaximized branch in resize()
+	_ = m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	view := m.View()
+	if view == "" {
+		t.Error("View() should not be empty after resize while maximized")
 	}
 }

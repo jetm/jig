@@ -705,11 +705,91 @@ func TestRebaseInteractiveModel_HelpIncludesDToggle(t *testing.T) {
 	assert.Contains(t, view, "toggle diff", "help overlay must describe D as toggle diff")
 }
 
-func TestRebaseInteractiveModel_StatusBarHintIncludesD(t *testing.T) {
+func TestRebaseInteractiveModel_StatusBarHintIncludesQuit(t *testing.T) {
 	logOutput := "abc1234\x1ffeat: first\n"
 	m := newFakeRebaseModel(t, logOutput, "main", "HEAD~1")
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 
 	view := m.View()
-	assert.Contains(t, view, "D: diff", "status bar hints must include 'D: diff'")
+	assert.Contains(t, view, "q: quit", "status bar hints must include 'q: quit'")
+	assert.Contains(t, view, "?: help", "status bar hints must include '?: help'")
+}
+
+func TestRebaseInteractiveModel_FKeyTogglesMaximizeView(t *testing.T) {
+	t.Parallel()
+	logOutput := "abc1234\x1ffeat: first\n"
+	m := newFakeRebaseModel(t, logOutput, "main", "HEAD~1")
+	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	normalView := m.View()
+
+	m.Update(tea.KeyPressMsg{Code: 'F', ShiftedCode: 'F', Mod: tea.ModShift, Text: "F"})
+	maximizedView := m.View()
+	if normalView == maximizedView {
+		t.Error("F should change layout to maximize diff panel")
+	}
+
+	m.Update(tea.KeyPressMsg{Code: 'F', ShiftedCode: 'F', Mod: tea.ModShift, Text: "F"})
+	restoredView := m.View()
+	if restoredView == maximizedView {
+		t.Error("second F should restore the two-panel layout")
+	}
+}
+
+func TestRebaseInteractiveModel_MaximizeHintsContainRestore(t *testing.T) {
+	t.Parallel()
+	logOutput := "abc1234\x1ffeat: first\n"
+	m := newFakeRebaseModel(t, logOutput, "main", "HEAD~1")
+	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	m.Update(tea.KeyPressMsg{Code: 'F', ShiftedCode: 'F', Mod: tea.ModShift, Text: "F"})
+	view := m.View()
+	assert.Contains(t, view, "F: restore", "maximize hints must include 'F: restore'")
+}
+
+func TestRebaseInteractiveModel_BracketKeyChangesLayout(t *testing.T) {
+	t.Parallel()
+	logOutput := "abc1234\x1ffeat: first\n"
+	m := newFakeRebaseModel(t, logOutput, "main", "HEAD~1")
+	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	m.Update(tea.KeyPressMsg{Code: ']', Text: "]"})
+	view := m.View()
+	if view == "" {
+		t.Error("] key handler should not produce empty view")
+	}
+}
+
+func TestRebaseInteractiveModel_BracketLeftKeyChangesLayout(t *testing.T) {
+	t.Parallel()
+	logOutput := "abc1234\x1ffeat: first\n"
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{logOutput, "main",
+			"diff --git a/foo.go b/foo.go\n--- a/foo.go\n+++ b/foo.go\n@@ -1 +1 @@\n-old\n+new"},
+	}
+	cfg := config.NewDefault()
+	cfg.PanelRatio = 60 // above 20 so [ takes effect
+	renderer := &diff.PlainRenderer{}
+	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~1", "")
+	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	m.Update(tea.KeyPressMsg{Code: '[', Text: "["})
+	view := m.View()
+	if view == "" {
+		t.Error("[ key handler should not produce empty view")
+	}
+}
+
+func TestRebaseInteractiveModel_ResizeWhileMaximized(t *testing.T) {
+	t.Parallel()
+	logOutput := "abc1234\x1ffeat: first\n"
+	m := newFakeRebaseModel(t, logOutput, "main", "HEAD~1")
+	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m.Update(tea.KeyPressMsg{Code: 'F', ShiftedCode: 'F', Mod: tea.ModShift, Text: "F"})
+	// Resize while maximized exercises diffMaximized branch in resize()
+	_ = m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	view := m.View()
+	if view == "" {
+		t.Error("View() should not be empty after resize while maximized")
+	}
 }

@@ -41,18 +41,21 @@ type FixupModel struct {
 	ctx      context.Context
 	runner   git.Runner
 	renderer diff.Renderer
+	cfg      config.Config
 
-	commits     []git.CommitEntry
-	commitList  components.ItemList
-	diffView    components.DiffView
-	statusBar   components.StatusBar
-	help        components.HelpOverlay
-	branch      string
-	selectedIdx int
-	width       int
-	height      int
-	focusRight  bool
-	showDiff    bool
+	commits       []git.CommitEntry
+	commitList    components.ItemList
+	diffView      components.DiffView
+	statusBar     components.StatusBar
+	help          components.HelpOverlay
+	branch        string
+	selectedIdx   int
+	width         int
+	height        int
+	panelRatio    int
+	focusRight    bool
+	showDiff      bool
+	diffMaximized bool
 }
 
 // NewFixupModel creates a FixupModel by loading recent commits from git log.
@@ -89,6 +92,7 @@ func NewFixupModel(
 		ctx:        ctx,
 		runner:     runner,
 		renderer:   renderer,
+		cfg:        cfg,
 		commits:    commits,
 		commitList: components.NewCompactItemList(items, 40, 20),
 		diffView:   components.NewDiffView(80, 20),
@@ -107,15 +111,19 @@ func NewFixupModel(
 			{
 				Name: "Actions",
 				Bindings: []components.KeyBinding{
+					{Key: "w", Desc: "toggle soft-wrap (diff panel)"},
+					{Key: "F", Desc: "maximize diff panel"},
 					{Key: "q/Esc", Desc: "quit"},
 				},
 			},
 		}),
 		branch:      branchName,
 		selectedIdx: 0,
+		panelRatio:  cfg.PanelRatio,
 	}
 
 	m.showDiff = cfg.ShowDiffPanel
+	m.diffView.SetSoftWrap(cfg.SoftWrap)
 
 	m.updateHints()
 	m.statusBar.SetBranch(branchName)
@@ -146,7 +154,7 @@ func (m *FixupModel) Update(msg tea.Msg) tea.Cmd {
 		}
 
 		if msg.Code == tea.KeyTab {
-			if m.showDiff {
+			if m.showDiff && !m.diffMaximized {
 				m.focusRight = !m.focusRight
 				m.updateHints()
 			}
@@ -157,6 +165,45 @@ func (m *FixupModel) Update(msg tea.Msg) tea.Cmd {
 			m.showDiff = !m.showDiff
 			if m.showDiff && len(m.commits) > 0 {
 				m.renderSelectedDiff()
+			}
+			return sbCmd
+		}
+
+		if msg.String() == "F" {
+			if m.showDiff {
+				m.diffMaximized = !m.diffMaximized
+				m.updateHints()
+			}
+			return sbCmd
+		}
+
+		if msg.String() == "w" && m.focusRight {
+			m.diffView.SetSoftWrap(!m.diffView.SoftWrap())
+			return sbCmd
+		}
+
+		if msg.String() == "[" {
+			if m.panelRatio > 20 {
+				m.panelRatio -= 5
+				if m.panelRatio < 20 {
+					m.panelRatio = 20
+				}
+				m.cfg.PanelRatio = m.panelRatio
+				_ = config.Save(m.cfg)
+				m.resize()
+			}
+			return sbCmd
+		}
+
+		if msg.String() == "]" {
+			if m.panelRatio < 80 {
+				m.panelRatio += 5
+				if m.panelRatio > 80 {
+					m.panelRatio = 80
+				}
+				m.cfg.PanelRatio = m.panelRatio
+				_ = config.Save(m.cfg)
+				m.resize()
 			}
 			return sbCmd
 		}
@@ -205,8 +252,14 @@ func (m *FixupModel) View() string {
 			m.commitList.SetHeight(contentHeight)
 			leftPanel := tui.StyleFocusBorder.Width(panelW).Height(contentHeight).MaxHeight(contentHeight).Render(m.commitList.View())
 			background = leftPanel + "\n" + m.statusBar.View()
+		} else if m.diffMaximized {
+			rightW := m.width - 1
+			m.diffView.SetWidth(rightW)
+			m.diffView.SetHeight(contentHeight)
+			rightPanel := tui.StyleFocusBorder.Width(rightW).Height(contentHeight).MaxHeight(contentHeight).Render(m.diffView.View())
+			background = rightPanel + "\n" + m.statusBar.View()
 		} else {
-			leftW, rightW := tui.Columns(m.width)
+			leftW, rightW := tui.ColumnsFromConfig(m.width, m.panelRatio)
 
 			leftW--
 			rightW--
@@ -288,15 +341,19 @@ func (m *FixupModel) renderSelectedDiff() {
 }
 
 const (
-	fixupHintsLeft  = "j/k: navigate  Tab: panel  D: diff  Enter: fixup  ?: help  q: quit"
-	fixupHintsRight = "h/l: scroll  Tab: panel  D: diff  ?: help  q: quit"
+	fixupHintsLeft     = "Tab: panel  Enter: fixup  D: diff  ?: help  q: quit"
+	fixupHintsRight    = "w: wrap  F: maximize  Tab: panel  ?: help  q: quit"
+	fixupHintsMaximize = "F: restore  ?: help  q: quit"
 )
 
-// updateHints sets the status bar hints based on the current focus.
+// updateHints sets the status bar hints based on the current focus and maximize state.
 func (m *FixupModel) updateHints() {
-	if m.focusRight {
+	switch {
+	case m.diffMaximized:
+		m.statusBar.SetHints(fixupHintsMaximize)
+	case m.focusRight:
 		m.statusBar.SetHints(fixupHintsRight)
-	} else {
+	default:
 		m.statusBar.SetHints(fixupHintsLeft)
 	}
 }
@@ -313,7 +370,14 @@ func (m *FixupModel) resize() {
 		return
 	}
 
-	leftW, rightW := tui.Columns(m.width)
+	if m.diffMaximized {
+		rightW := m.width - 1
+		m.diffView.SetWidth(rightW)
+		m.diffView.SetHeight(contentHeight)
+		return
+	}
+
+	leftW, rightW := tui.ColumnsFromConfig(m.width, m.panelRatio)
 
 	leftW--
 	rightW--

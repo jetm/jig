@@ -671,6 +671,227 @@ func TestAddModel_SinglePanelViewWhenDiffHidden(t *testing.T) {
 	}
 }
 
+func TestAddModel_FKeyTogglesDiffMaximized(t *testing.T) {
+	t.Parallel()
+	m := newTestAddModel(t, "M\tfoo.go\n", "")
+	m.width = 120
+	m.height = 40
+
+	if m.diffMaximized {
+		t.Fatal("diffMaximized should start false")
+	}
+
+	m.Update(tea.KeyPressMsg{Code: 'F', ShiftedCode: 'F', Mod: tea.ModShift, Text: "F"})
+	if !m.diffMaximized {
+		t.Error("F should set diffMaximized to true")
+	}
+
+	m.Update(tea.KeyPressMsg{Code: 'F', ShiftedCode: 'F', Mod: tea.ModShift, Text: "F"})
+	if m.diffMaximized {
+		t.Error("F again should restore diffMaximized to false")
+	}
+}
+
+func TestAddModel_FKeyNoopWhenDiffHidden(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{
+			"M\tfoo.go\n",
+			"",
+			"main",
+		},
+	}
+	cfg := config.NewDefault()
+	cfg.ShowDiffPanel = false
+	renderer := &diff.PlainRenderer{}
+	m := NewAddModel(context.Background(), runner, cfg, renderer)
+	m.width = 120
+	m.height = 40
+
+	m.Update(tea.KeyPressMsg{Code: 'F', ShiftedCode: 'F', Mod: tea.ModShift, Text: "F"})
+	if m.diffMaximized {
+		t.Error("F should not set diffMaximized when diff is hidden")
+	}
+}
+
+func TestAddModel_WKeyTogglesSoftWrap(t *testing.T) {
+	t.Parallel()
+	m := newTestAddModel(t, "M\tfoo.go\n", "")
+	m.width = 120
+	m.height = 40
+
+	// Focus the right panel first
+	m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	if !m.focusRight {
+		t.Fatal("should be focused on right panel after Tab")
+	}
+
+	initial := m.diffView.SoftWrap()
+	m.Update(tea.KeyPressMsg{Code: 'w', Text: "w"})
+	if m.diffView.SoftWrap() == initial {
+		t.Error("w should toggle soft-wrap")
+	}
+
+	m.Update(tea.KeyPressMsg{Code: 'w', Text: "w"})
+	if m.diffView.SoftWrap() != initial {
+		t.Error("w again should restore soft-wrap to initial state")
+	}
+}
+
+func TestAddModel_WKeyNoopWhenLeftFocused(t *testing.T) {
+	t.Parallel()
+	cfg := config.NewDefault()
+	cfg.SoftWrap = false
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{"M\tfoo.go\n", "", "main"},
+	}
+	renderer := &diff.PlainRenderer{}
+	m := NewAddModel(context.Background(), runner, cfg, renderer)
+	m.width = 120
+	m.height = 40
+
+	// Left panel focused (default)
+	m.Update(tea.KeyPressMsg{Code: 'w', Text: "w"})
+	if m.diffView.SoftWrap() {
+		t.Error("w should not toggle soft-wrap when left panel is focused")
+	}
+}
+
+func TestAddModel_MaximizeViewOmitsLeftPanel(t *testing.T) {
+	t.Parallel()
+	m := newTestAddModel(t, "M\tfoo.go\n", "")
+	m.width = 120
+	m.height = 40
+
+	normalView := m.View()
+
+	m.Update(tea.KeyPressMsg{Code: 'F', ShiftedCode: 'F', Mod: tea.ModShift, Text: "F"})
+	maximizedView := m.View()
+
+	// In normal view foo.go is in the left panel; in maximized view it should not appear
+	// (we may or may not have content in diff, but the views must differ)
+	if normalView == maximizedView {
+		t.Error("maximize mode should produce a different view from normal two-panel layout")
+	}
+}
+
+func TestAddModel_InitialSoftWrapFromConfig(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{"M\tfoo.go\n", "", "main"},
+	}
+	cfg := config.NewDefault()
+	cfg.SoftWrap = true
+	renderer := &diff.PlainRenderer{}
+	m := NewAddModel(context.Background(), runner, cfg, renderer)
+
+	if !m.diffView.SoftWrap() {
+		t.Error("diffView should start with soft-wrap enabled when config.SoftWrap=true")
+	}
+}
+
+func TestAddModel_BracketRightIncreasesPanelRatio(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{"M\tfoo.go\n", "", "main"},
+	}
+	cfg := config.NewDefault()
+	cfg.PanelRatio = 40
+	renderer := &diff.PlainRenderer{}
+	m := NewAddModel(context.Background(), runner, cfg, renderer)
+	m.width = 120
+	m.height = 40
+
+	m.Update(tea.KeyPressMsg{Code: ']', Text: "]"})
+	if m.panelRatio != 45 {
+		t.Errorf("panelRatio should be 45 after ], got %d", m.panelRatio)
+	}
+}
+
+func TestAddModel_BracketLeftDecreasesPanelRatio(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{"M\tfoo.go\n", "", "main"},
+	}
+	cfg := config.NewDefault()
+	cfg.PanelRatio = 40
+	renderer := &diff.PlainRenderer{}
+	m := NewAddModel(context.Background(), runner, cfg, renderer)
+	m.width = 120
+	m.height = 40
+
+	m.Update(tea.KeyPressMsg{Code: '[', Text: "["})
+	if m.panelRatio != 35 {
+		t.Errorf("panelRatio should be 35 after [, got %d", m.panelRatio)
+	}
+}
+
+func TestAddModel_BracketRightClampsAt80(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{"M\tfoo.go\n", "", "main"},
+	}
+	cfg := config.NewDefault()
+	cfg.PanelRatio = 80
+	renderer := &diff.PlainRenderer{}
+	m := NewAddModel(context.Background(), runner, cfg, renderer)
+	m.width = 120
+	m.height = 40
+
+	m.Update(tea.KeyPressMsg{Code: ']', Text: "]"})
+	if m.panelRatio != 80 {
+		t.Errorf("panelRatio should stay at 80 (max), got %d", m.panelRatio)
+	}
+}
+
+func TestAddModel_BracketLeftClampsAt20(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{"M\tfoo.go\n", "", "main"},
+	}
+	cfg := config.NewDefault()
+	cfg.PanelRatio = 20
+	renderer := &diff.PlainRenderer{}
+	m := NewAddModel(context.Background(), runner, cfg, renderer)
+	m.width = 120
+	m.height = 40
+
+	m.Update(tea.KeyPressMsg{Code: '[', Text: "["})
+	if m.panelRatio != 20 {
+		t.Errorf("panelRatio should stay at 20 (min), got %d", m.panelRatio)
+	}
+}
+
+func TestAddModel_InitialPanelRatioFromConfig(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{"M\tfoo.go\n", "", "main"},
+	}
+	cfg := config.NewDefault()
+	cfg.PanelRatio = 60
+	renderer := &diff.PlainRenderer{}
+	m := NewAddModel(context.Background(), runner, cfg, renderer)
+
+	if m.panelRatio != 60 {
+		t.Errorf("panelRatio should be 60 from config, got %d", m.panelRatio)
+	}
+}
+
+func TestAddModel_ResizeWhileMaximized(t *testing.T) {
+	t.Parallel()
+	m := newTestAddModel(t, "M\tfoo.go\n", "")
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	// Maximize the diff panel
+	m.Update(tea.KeyPressMsg{Code: 'F', ShiftedCode: 'F', Mod: tea.ModShift, Text: "F"})
+	// Trigger resize while maximized - exercises diffMaximized branch
+	cmd := m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	_ = cmd
+	view := m.View()
+	if view == "" {
+		t.Error("View() should not be empty after resize while maximized")
+	}
+}
+
 func TestAddModel_KeyJForwardsToList(t *testing.T) {
 	t.Parallel()
 	runner := &testhelper.FakeRunner{

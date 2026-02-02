@@ -22,22 +22,25 @@ type HunkAddModel struct {
 	ctx      context.Context
 	runner   git.Runner
 	renderer diff.Renderer
+	cfg      config.Config
 
-	files      []git.FileDiff
-	fileList   components.FileList
-	diffView   components.DiffView
-	statusBar  components.StatusBar
-	help       components.HelpOverlay
-	branch     string
-	width      int
-	height     int
-	fileIdx    int          // index into files for the current file
-	hunks      []git.Hunk   // hunks of the current file
-	hunkIdx    int          // index into hunks (current hunk)
-	decided    map[int]bool // hunkIdx -> staged (true) or skipped (false); nil means undecided
-	allDecided bool         // true once all hunks in current file are decided
-	focusRight bool
-	showDiff   bool
+	files         []git.FileDiff
+	fileList      components.FileList
+	diffView      components.DiffView
+	statusBar     components.StatusBar
+	help          components.HelpOverlay
+	branch        string
+	width         int
+	height        int
+	panelRatio    int
+	fileIdx       int          // index into files for the current file
+	hunks         []git.Hunk   // hunks of the current file
+	hunkIdx       int          // index into hunks (current hunk)
+	decided       map[int]bool // hunkIdx -> staged (true) or skipped (false); nil means undecided
+	allDecided    bool         // true once all hunks in current file are decided
+	focusRight    bool
+	showDiff      bool
+	diffMaximized bool
 }
 
 // NewHunkAddModel creates a HunkAddModel by listing files with unstaged changes.
@@ -62,6 +65,7 @@ func NewHunkAddModel(
 		ctx:       ctx,
 		runner:    runner,
 		renderer:  renderer,
+		cfg:       cfg,
 		files:     files,
 		fileList:  components.NewFileList(entries, false),
 		diffView:  components.NewDiffView(80, 20),
@@ -84,15 +88,19 @@ func NewHunkAddModel(
 					{Key: "y", Desc: "stage hunk"},
 					{Key: "a", Desc: "stage all remaining hunks"},
 					{Key: "s", Desc: "split hunk"},
+					{Key: "w", Desc: "toggle soft-wrap (diff panel)"},
+					{Key: "F", Desc: "maximize diff panel"},
 					{Key: "q/Esc", Desc: "quit"},
 				},
 			},
 		}),
-		branch:  branchName,
-		decided: make(map[int]bool),
+		branch:     branchName,
+		decided:    make(map[int]bool),
+		panelRatio: cfg.PanelRatio,
 	}
 
 	m.showDiff = cfg.ShowDiffPanel
+	m.diffView.SetSoftWrap(cfg.SoftWrap)
 
 	m.statusBar.SetHints(m.hintsWithProgress())
 	m.statusBar.SetBranch(branchName)
@@ -122,7 +130,7 @@ func (m *HunkAddModel) Update(msg tea.Msg) tea.Cmd {
 		}
 
 		if msg.Code == tea.KeyTab {
-			if m.showDiff {
+			if m.showDiff && !m.diffMaximized {
 				m.focusRight = !m.focusRight
 				m.statusBar.SetHints(m.hintsWithProgress())
 			}
@@ -133,6 +141,45 @@ func (m *HunkAddModel) Update(msg tea.Msg) tea.Cmd {
 			m.showDiff = !m.showDiff
 			if m.showDiff && len(m.files) > 0 {
 				m.renderCurrentHunk()
+			}
+			return sbCmd
+		}
+
+		if msg.String() == "F" {
+			if m.showDiff {
+				m.diffMaximized = !m.diffMaximized
+				m.statusBar.SetHints(m.hintsWithProgress())
+			}
+			return sbCmd
+		}
+
+		if msg.String() == "w" && m.focusRight {
+			m.diffView.SetSoftWrap(!m.diffView.SoftWrap())
+			return sbCmd
+		}
+
+		if msg.String() == "[" {
+			if m.panelRatio > 20 {
+				m.panelRatio -= 5
+				if m.panelRatio < 20 {
+					m.panelRatio = 20
+				}
+				m.cfg.PanelRatio = m.panelRatio
+				_ = config.Save(m.cfg)
+				m.resize()
+			}
+			return sbCmd
+		}
+
+		if msg.String() == "]" {
+			if m.panelRatio < 80 {
+				m.panelRatio += 5
+				if m.panelRatio > 80 {
+					m.panelRatio = 80
+				}
+				m.cfg.PanelRatio = m.panelRatio
+				_ = config.Save(m.cfg)
+				m.resize()
 			}
 			return sbCmd
 		}
@@ -192,8 +239,14 @@ func (m *HunkAddModel) View() string {
 			m.fileList.SetHeight(contentHeight)
 			leftPanel := tui.StyleFocusBorder.Width(panelW).Height(contentHeight).MaxHeight(contentHeight).Render(m.fileList.View())
 			background = leftPanel + "\n" + m.statusBar.View()
+		} else if m.diffMaximized {
+			rightW := m.width - 1
+			m.diffView.SetWidth(rightW)
+			m.diffView.SetHeight(contentHeight)
+			rightPanel := tui.StyleFocusBorder.Width(rightW).Height(contentHeight).MaxHeight(contentHeight).Render(m.diffView.View())
+			background = rightPanel + "\n" + m.statusBar.View()
 		} else {
-			leftW, rightW := tui.Columns(m.width)
+			leftW, rightW := tui.ColumnsFromConfig(m.width, m.panelRatio)
 
 			leftW--
 			rightW--
@@ -222,6 +275,13 @@ func (m *HunkAddModel) View() string {
 // hintsWithProgress returns the status bar hint string including hunk progress.
 // When the right panel has focus, it shows scroll hints instead of action hints.
 func (m *HunkAddModel) hintsWithProgress() string {
+	if m.diffMaximized {
+		if len(m.hunks) == 0 {
+			return "F: restore  ?: help  q: quit"
+		}
+		progress := fmt.Sprintf("Hunk %d/%d", m.hunkIdx+1, len(m.hunks))
+		return fmt.Sprintf("%s  F: restore  ?: help  q: quit", progress)
+	}
 	if m.focusRight {
 		if len(m.hunks) == 0 {
 			return "h/l: scroll  Tab: panel  ?: help  q: quit"
@@ -230,10 +290,10 @@ func (m *HunkAddModel) hintsWithProgress() string {
 		return fmt.Sprintf("%s  h/l: scroll  Tab: panel  ?: help  q: quit", progress)
 	}
 	if len(m.hunks) == 0 {
-		return "y: stage  n: skip  a: all  s: split  Tab: panel  ?: help  q: quit"
+		return "y: stage  n: skip  Tab: panel  ?: help  q: quit"
 	}
 	progress := fmt.Sprintf("Hunk %d/%d", m.hunkIdx+1, len(m.hunks))
-	return fmt.Sprintf("%s  y: stage  n: skip  a: all  s: split  Tab: panel  ?: help  q: quit", progress)
+	return fmt.Sprintf("%s  y: stage  n: skip  Tab: panel  ?: help  q: quit", progress)
 }
 
 // loadFileHunks loads the hunks for the file at fileIdx and renders the first hunk.
@@ -499,7 +559,14 @@ func (m *HunkAddModel) resize() {
 		return
 	}
 
-	leftW, rightW := tui.Columns(m.width)
+	if m.diffMaximized {
+		rightW := m.width - 1
+		m.diffView.SetWidth(rightW)
+		m.diffView.SetHeight(contentHeight)
+		return
+	}
+
+	leftW, rightW := tui.ColumnsFromConfig(m.width, m.panelRatio)
 
 	leftW--
 	rightW--

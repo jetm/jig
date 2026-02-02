@@ -18,20 +18,23 @@ import (
 // CheckoutModel is the command model for the checkout TUI (interactive discard).
 // It follows the child component pattern: Update returns tea.Cmd, View returns string.
 type CheckoutModel struct {
-	ctx        context.Context
-	runner     git.Runner
-	renderer   diff.Renderer
-	files      []git.StatusFile
-	fileList   components.FileList
-	diffView   components.DiffView
-	statusBar  components.StatusBar
-	help       components.HelpOverlay
-	branch     string
-	width      int
-	height     int
-	confirming bool
-	focusRight bool
-	showDiff   bool
+	ctx           context.Context
+	runner        git.Runner
+	renderer      diff.Renderer
+	cfg           config.Config
+	files         []git.StatusFile
+	fileList      components.FileList
+	diffView      components.DiffView
+	statusBar     components.StatusBar
+	help          components.HelpOverlay
+	branch        string
+	width         int
+	height        int
+	panelRatio    int
+	confirming    bool
+	focusRight    bool
+	showDiff      bool
+	diffMaximized bool
 }
 
 // NewCheckoutModel creates a CheckoutModel by listing modified working-tree files.
@@ -53,6 +56,7 @@ func NewCheckoutModel(
 		ctx:       ctx,
 		runner:    runner,
 		renderer:  renderer,
+		cfg:       cfg,
 		files:     files,
 		fileList:  components.NewFileList(entries, true),
 		diffView:  components.NewDiffView(80, 20),
@@ -75,14 +79,18 @@ func NewCheckoutModel(
 				Name: "Actions",
 				Bindings: []components.KeyBinding{
 					{Key: "Enter", Desc: "discard changes (with confirmation)"},
+					{Key: "w", Desc: "toggle soft-wrap (diff panel)"},
+					{Key: "F", Desc: "maximize diff panel"},
 					{Key: "q/Esc", Desc: "quit without discarding"},
 				},
 			},
 		}),
-		branch: branchName,
+		branch:     branchName,
+		panelRatio: cfg.PanelRatio,
 	}
 
 	m.showDiff = cfg.ShowDiffPanel
+	m.diffView.SetSoftWrap(cfg.SoftWrap)
 
 	m.updateHints()
 	m.statusBar.SetBranch(branchName)
@@ -117,7 +125,7 @@ func (m *CheckoutModel) Update(msg tea.Msg) tea.Cmd {
 		}
 
 		if msg.Code == tea.KeyTab {
-			if m.showDiff {
+			if m.showDiff && !m.diffMaximized {
 				m.focusRight = !m.focusRight
 				m.updateHints()
 			}
@@ -128,6 +136,45 @@ func (m *CheckoutModel) Update(msg tea.Msg) tea.Cmd {
 			m.showDiff = !m.showDiff
 			if m.showDiff && len(m.files) > 0 {
 				m.renderSelectedDiff()
+			}
+			return sbCmd
+		}
+
+		if msg.String() == "F" {
+			if m.showDiff {
+				m.diffMaximized = !m.diffMaximized
+				m.updateHints()
+			}
+			return sbCmd
+		}
+
+		if msg.String() == "w" && m.focusRight {
+			m.diffView.SetSoftWrap(!m.diffView.SoftWrap())
+			return sbCmd
+		}
+
+		if msg.String() == "[" {
+			if m.panelRatio > 20 {
+				m.panelRatio -= 5
+				if m.panelRatio < 20 {
+					m.panelRatio = 20
+				}
+				m.cfg.PanelRatio = m.panelRatio
+				_ = config.Save(m.cfg)
+				m.resize()
+			}
+			return sbCmd
+		}
+
+		if msg.String() == "]" {
+			if m.panelRatio < 80 {
+				m.panelRatio += 5
+				if m.panelRatio > 80 {
+					m.panelRatio = 80
+				}
+				m.cfg.PanelRatio = m.panelRatio
+				_ = config.Save(m.cfg)
+				m.resize()
 			}
 			return sbCmd
 		}
@@ -216,8 +263,23 @@ func (m *CheckoutModel) View() string {
 			} else {
 				background = leftPanel + "\n" + m.statusBar.View()
 			}
+		} else if m.diffMaximized {
+			rightW := m.width - 1
+			m.diffView.SetWidth(rightW)
+			m.diffView.SetHeight(contentHeight)
+			rightPanel := tui.StyleFocusBorder.Width(rightW).Height(contentHeight).MaxHeight(contentHeight).Render(m.diffView.View())
+			if m.confirming {
+				paths := m.selectedPaths()
+				prompt := fmt.Sprintf("Discard changes to %d file(s)? [y/N] ", len(paths))
+				promptStyle := lipgloss.NewStyle().
+					Foreground(tui.ColorYellow).
+					Bold(true)
+				background = rightPanel + "\n" + promptStyle.Render(prompt)
+			} else {
+				background = rightPanel + "\n" + m.statusBar.View()
+			}
 		} else {
-			leftW, rightW := tui.Columns(m.width)
+			leftW, rightW := tui.ColumnsFromConfig(m.width, m.panelRatio)
 
 			leftW--
 			rightW--
@@ -303,15 +365,19 @@ func (m *CheckoutModel) renderSelectedDiff() {
 }
 
 const (
-	checkoutHintsLeft  = "Space: toggle  a: all  d: none  Tab: panel  D: diff  Enter: discard  ?: help  q: quit"
-	checkoutHintsRight = "h/l: scroll  Tab: panel  D: diff  ?: help  q: quit"
+	checkoutHintsLeft     = "Tab: panel  Enter: discard  D: diff  ?: help  q: quit"
+	checkoutHintsRight    = "w: wrap  F: maximize  Tab: panel  ?: help  q: quit"
+	checkoutHintsMaximize = "F: restore  ?: help  q: quit"
 )
 
-// updateHints sets the status bar hints based on the current focus.
+// updateHints sets the status bar hints based on the current focus and maximize state.
 func (m *CheckoutModel) updateHints() {
-	if m.focusRight {
+	switch {
+	case m.diffMaximized:
+		m.statusBar.SetHints(checkoutHintsMaximize)
+	case m.focusRight:
 		m.statusBar.SetHints(checkoutHintsRight)
-	} else {
+	default:
 		m.statusBar.SetHints(checkoutHintsLeft)
 	}
 }
@@ -328,7 +394,14 @@ func (m *CheckoutModel) resize() {
 		return
 	}
 
-	leftW, rightW := tui.Columns(m.width)
+	if m.diffMaximized {
+		rightW := m.width - 1
+		m.diffView.SetWidth(rightW)
+		m.diffView.SetHeight(contentHeight)
+		return
+	}
+
+	leftW, rightW := tui.ColumnsFromConfig(m.width, m.panelRatio)
 
 	leftW--
 	rightW--

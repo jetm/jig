@@ -18,19 +18,22 @@ import (
 // ResetModel is the command model for the reset TUI (interactive unstaging).
 // It follows the child component pattern: Update returns tea.Cmd, View returns string.
 type ResetModel struct {
-	ctx        context.Context
-	runner     git.Runner
-	renderer   diff.Renderer
-	files      []git.StatusFile
-	fileList   components.FileList
-	diffView   components.DiffView
-	statusBar  components.StatusBar
-	help       components.HelpOverlay
-	branch     string
-	width      int
-	height     int
-	focusRight bool
-	showDiff   bool
+	ctx           context.Context
+	runner        git.Runner
+	renderer      diff.Renderer
+	cfg           config.Config
+	files         []git.StatusFile
+	fileList      components.FileList
+	diffView      components.DiffView
+	statusBar     components.StatusBar
+	help          components.HelpOverlay
+	branch        string
+	width         int
+	height        int
+	panelRatio    int
+	focusRight    bool
+	showDiff      bool
+	diffMaximized bool
 }
 
 // NewResetModel creates a ResetModel by listing staged files.
@@ -52,6 +55,7 @@ func NewResetModel(
 		ctx:       ctx,
 		runner:    runner,
 		renderer:  renderer,
+		cfg:       cfg,
 		files:     files,
 		fileList:  components.NewFileList(entries, true),
 		diffView:  components.NewDiffView(80, 20),
@@ -74,14 +78,18 @@ func NewResetModel(
 				Name: "Actions",
 				Bindings: []components.KeyBinding{
 					{Key: "Enter", Desc: "unstage selected files"},
+					{Key: "w", Desc: "toggle soft-wrap (diff panel)"},
+					{Key: "F", Desc: "maximize diff panel"},
 					{Key: "q/Esc", Desc: "quit without unstaging"},
 				},
 			},
 		}),
-		branch: branchName,
+		branch:     branchName,
+		panelRatio: cfg.PanelRatio,
 	}
 
 	m.showDiff = cfg.ShowDiffPanel
+	m.diffView.SetSoftWrap(cfg.SoftWrap)
 
 	m.updateHints()
 	m.statusBar.SetBranch(branchName)
@@ -111,7 +119,7 @@ func (m *ResetModel) Update(msg tea.Msg) tea.Cmd {
 		}
 
 		if msg.Code == tea.KeyTab {
-			if m.showDiff {
+			if m.showDiff && !m.diffMaximized {
 				m.focusRight = !m.focusRight
 				m.updateHints()
 			}
@@ -122,6 +130,45 @@ func (m *ResetModel) Update(msg tea.Msg) tea.Cmd {
 			m.showDiff = !m.showDiff
 			if m.showDiff && len(m.files) > 0 {
 				m.renderSelectedDiff()
+			}
+			return sbCmd
+		}
+
+		if msg.String() == "F" {
+			if m.showDiff {
+				m.diffMaximized = !m.diffMaximized
+				m.updateHints()
+			}
+			return sbCmd
+		}
+
+		if msg.String() == "w" && m.focusRight {
+			m.diffView.SetSoftWrap(!m.diffView.SoftWrap())
+			return sbCmd
+		}
+
+		if msg.String() == "[" {
+			if m.panelRatio > 20 {
+				m.panelRatio -= 5
+				if m.panelRatio < 20 {
+					m.panelRatio = 20
+				}
+				m.cfg.PanelRatio = m.panelRatio
+				_ = config.Save(m.cfg)
+				m.resize()
+			}
+			return sbCmd
+		}
+
+		if msg.String() == "]" {
+			if m.panelRatio < 80 {
+				m.panelRatio += 5
+				if m.panelRatio > 80 {
+					m.panelRatio = 80
+				}
+				m.cfg.PanelRatio = m.panelRatio
+				_ = config.Save(m.cfg)
+				m.resize()
 			}
 			return sbCmd
 		}
@@ -181,8 +228,14 @@ func (m *ResetModel) View() string {
 			m.fileList.SetHeight(contentHeight)
 			leftPanel := tui.StyleFocusBorder.Width(panelW).Height(contentHeight).MaxHeight(contentHeight).Render(m.fileList.View())
 			background = leftPanel + "\n" + m.statusBar.View()
+		} else if m.diffMaximized {
+			rightW := m.width - 1
+			m.diffView.SetWidth(rightW)
+			m.diffView.SetHeight(contentHeight)
+			rightPanel := tui.StyleFocusBorder.Width(rightW).Height(contentHeight).MaxHeight(contentHeight).Render(m.diffView.View())
+			background = rightPanel + "\n" + m.statusBar.View()
 		} else {
-			leftW, rightW := tui.Columns(m.width)
+			leftW, rightW := tui.ColumnsFromConfig(m.width, m.panelRatio)
 
 			leftW--
 			rightW--
@@ -261,15 +314,19 @@ func (m *ResetModel) renderSelectedDiff() {
 }
 
 const (
-	resetHintsLeft  = "Space: toggle  a: all  d: none  Tab: panel  D: diff  Enter: unstage  ?: help  q: quit"
-	resetHintsRight = "h/l: scroll  Tab: panel  D: diff  ?: help  q: quit"
+	resetHintsLeft     = "Tab: panel  Enter: unstage  D: diff  ?: help  q: quit"
+	resetHintsRight    = "w: wrap  F: maximize  Tab: panel  ?: help  q: quit"
+	resetHintsMaximize = "F: restore  ?: help  q: quit"
 )
 
-// updateHints sets the status bar hints based on the current focus.
+// updateHints sets the status bar hints based on the current focus and maximize state.
 func (m *ResetModel) updateHints() {
-	if m.focusRight {
+	switch {
+	case m.diffMaximized:
+		m.statusBar.SetHints(resetHintsMaximize)
+	case m.focusRight:
 		m.statusBar.SetHints(resetHintsRight)
-	} else {
+	default:
 		m.statusBar.SetHints(resetHintsLeft)
 	}
 }
@@ -286,7 +343,14 @@ func (m *ResetModel) resize() {
 		return
 	}
 
-	leftW, rightW := tui.Columns(m.width)
+	if m.diffMaximized {
+		rightW := m.width - 1
+		m.diffView.SetWidth(rightW)
+		m.diffView.SetHeight(contentHeight)
+		return
+	}
+
+	leftW, rightW := tui.ColumnsFromConfig(m.width, m.panelRatio)
 
 	leftW--
 	rightW--

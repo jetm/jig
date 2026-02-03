@@ -84,19 +84,16 @@ func TestNewHunkAddModel_SingleFile(t *testing.T) {
 	if len(m.files) != 1 {
 		t.Fatalf("expected 1 file, got %d", len(m.files))
 	}
-	if len(m.hunks) != 1 {
-		t.Fatalf("expected 1 hunk, got %d", len(m.hunks))
-	}
-	if m.hunkIdx != 0 {
-		t.Errorf("hunkIdx = %d, want 0", m.hunkIdx)
+	if len(m.allHunks[0]) != 1 {
+		t.Fatalf("expected 1 hunk in file 0, got %d", len(m.allHunks[0]))
 	}
 }
 
 func TestNewHunkAddModel_TwoHunks(t *testing.T) {
 	t.Parallel()
 	m, _ := newHunkAddTestModel(t, twoHunkDiff)
-	if len(m.hunks) != 2 {
-		t.Fatalf("expected 2 hunks, got %d", len(m.hunks))
+	if len(m.allHunks[0]) != 2 {
+		t.Fatalf("expected 2 hunks in file 0, got %d", len(m.allHunks[0]))
 	}
 }
 
@@ -166,12 +163,12 @@ func TestHunkAddModel_HelpVisibleBlocksKeys(t *testing.T) {
 		t.Fatal("help should be visible")
 	}
 
-	// Press y while help is visible — should NOT stage
-	cmd := m.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
+	// Press Enter while help is visible — should NOT apply staged hunks
+	cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if cmd != nil {
 		msg := cmd()
 		if _, ok := msg.(app.PopModelMsg); ok {
-			t.Error("pressing y while help visible should not produce PopModelMsg")
+			t.Error("pressing Enter while help visible should not produce PopModelMsg")
 		}
 	}
 }
@@ -247,18 +244,6 @@ func TestHunkAddModel_QuitFromRightPanel(t *testing.T) {
 	}
 }
 
-func TestHunkAddModel_HunkActionsWorkFromRightPanel(t *testing.T) {
-	t.Parallel()
-	m, _ := newHunkAddTestModel(t, singleHunkDiff, "" /* git apply output */)
-	m.width = 120
-	m.height = 40
-
-	m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
-	// y (stage hunk) should still work from right panel
-	cmd := m.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
-	_ = cmd // should not panic
-}
-
 func TestHunkAddModel_View_HelpVisible(t *testing.T) {
 	t.Parallel()
 	m, _ := newHunkAddTestModel(t, singleHunkDiff)
@@ -272,34 +257,64 @@ func TestHunkAddModel_View_HelpVisible(t *testing.T) {
 	}
 }
 
-func TestHunkAddModel_View_ShowsProgress(t *testing.T) {
+func TestHunkAddModel_SpaceTogglesStagedInList(t *testing.T) {
 	t.Parallel()
 	m, _ := newHunkAddTestModel(t, singleHunkDiff)
 	m.width = 120
 	m.height = 40
 
-	view := m.View()
-	if !strings.Contains(view, "Hunk 1/1") {
-		t.Errorf("View() should show hunk progress 'Hunk 1/1', got: %q", view)
+	// Before: no hunks staged.
+	if len(m.hunkList.StagedHunks()) != 0 {
+		t.Fatal("no hunks should be staged initially")
+	}
+
+	// Press Space to stage the first hunk.
+	m.Update(tea.KeyPressMsg{Code: tea.KeySpace})
+
+	if len(m.hunkList.StagedHunks()) != 1 {
+		t.Errorf("expected 1 staged hunk after Space, got %d", len(m.hunkList.StagedHunks()))
+	}
+
+	// Press Space again to unstage.
+	m.Update(tea.KeyPressMsg{Code: tea.KeySpace})
+	if len(m.hunkList.StagedHunks()) != 0 {
+		t.Errorf("expected 0 staged hunks after second Space, got %d", len(m.hunkList.StagedHunks()))
 	}
 }
 
-func TestHunkAddModel_StageHunk_Success(t *testing.T) {
+func TestHunkAddModel_EnterWithNoStagedHunks_DoesNotPop(t *testing.T) {
 	t.Parallel()
-	// Extra "" output for git apply --cached call
+	m, _ := newHunkAddTestModel(t, singleHunkDiff)
+	m.width = 120
+	m.height = 40
+
+	// Nothing staged — Enter should not produce PopModelMsg.
+	cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if cmd != nil {
+		msg := cmd()
+		if _, ok := msg.(app.PopModelMsg); ok {
+			t.Error("Enter with no staged hunks should not produce PopModelMsg")
+		}
+	}
+}
+
+func TestHunkAddModel_SpaceThenEnter_StagesAndPops(t *testing.T) {
+	t.Parallel()
+	// Extra "" output for git apply --cached call.
 	m, runner := newHunkAddTestModel(t, singleHunkDiff, "")
 	m.width = 120
 	m.height = 40
 
-	// Press 'y' to stage the hunk; only one hunk, so it should pop
-	cmd := m.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
+	// Stage the hunk.
+	m.Update(tea.KeyPressMsg{Code: tea.KeySpace})
 
-	// Verify git apply was called
+	// Apply via Enter.
+	cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+
 	testhelper.MustHaveCall(t, runner, "apply", "--cached")
 
-	// With single hunk/file, after staging we should get PopModelMsg
 	if cmd == nil {
-		t.Fatal("expected a command after staging the only hunk")
+		t.Fatal("expected a command after Enter with staged hunk")
 	}
 	msg := cmd()
 	pop, ok := msg.(app.PopModelMsg)
@@ -311,82 +326,24 @@ func TestHunkAddModel_StageHunk_Success(t *testing.T) {
 	}
 }
 
-func TestHunkAddModel_SkipHunk(t *testing.T) {
+func TestHunkAddModel_EnterWithNoFiles_DoesNotPop(t *testing.T) {
 	t.Parallel()
-	m, runner := newHunkAddTestModel(t, twoHunkDiff)
+	m, _ := newHunkAddTestModel(t, "")
 	m.width = 120
 	m.height = 40
 
-	callsBefore := testhelper.CallCount(runner)
-
-	// Skip first hunk
-	m.Update(tea.KeyPressMsg{Code: 'n', Text: "n"})
-
-	// No additional git calls (apply) should have been made
-	callsAfter := testhelper.CallCount(runner)
-	if callsAfter != callsBefore {
-		t.Errorf("expected no new git calls after skip, but got %d new calls", callsAfter-callsBefore)
-	}
-
-	// hunkIdx should advance to 1
-	if m.hunkIdx != 1 {
-		t.Errorf("hunkIdx = %d, want 1 after skipping first hunk", m.hunkIdx)
-	}
-}
-
-func TestHunkAddModel_SkipAllHunks_NoMutation(t *testing.T) {
-	t.Parallel()
-	m, _ := newHunkAddTestModel(t, singleHunkDiff)
-	m.width = 120
-	m.height = 40
-
-	// Skip the only hunk — should pop with MutatedGit=false (nothing staged)
-	cmd := m.Update(tea.KeyPressMsg{Code: 'n', Text: "n"})
-	if cmd == nil {
-		t.Fatal("expected a command after skipping the only hunk")
-	}
-	msg := cmd()
-	pop, ok := msg.(app.PopModelMsg)
-	if !ok {
-		t.Fatalf("expected PopModelMsg, got %T", msg)
-	}
-	if pop.MutatedGit {
-		t.Error("MutatedGit should be false when only skipping (no staging)")
-	}
-}
-
-func TestHunkAddModel_StageAllRemaining(t *testing.T) {
-	t.Parallel()
-	// Two hunks: press 'a' stages both
-	m, runner := newHunkAddTestModel(t, twoHunkDiff, "", "")
-	m.width = 120
-	m.height = 40
-
-	cmd := m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
-
-	// Both hunks staged
-	if testhelper.CallCount(runner) < 3 { // diff + branch + at least 1 apply
-		t.Errorf("expected at least 3 calls (diff, branch, apply), got %d", testhelper.CallCount(runner))
-	}
-
-	// Should pop after all decided
-	if cmd == nil {
-		t.Fatal("expected command after staging all")
-	}
-	msg := cmd()
-	pop, ok := msg.(app.PopModelMsg)
-	if !ok {
-		t.Fatalf("expected PopModelMsg, got %T", msg)
-	}
-	if !pop.MutatedGit {
-		t.Error("MutatedGit should be true after staging all")
+	cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if cmd != nil {
+		msg := cmd()
+		if _, ok := msg.(app.PopModelMsg); ok {
+			t.Error("Enter with no files should not produce PopModelMsg")
+		}
 	}
 }
 
 func TestHunkAddModel_SplitHunk(t *testing.T) {
 	t.Parallel()
-	// twoHunkDiff already has 2 hunks; splitting one that has multiple change groups
-	// creates sub-hunks. Use a diff with a single multi-group hunk.
+	// Diff with a single multi-group hunk.
 	multiGroupDiff := "diff --git a/x.go b/x.go\n" +
 		"index 111..222 100644\n" +
 		"--- a/x.go\n" +
@@ -405,15 +362,9 @@ func TestHunkAddModel_SplitHunk(t *testing.T) {
 	m.width = 120
 	m.height = 40
 
-	initialHunks := len(m.hunks)
-
-	// Press 's' to split
+	// Press 's' to split — should not panic.
 	m.Update(tea.KeyPressMsg{Code: 's', Text: "s"})
 
-	// Hunks should increase if split was possible
-	// (For this diff it may or may not split depending on context lines)
-	_ = initialHunks
-	// At minimum should not panic and view should still work
 	view := m.View()
 	if view == "" {
 		t.Error("View() should not be empty after split attempt")
@@ -422,46 +373,17 @@ func TestHunkAddModel_SplitHunk(t *testing.T) {
 
 func TestHunkAddModel_SplitHunk_CannotSplit(t *testing.T) {
 	t.Parallel()
-	// Single-change hunk cannot be split further
 	m, _ := newHunkAddTestModel(t, singleHunkDiff)
 	m.width = 120
 	m.height = 40
 
-	before := len(m.hunks)
+	before := len(m.allHunks[0])
 	m.Update(tea.KeyPressMsg{Code: 's', Text: "s"})
-	after := len(m.hunks)
+	after := len(m.allHunks[0])
 
-	// Hunk count should be same (cannot split)
+	// Hunk count should be same (cannot split single-change hunk).
 	if after != before {
 		t.Errorf("hunk count changed from %d to %d, but hunk should not be splittable", before, after)
-	}
-}
-
-func TestHunkAddModel_TwoFiles_AdvancesAfterAllHunksDecided(t *testing.T) {
-	t.Parallel()
-	// Two files: after staging file 1's hunk, should load file 2
-	m, runner := newHunkAddTestModel(t, twoFileDiff, "")
-	m.width = 120
-	m.height = 40
-
-	if len(m.files) != 2 {
-		t.Fatalf("expected 2 files, got %d", len(m.files))
-	}
-
-	// Stage first file's hunk — should not pop yet
-	cmd := m.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
-	testhelper.MustHaveCall(t, runner, "apply", "--cached")
-
-	// Should advance to second file (not pop)
-	if cmd != nil {
-		msg := cmd()
-		if _, ok := msg.(app.PopModelMsg); ok {
-			t.Error("should not pop after staging first of two files")
-		}
-	}
-
-	if m.fileIdx != 1 {
-		t.Errorf("fileIdx = %d, want 1 after staging first file's hunk", m.fileIdx)
 	}
 }
 
@@ -479,214 +401,64 @@ func TestHunkAddModel_WindowSizeMsg(t *testing.T) {
 	}
 }
 
-func TestHunkAddModel_NoHunks_YDoesNothing(t *testing.T) {
-	t.Parallel()
-	m, _ := newHunkAddTestModel(t, "")
-	m.width = 120
-	m.height = 40
-
-	cmd := m.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
-	if cmd != nil {
-		t.Error("y with no files should return nil cmd")
-	}
-}
-
-func TestHunkAddModel_NoHunks_NDoesNothing(t *testing.T) {
-	t.Parallel()
-	m, _ := newHunkAddTestModel(t, "")
-	m.width = 120
-	m.height = 40
-
-	// Should not panic
-	m.Update(tea.KeyPressMsg{Code: 'n', Text: "n"})
-}
-
-func TestHunkAddModel_StageHunk_AllDecided_YDoesNothing(t *testing.T) {
-	t.Parallel()
-	m, _ := newHunkAddTestModel(t, singleHunkDiff, "")
-	m.width = 120
-	m.height = 40
-	m.allDecided = true
-
-	cmd := m.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
-	if cmd != nil {
-		t.Error("y with allDecided should return nil cmd")
-	}
-}
-
-func TestHunkAddModel_StageAllRemaining_NoFiles(t *testing.T) {
-	t.Parallel()
-	m, _ := newHunkAddTestModel(t, "")
-	m.width = 120
-	m.height = 40
-
-	cmd := m.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
-	if cmd != nil {
-		t.Error("a with no files should return nil cmd")
-	}
-}
-
-func TestHunkAddModel_RenderCurrentHunk_AllDecided(t *testing.T) {
+func TestHunkAddModel_View_HelpHasSpaceAndEnterBindings(t *testing.T) {
 	t.Parallel()
 	m, _ := newHunkAddTestModel(t, singleHunkDiff)
 	m.width = 120
 	m.height = 40
-	m.allDecided = true
-	// Should not panic; diffView gets updated with "All hunks decided" text
-	m.renderCurrentHunk()
+
+	m.Update(tea.KeyPressMsg{Code: '?', Text: "?"})
 	view := m.View()
-	if view == "" {
-		t.Error("View() should not be empty")
+	if !strings.Contains(view, "Space") {
+		t.Error("help overlay should contain 'Space' binding")
+	}
+	if !strings.Contains(view, "Enter") {
+		t.Error("help overlay should contain 'Enter' binding")
 	}
 }
 
-func TestHunkAddModel_RenderCurrentHunk_HunkIdxOutOfBounds(t *testing.T) {
+func TestHunkAddModel_HintsWithProgress_LeftPanel(t *testing.T) {
 	t.Parallel()
 	m, _ := newHunkAddTestModel(t, singleHunkDiff)
-	m.width = 120
-	m.height = 40
-	m.hunkIdx = 999
-	// Should not panic
-	m.renderCurrentHunk()
+	hints := m.hintsWithProgress()
+
+	if !strings.Contains(hints, "Space: toggle") {
+		t.Errorf("left panel hints should contain 'Space: toggle', got: %q", hints)
+	}
+	if !strings.Contains(hints, "Enter: apply") {
+		t.Errorf("left panel hints should contain 'Enter: apply', got: %q", hints)
+	}
+	if strings.Contains(hints, "y: stage") {
+		t.Errorf("left panel hints should NOT contain 'y: stage', got: %q", hints)
+	}
+	if strings.Contains(hints, "n: skip") {
+		t.Errorf("left panel hints should NOT contain 'n: skip', got: %q", hints)
+	}
+	if strings.Contains(hints, "a: stage all") {
+		t.Errorf("left panel hints should NOT contain 'a: stage all', got: %q", hints)
+	}
 }
 
-func TestHunkAddModel_SyncFileSelection_WrongType(t *testing.T) {
+func TestHunkAddModel_HintsWithProgress_RightPanel(t *testing.T) {
 	t.Parallel()
 	m, _ := newHunkAddTestModel(t, singleHunkDiff)
-	// Forward a key that the list consumes (but won't match our type)
-	// Just ensure no panic
-	m.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
+	m.focusRight = true
+	hints := m.hintsWithProgress()
+
+	if !strings.Contains(hints, "Tab: panel") {
+		t.Errorf("right panel hints should contain 'Tab: panel', got: %q", hints)
+	}
 }
 
-func TestHunkAddModel_StageCurrentHunk_FileIdxOutOfBounds(t *testing.T) {
+func TestHunkAddModel_HintsWithProgress_Maximized(t *testing.T) {
 	t.Parallel()
 	m, _ := newHunkAddTestModel(t, singleHunkDiff)
-	m.fileIdx = 999
-	cmd := m.stageCurrentHunk()
-	if cmd != nil {
-		t.Error("stageCurrentHunk with out-of-bounds fileIdx should return nil")
-	}
-}
+	m.diffMaximized = true
+	hints := m.hintsWithProgress()
 
-func TestHunkAddModel_StageAllRemaining_AlreadyAllDecided(t *testing.T) {
-	t.Parallel()
-	m, _ := newHunkAddTestModel(t, singleHunkDiff)
-	m.allDecided = true
-	cmd := m.stageAllRemaining()
-	if cmd != nil {
-		t.Error("stageAllRemaining when allDecided should return nil")
+	if !strings.Contains(hints, "F: restore") {
+		t.Errorf("maximize hints should include 'F: restore', got %q", hints)
 	}
-}
-
-func TestHunkAddModel_StageAllRemaining_FileIdxOutOfBounds(t *testing.T) {
-	t.Parallel()
-	m, _ := newHunkAddTestModel(t, singleHunkDiff)
-	m.fileIdx = 999
-	cmd := m.stageAllRemaining()
-	if cmd != nil {
-		t.Error("stageAllRemaining with out-of-bounds fileIdx should return nil")
-	}
-}
-
-func TestHunkAddModel_SplitCurrentHunk_AllDecided(t *testing.T) {
-	t.Parallel()
-	m, _ := newHunkAddTestModel(t, singleHunkDiff)
-	m.allDecided = true
-	before := len(m.hunks)
-	m.splitCurrentHunk()
-	after := len(m.hunks)
-	if before != after {
-		t.Error("splitCurrentHunk when allDecided should not change hunks")
-	}
-}
-
-func TestHunkAddModel_SplitCurrentHunk_HunkIdxOutOfBounds(t *testing.T) {
-	t.Parallel()
-	m, _ := newHunkAddTestModel(t, singleHunkDiff)
-	m.hunkIdx = 999
-	// Should not panic
-	m.splitCurrentHunk()
-}
-
-func TestHunkAddModel_SplitCurrentHunk_NoHunks(t *testing.T) {
-	t.Parallel()
-	m, _ := newHunkAddTestModel(t, "")
-	// Should not panic
-	m.splitCurrentHunk()
-}
-
-func TestHunkAddModel_StageCurrentHunk_ErrorPath(t *testing.T) {
-	t.Parallel()
-	applyErr := fmt.Errorf("apply failed")
-	runner := &testhelper.FakeRunner{
-		// diff, branch, apply(fails)
-		Outputs: []string{singleHunkDiff, "main", ""},
-		Errors:  []error{nil, nil, applyErr},
-	}
-	cfg := config.NewDefault()
-	renderer := &diff.PlainRenderer{}
-	m := NewHunkAddModel(context.Background(), runner, cfg, renderer)
-	m.width = 120
-	m.height = 40
-
-	// Stage should fail and return nil cmd (error path shows status message instead)
-	cmd := m.stageCurrentHunk()
-	if cmd != nil {
-		t.Error("stageCurrentHunk on runner error should return nil")
-	}
-}
-
-func TestHunkAddModel_StageAllRemaining_ErrorPath(t *testing.T) {
-	t.Parallel()
-	applyErr := fmt.Errorf("apply failed")
-	runner := &testhelper.FakeRunner{
-		// diff, branch, apply(fails), apply(fails)
-		Outputs: []string{twoHunkDiff, "main", "", ""},
-		Errors:  []error{nil, nil, applyErr, applyErr},
-	}
-	cfg := config.NewDefault()
-	renderer := &diff.PlainRenderer{}
-	m := NewHunkAddModel(context.Background(), runner, cfg, renderer)
-	m.width = 120
-	m.height = 40
-
-	// stageAllRemaining should not panic even when all apply calls fail
-	cmd := m.stageAllRemaining()
-	// allDecided should be set
-	if !m.allDecided {
-		t.Error("allDecided should be true after stageAllRemaining")
-	}
-	// cmd: since no staging succeeded, MutatedGit = false, pops
-	if cmd == nil {
-		t.Fatal("expected cmd from stageAllRemaining")
-	}
-	msg := cmd()
-	pop, ok := msg.(app.PopModelMsg)
-	if !ok {
-		t.Fatalf("expected PopModelMsg, got %T", msg)
-	}
-	if pop.MutatedGit {
-		t.Error("MutatedGit should be false when all apply calls failed")
-	}
-}
-
-func TestHunkAddModel_FileTreeRendersFiles(t *testing.T) {
-	t.Parallel()
-	m, _ := newHunkAddTestModel(t, singleHunkDiff)
-	m.width = 120
-	m.height = 40
-
-	view := m.View()
-	if view == "" {
-		t.Error("View() should not be empty")
-	}
-}
-
-func TestHunkAddModel_SyncFileSelection_NilItem(t *testing.T) {
-	t.Parallel()
-	m, _ := newHunkAddTestModel(t, "")
-	// Should not panic
-	m.syncFileSelection()
 }
 
 func TestHunkAddModel_DKeyTogglesDiffPanel(t *testing.T) {
@@ -695,10 +467,9 @@ func TestHunkAddModel_DKeyTogglesDiffPanel(t *testing.T) {
 	m.width = 120
 	m.height = 40
 
-	// showDiff starts true (from config default)
 	viewWith := m.View()
 
-	// Press D to hide
+	// Press D to hide.
 	m.Update(tea.KeyPressMsg{Code: 'D', ShiftedCode: 'D', Mod: tea.ModShift, Text: "D"})
 	viewWithout := m.View()
 
@@ -706,7 +477,7 @@ func TestHunkAddModel_DKeyTogglesDiffPanel(t *testing.T) {
 		t.Error("View() should differ after D toggles diff off")
 	}
 
-	// Press D again to show
+	// Press D again to show.
 	m.Update(tea.KeyPressMsg{Code: 'D', ShiftedCode: 'D', Mod: tea.ModShift, Text: "D"})
 	viewAgain := m.View()
 
@@ -753,7 +524,6 @@ func TestHunkAddModel_SinglePanelViewWhenDiffHidden(t *testing.T) {
 	if view == "" {
 		t.Fatal("View() returned empty string")
 	}
-	// Should still contain the file name in the left panel
 	if !strings.Contains(view, "foo.go") {
 		t.Error("single-panel View() should still contain file name 'foo.go'")
 	}
@@ -761,7 +531,6 @@ func TestHunkAddModel_SinglePanelViewWhenDiffHidden(t *testing.T) {
 
 func TestHunkAddModel_MnemonicPrefix_FileTreeShowsCorrectNames(t *testing.T) {
 	t.Parallel()
-	// Simulate git diff output with mnemonicPrefix=true (i/ and w/ prefixes).
 	mnemonicDiff := "diff --git i/.gitconfig w/.gitconfig\n" +
 		"index 111..222 100644\n" +
 		"--- i/.gitconfig\n" +
@@ -779,24 +548,18 @@ func TestHunkAddModel_MnemonicPrefix_FileTreeShowsCorrectNames(t *testing.T) {
 	if len(m.files) != 1 {
 		t.Fatalf("expected 1 file, got %d", len(m.files))
 	}
-	// File path should be ".gitconfig", not "" or "."
 	if m.files[0].DisplayPath() != ".gitconfig" {
 		t.Errorf("file DisplayPath() = %q, want %q", m.files[0].DisplayPath(), ".gitconfig")
 	}
 
-	// The file tree View should render the actual filename, not "."
 	view := m.View()
 	if !strings.Contains(view, ".gitconfig") {
 		t.Errorf("View() should contain '.gitconfig', got:\n%s", view)
-	}
-	if strings.Contains(view, "└─  .") {
-		t.Error("View() should NOT show '└─  .' (empty path rendering)")
 	}
 }
 
 func TestHunkAddModel_NoPrefixFormat_FileTreeShowsCorrectNames(t *testing.T) {
 	t.Parallel()
-	// Simulate git diff output with diff.noprefix=true (no prefix at all).
 	noPrefixDiff := "diff --git .gitconfig .gitconfig\n" +
 		"index 111..222 100644\n" +
 		"--- .gitconfig\n" +
@@ -833,74 +596,6 @@ func TestHunkAddModel_PatchHeader(t *testing.T) {
 	if !strings.Contains(header, "b/path/to/file.go") {
 		t.Errorf("patchHeader missing new path: %q", header)
 	}
-}
-
-func TestHunkAddModel_HintsWithProgress_NoHunks(t *testing.T) {
-	t.Parallel()
-	m, _ := newHunkAddTestModel(t, "")
-	hints := m.hintsWithProgress()
-	if strings.Contains(hints, "Hunk") {
-		t.Errorf("hintsWithProgress() with no hunks should not mention 'Hunk', got: %q", hints)
-	}
-}
-
-func TestHunkAddModel_HintsWithProgress_WithHunks(t *testing.T) {
-	t.Parallel()
-	m, _ := newHunkAddTestModel(t, twoHunkDiff)
-	hints := m.hintsWithProgress()
-	if !strings.Contains(hints, "Hunk 1/2") {
-		t.Errorf("hintsWithProgress() should contain 'Hunk 1/2', got: %q", hints)
-	}
-}
-
-func TestSplitHunk_SingleChange(t *testing.T) {
-	t.Parallel()
-	h := newTestHunk("@@ -1,3 +1,4 @@\n package main\n+// added\n func foo() {}\n")
-	result := splitHunk(h)
-	if len(result) != 1 {
-		t.Errorf("splitHunk of single-change hunk should return 1 hunk, got %d", len(result))
-	}
-}
-
-func TestSplitHunk_TwoChanges(t *testing.T) {
-	t.Parallel()
-	// Two change groups separated by multiple context lines
-	body := "@@ -1,10 +1,12 @@\n" +
-		" package main\n" +
-		"+// change1\n" +
-		" func a() {}\n" +
-		" // comment\n" +
-		" // comment2\n" +
-		" // comment3\n" +
-		"+// change2\n" +
-		" func b() {}\n"
-	h := newTestHunk(body)
-	result := splitHunk(h)
-	// With enough context lines between the two change groups, should split
-	if len(result) < 1 {
-		t.Error("splitHunk should return at least 1 hunk")
-	}
-}
-
-func TestSplitHunk_TooShort(t *testing.T) {
-	t.Parallel()
-	h := newTestHunk("@@ -1 +1 @@\n+x\n")
-	result := splitHunk(h)
-	if len(result) != 1 {
-		t.Errorf("splitHunk of very short hunk should return 1 hunk, got %d", len(result))
-	}
-}
-
-// newTestFileDiff creates a minimal FileDiff for testing.
-func newTestFileDiff(path string) git.FileDiff {
-	return git.FileDiff{OldPath: path, NewPath: path, Status: git.Modified}
-}
-
-// newTestHunk creates a Hunk for testing.
-func newTestHunk(body string) git.Hunk {
-	lines := strings.SplitN(body, "\n", 2)
-	header := lines[0]
-	return git.Hunk{Header: header, Body: body}
 }
 
 func TestHunkAddModel_FKeyTogglesDiffMaximized(t *testing.T) {
@@ -975,19 +670,6 @@ func TestHunkAddModel_MaximizeView(t *testing.T) {
 	}
 }
 
-func TestHunkAddModel_HintsWithProgressMaximized(t *testing.T) {
-	t.Parallel()
-	hunkBody := "@@ -1,3 +1,3 @@\n context\n-old\n+new\n context\n"
-	diffOutput := "diff --git a/foo.go b/foo.go\n--- a/foo.go\n+++ b/foo.go\n" + hunkBody
-	m, _ := newHunkAddTestModel(t, diffOutput)
-	m.diffMaximized = true
-
-	hints := m.hintsWithProgress()
-	if !strings.Contains(hints, "F: restore") {
-		t.Errorf("maximize hints should include 'F: restore', got %q", hints)
-	}
-}
-
 func TestHunkAddModel_ResizeWhileMaximized(t *testing.T) {
 	t.Parallel()
 	hunkBody := "@@ -1,3 +1,3 @@\n context\n-old\n+new\n context\n"
@@ -995,11 +677,186 @@ func TestHunkAddModel_ResizeWhileMaximized(t *testing.T) {
 	m, _ := newHunkAddTestModel(t, diffOutput)
 	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	m.Update(tea.KeyPressMsg{Code: 'F', ShiftedCode: 'F', Mod: tea.ModShift, Text: "F"})
-	// Resize while maximized exercises diffMaximized branch in resize()
 	cmd := m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 	_ = cmd
 	view := m.View()
 	if view == "" {
 		t.Error("View() should not be empty after resize while maximized")
 	}
+}
+
+func TestHunkAddModel_SpaceNoopOnRightPanel(t *testing.T) {
+	t.Parallel()
+	m, _ := newHunkAddTestModel(t, singleHunkDiff)
+	m.width = 120
+	m.height = 40
+	m.focusRight = true
+
+	before := len(m.hunkList.StagedHunks())
+	m.Update(tea.KeyPressMsg{Code: tea.KeySpace})
+	after := len(m.hunkList.StagedHunks())
+
+	// Space on right panel should not toggle hunk.
+	if after != before {
+		t.Errorf("Space on right panel should not change staged count: before=%d after=%d", before, after)
+	}
+}
+
+func TestHunkAddModel_ApplyAllStaged_ErrorPath(t *testing.T) {
+	t.Parallel()
+	applyErr := fmt.Errorf("apply failed")
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{singleHunkDiff, "main", ""},
+		Errors:  []error{nil, nil, applyErr},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m := NewHunkAddModel(context.Background(), runner, cfg, renderer)
+	m.width = 120
+	m.height = 40
+
+	// Stage the hunk.
+	m.hunkList.Update(tea.KeyPressMsg{Code: tea.KeySpace})
+
+	// Apply should fail but still pop (with MutatedGit=false since none succeeded).
+	cmd := m.applyAllStaged()
+	if cmd == nil {
+		t.Fatal("expected cmd from applyAllStaged even on error")
+	}
+	msg := cmd()
+	pop, ok := msg.(app.PopModelMsg)
+	if !ok {
+		t.Fatalf("expected PopModelMsg, got %T", msg)
+	}
+	if pop.MutatedGit {
+		t.Error("MutatedGit should be false when all apply calls failed")
+	}
+}
+
+func TestHunkAddModel_TwoFiles_SpaceOnBothThenEnter(t *testing.T) {
+	t.Parallel()
+	m, runner := newHunkAddTestModel(t, twoFileDiff, "", "")
+	m.width = 120
+	m.height = 40
+
+	if len(m.files) != 2 {
+		t.Fatalf("expected 2 files, got %d", len(m.files))
+	}
+
+	// Stage hunk in file 0.
+	m.Update(tea.KeyPressMsg{Code: tea.KeySpace})
+	// Move to file 1's hunk.
+	m.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
+	// Stage hunk in file 1.
+	m.Update(tea.KeyPressMsg{Code: tea.KeySpace})
+
+	if len(m.hunkList.StagedHunks()) != 2 {
+		t.Fatalf("expected 2 staged hunks, got %d", len(m.hunkList.StagedHunks()))
+	}
+
+	cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	testhelper.MustHaveCall(t, runner, "apply", "--cached")
+
+	if cmd == nil {
+		t.Fatal("expected cmd from Enter")
+	}
+	msg := cmd()
+	pop, ok := msg.(app.PopModelMsg)
+	if !ok {
+		t.Fatalf("expected PopModelMsg, got %T", msg)
+	}
+	if !pop.MutatedGit {
+		t.Error("MutatedGit should be true after staging both files")
+	}
+}
+
+func TestHunkAddModel_FileTreeRendersFiles(t *testing.T) {
+	t.Parallel()
+	m, _ := newHunkAddTestModel(t, singleHunkDiff)
+	m.width = 120
+	m.height = 40
+
+	view := m.View()
+	if view == "" {
+		t.Error("View() should not be empty")
+	}
+}
+
+func TestSplitHunk_SingleChange(t *testing.T) {
+	t.Parallel()
+	h := newTestHunk("@@ -1,3 +1,4 @@\n package main\n+// added\n func foo() {}\n")
+	result := splitHunk(h)
+	if len(result) != 1 {
+		t.Errorf("splitHunk of single-change hunk should return 1 hunk, got %d", len(result))
+	}
+}
+
+func TestSplitHunk_TwoChanges(t *testing.T) {
+	t.Parallel()
+	body := "@@ -1,10 +1,12 @@\n" +
+		" package main\n" +
+		"+// change1\n" +
+		" func a() {}\n" +
+		" // comment\n" +
+		" // comment2\n" +
+		" // comment3\n" +
+		"+// change2\n" +
+		" func b() {}\n"
+	h := newTestHunk(body)
+	result := splitHunk(h)
+	if len(result) < 1 {
+		t.Error("splitHunk should return at least 1 hunk")
+	}
+}
+
+func TestSplitHunk_TooShort(t *testing.T) {
+	t.Parallel()
+	h := newTestHunk("@@ -1 +1 @@\n+x\n")
+	result := splitHunk(h)
+	if len(result) != 1 {
+		t.Errorf("splitHunk of very short hunk should return 1 hunk, got %d", len(result))
+	}
+}
+
+func TestHunkAddModel_RenderCurrentHunk_NoHunks(t *testing.T) {
+	t.Parallel()
+	m, _ := newHunkAddTestModel(t, "")
+	// allHunks is empty; renderCurrentHunk should not panic
+	m.renderCurrentHunk()
+	view := m.View()
+	_ = view // just ensure no panic
+}
+
+func TestHunkAddModel_RenderCurrentHunk_Renderer_FallbackOnError(t *testing.T) {
+	t.Parallel()
+	// Use a renderer that always fails to cover the err != nil branch.
+	runner := &testhelper.FakeRunner{Outputs: []string{singleHunkDiff, "main"}}
+	cfg := config.NewDefault()
+	m := NewHunkAddModel(context.Background(), runner, cfg, &errRenderer{})
+	m.width = 120
+	m.height = 40
+	// renderCurrentHunk was called in constructor; should have fallen back to raw
+	view := m.View()
+	if view == "" {
+		t.Error("View() should not be empty even when renderer fails")
+	}
+}
+
+// errRenderer always returns an error from Render.
+type errRenderer struct{}
+
+func (e *errRenderer) Render(_ string) (string, error) {
+	return "", fmt.Errorf("render error")
+}
+
+// newTestFileDiff creates a minimal FileDiff for testing.
+func newTestFileDiff(path string) git.FileDiff {
+	return git.FileDiff{OldPath: path, NewPath: path, Status: git.Modified}
+}
+
+// newTestHunk creates a Hunk for testing.
+func newTestHunk(body string) git.Hunk {
+	lines := strings.SplitN(body, "\n", 2)
+	header := lines[0]
+	return git.Hunk{Header: header, Body: body}
 }

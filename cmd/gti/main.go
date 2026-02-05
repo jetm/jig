@@ -111,7 +111,9 @@ func (d *diffTeaModel) View() tea.View {
 }
 
 func newAddCmd() *cobra.Command {
-	return &cobra.Command{
+	var direct bool
+
+	cmd := &cobra.Command{
 		Use:   "add [paths...]",
 		Short: "Interactively stage files",
 		Args:  cobra.ArbitraryArgs,
@@ -122,7 +124,7 @@ func newAddCmd() *cobra.Command {
 				return fmt.Errorf("initializing git runner: %w", err)
 			}
 
-			if len(args) > 0 {
+			if direct && len(args) > 0 {
 				return addDirect(ctx, runner, args, cmd.OutOrStdout())
 			}
 
@@ -131,7 +133,12 @@ func newAddCmd() *cobra.Command {
 				return fmt.Errorf("loading config: %w", err)
 			}
 			renderer := diff.Chain(cfg)
-			addModel := commands.NewAddModel(ctx, runner, cfg, renderer)
+			var addModel *commands.AddModel
+			if len(args) > 0 {
+				addModel = commands.NewAddModel(ctx, runner, cfg, renderer, args)
+			} else {
+				addModel = commands.NewAddModel(ctx, runner, cfg, renderer)
+			}
 
 			appModel := app.New(newAddTeaModel(addModel), runner, cfg)
 			p := tea.NewProgram(appModel)
@@ -141,6 +148,9 @@ func newAddCmd() *cobra.Command {
 			return nil
 		},
 	}
+
+	cmd.Flags().BoolVarP(&direct, "direct", "d", false, "Stage files directly without opening TUI")
+	return cmd
 }
 
 func addDirect(ctx context.Context, runner git.Runner, paths []string, w io.Writer) error {
@@ -182,7 +192,9 @@ func (a *addTeaModel) View() tea.View {
 }
 
 func newCheckoutCmd() *cobra.Command {
-	return &cobra.Command{
+	var direct bool
+
+	cmd := &cobra.Command{
 		Use:   "checkout [paths...]",
 		Short: "Interactively discard file changes",
 		Args:  cobra.ArbitraryArgs,
@@ -193,7 +205,7 @@ func newCheckoutCmd() *cobra.Command {
 				return fmt.Errorf("initializing git runner: %w", err)
 			}
 
-			if len(args) > 0 {
+			if direct && len(args) > 0 {
 				return checkoutDirect(ctx, runner, args, cmd.InOrStdin(), cmd.OutOrStdout())
 			}
 
@@ -202,7 +214,12 @@ func newCheckoutCmd() *cobra.Command {
 				return fmt.Errorf("loading config: %w", err)
 			}
 			renderer := diff.Chain(cfg)
-			checkoutModel := commands.NewCheckoutModel(ctx, runner, cfg, renderer)
+			var checkoutModel *commands.CheckoutModel
+			if len(args) > 0 {
+				checkoutModel = commands.NewCheckoutModel(ctx, runner, cfg, renderer, args)
+			} else {
+				checkoutModel = commands.NewCheckoutModel(ctx, runner, cfg, renderer)
+			}
 
 			appModel := app.New(newCheckoutTeaModel(checkoutModel), runner, cfg)
 			p := tea.NewProgram(appModel)
@@ -212,6 +229,9 @@ func newCheckoutCmd() *cobra.Command {
 			return nil
 		},
 	}
+
+	cmd.Flags().BoolVarP(&direct, "direct", "d", false, "Discard files directly without opening TUI")
+	return cmd
 }
 
 func checkoutDirect(ctx context.Context, runner git.Runner, paths []string, in io.Reader, w io.Writer) error {
@@ -273,10 +293,10 @@ func (c *checkoutTeaModel) View() tea.View {
 
 func newHunkAddCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "hunk-add",
+		Use:   "hunk-add [paths...]",
 		Short: "Interactively stage hunks",
-		Args:  cobra.NoArgs,
-		RunE: func(_ *cobra.Command, _ []string) error {
+		Args:  cobra.ArbitraryArgs,
+		RunE: func(_ *cobra.Command, args []string) error {
 			ctx := context.Background()
 			runner, err := git.NewExecRunner(ctx)
 			if err != nil {
@@ -288,7 +308,12 @@ func newHunkAddCmd() *cobra.Command {
 				return fmt.Errorf("loading config: %w", err)
 			}
 			renderer := diff.Chain(cfg)
-			hunkAddModel := commands.NewHunkAddModel(ctx, runner, cfg, renderer)
+			var hunkAddModel *commands.HunkAddModel
+			if len(args) > 0 {
+				hunkAddModel = commands.NewHunkAddModel(ctx, runner, cfg, renderer, args)
+			} else {
+				hunkAddModel = commands.NewHunkAddModel(ctx, runner, cfg, renderer)
+			}
 
 			appModel := app.New(newHunkAddTeaModel(hunkAddModel), runner, cfg)
 			p := tea.NewProgram(appModel)
@@ -427,7 +452,9 @@ func (l *logTeaModel) View() tea.View {
 }
 
 func newResetCmd() *cobra.Command {
-	return &cobra.Command{
+	var direct bool
+
+	cmd := &cobra.Command{
 		Use:   "reset [paths...]",
 		Short: "Interactively unstage files",
 		Args:  cobra.ArbitraryArgs,
@@ -438,7 +465,7 @@ func newResetCmd() *cobra.Command {
 				return fmt.Errorf("initializing git runner: %w", err)
 			}
 
-			if len(args) > 0 {
+			if direct && len(args) > 0 {
 				return resetDirect(ctx, runner, args, cmd.OutOrStdout())
 			}
 
@@ -447,7 +474,12 @@ func newResetCmd() *cobra.Command {
 				return fmt.Errorf("loading config: %w", err)
 			}
 			renderer := diff.Chain(cfg)
-			resetModel := commands.NewResetModel(ctx, runner, cfg, renderer)
+			var resetModel *commands.ResetModel
+			if len(args) > 0 {
+				resetModel = commands.NewResetModel(ctx, runner, cfg, renderer, args)
+			} else {
+				resetModel = commands.NewResetModel(ctx, runner, cfg, renderer)
+			}
 
 			appModel := app.New(newResetTeaModel(resetModel), runner, cfg)
 			p := tea.NewProgram(appModel)
@@ -457,6 +489,9 @@ func newResetCmd() *cobra.Command {
 			return nil
 		},
 	}
+
+	cmd.Flags().BoolVarP(&direct, "direct", "d", false, "Unstage files directly without opening TUI")
+	return cmd
 }
 
 func resetDirect(ctx context.Context, runner git.Runner, paths []string, w io.Writer) error {

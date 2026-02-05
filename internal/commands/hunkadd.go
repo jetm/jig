@@ -25,8 +25,7 @@ type HunkAddModel struct {
 	cfg      config.Config
 
 	files         []git.FileDiff
-	allHunks      [][]git.Hunk // per-file parsed hunk slices
-	hunkList      components.HunkList
+	fileList      components.FileList
 	diffView      components.DiffView
 	statusBar     components.StatusBar
 	help          components.HelpOverlay
@@ -34,53 +33,77 @@ type HunkAddModel struct {
 	width         int
 	height        int
 	panelRatio    int
+	fileIdx       int          // index into files for the current file
+	hunks         []git.Hunk   // hunks of the current file
+	hunkIdx       int          // index into hunks (current hunk)
+	decided       map[int]bool // hunkIdx -> staged (true) or skipped (false); nil means undecided
+	allDecided    bool         // true once all hunks in current file are decided
 	focusRight    bool
 	showDiff      bool
 	diffMaximized bool
+	filterPaths   []string
+	noMatchFilter bool
 }
 
 // NewHunkAddModel creates a HunkAddModel by listing files with unstaged changes.
+// filterPaths optionally restricts the file list to specific paths.
 func NewHunkAddModel(
 	ctx context.Context,
 	runner git.Runner,
 	cfg config.Config,
 	renderer diff.Renderer,
+	filterPaths ...[]string,
 ) *HunkAddModel {
-	rawDiff, _ := runner.Run(ctx, "diff")
+	var paths []string
+	if len(filterPaths) > 0 {
+		paths = expandGlobs(filterPaths[0])
+	}
+	// Only modified tracked files have patchable hunks.
+	diffArgs := []string{"diff"}
+	if len(paths) > 0 {
+		diffArgs = append(diffArgs, "--")
+		diffArgs = append(diffArgs, paths...)
+	}
+	rawDiff, _ := runner.Run(ctx, diffArgs...)
 	branchName, _ := git.BranchName(ctx, runner)
 
 	files := git.ParseFileDiffs(rawDiff)
 
-	allHunks := make([][]git.Hunk, len(files))
+	entries := make([]components.FileEntry, len(files))
 	for i, f := range files {
-		allHunks[i] = git.ParseHunks(f.RawDiff)
+		entries[i] = components.FileEntry{Path: f.DisplayPath(), Status: f.Status}
 	}
 
+	noMatch := len(filterPaths) > 0 && len(filterPaths[0]) > 0 && len(files) == 0
+
 	m := &HunkAddModel{
-		ctx:       ctx,
-		runner:    runner,
-		renderer:  renderer,
-		cfg:       cfg,
-		files:     files,
-		allHunks:  allHunks,
-		hunkList:  components.NewHunkList(files, allHunks),
-		diffView:  components.NewDiffView(80, 20),
-		statusBar: components.NewStatusBar(120),
+		ctx:           ctx,
+		runner:        runner,
+		renderer:      renderer,
+		cfg:           cfg,
+		files:         files,
+		fileList:      components.NewFileList(entries, false),
+		filterPaths:   paths,
+		noMatchFilter: noMatch,
+		diffView:      components.NewDiffView(80, 20),
+		statusBar:     components.NewStatusBar(120),
 		help: components.NewHelpOverlay([]components.KeyGroup{
 			{
 				Name: "Navigation",
 				Bindings: []components.KeyBinding{
-					{Key: "j/k", Desc: "move between hunks"},
+					{Key: "j/k", Desc: "move between files"},
+					{Key: "o", Desc: "expand/collapse"},
 					{Key: "Tab", Desc: "switch panel"},
 					{Key: "D", Desc: "toggle diff"},
+					{Key: "n", Desc: "skip hunk"},
 					{Key: "?", Desc: "toggle help"},
 				},
 			},
 			{
 				Name: "Actions",
 				Bindings: []components.KeyBinding{
-					{Key: "Space", Desc: "toggle hunk staged"},
-					{Key: "Enter", Desc: "apply staged hunks"},
+					{Key: "y", Desc: "stage hunk"},
+					{Key: "a", Desc: "stage all remaining hunks"},
 					{Key: "s", Desc: "split hunk"},
 					{Key: "w", Desc: "toggle soft-wrap (diff panel)"},
 					{Key: "F", Desc: "maximize diff panel"},
@@ -89,6 +112,7 @@ func NewHunkAddModel(
 			},
 		}),
 		branch:     branchName,
+		decided:    make(map[int]bool),
 		panelRatio: cfg.PanelRatio,
 	}
 
@@ -100,7 +124,7 @@ func NewHunkAddModel(
 	m.statusBar.SetMode("hunk-add")
 
 	if len(files) > 0 {
-		m.renderCurrentHunk()
+		m.loadFileHunks(0)
 	}
 
 	return m
@@ -111,6 +135,18 @@ func (m *HunkAddModel) Update(msg tea.Msg) tea.Cmd {
 	sbCmd := m.statusBar.Update(msg)
 
 	switch msg := msg.(type) {
+	case git.EditDiffMsg:
+		if msg.Err != nil {
+			_ = m.statusBar.SetMessage(fmt.Sprintf("Edit failed: %v", msg.Err), components.Error)
+			return sbCmd
+		}
+		if err := git.ApplyEditedDiff(m.ctx, m.runner, msg.OriginalDiff, msg.EditedPath); err != nil {
+			_ = m.statusBar.SetMessage(fmt.Sprintf("Apply failed: %v", err), components.Error)
+			return sbCmd
+		}
+		m.renderCurrentHunk()
+		return sbCmd
+
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -151,6 +187,17 @@ func (m *HunkAddModel) Update(msg tea.Msg) tea.Cmd {
 			return sbCmd
 		}
 
+		if msg.String() == "e" {
+			if len(m.hunks) == 0 || m.allDecided || m.hunkIdx >= len(m.hunks) {
+				return sbCmd
+			}
+			rawDiff := m.hunks[m.hunkIdx].Body
+			if rawDiff == "" {
+				return sbCmd
+			}
+			return git.EditDiff(m.ctx, m.runner, rawDiff)
+		}
+
 		if msg.String() == "[" {
 			if m.panelRatio > 20 {
 				m.panelRatio -= 5
@@ -183,16 +230,14 @@ func (m *HunkAddModel) Update(msg tea.Msg) tea.Cmd {
 				return app.PopModelMsg{MutatedGit: false}
 			}
 
-		case tea.KeyEnter:
-			return m.applyAllStaged()
+		case 'y':
+			return m.stageCurrentHunk()
 
-		case tea.KeySpace:
-			if !m.focusRight {
-				m.hunkList.Update(msg)
-				m.renderCurrentHunk()
-				m.statusBar.SetHints(m.hintsWithProgress())
-			}
-			return sbCmd
+		case 'n':
+			return m.skipCurrentHunk()
+
+		case 'a':
+			return m.stageAllRemaining()
 
 		case 's':
 			m.splitCurrentHunk()
@@ -204,10 +249,10 @@ func (m *HunkAddModel) Update(msg tea.Msg) tea.Cmd {
 			return tea.Batch(sbCmd, dvCmd)
 		}
 
-		// Forward navigation (j/k) to the hunk list
-		m.hunkList.Update(msg)
-		m.renderCurrentHunk()
-		return sbCmd
+		// Forward navigation (j/k) to the file tree
+		treeCmd := m.fileList.Update(msg)
+		m.syncFileSelection()
+		return tea.Batch(sbCmd, treeCmd)
 	}
 
 	return sbCmd
@@ -221,18 +266,21 @@ func (m *HunkAddModel) View() string {
 	}
 
 	var background string
-	if len(m.files) == 0 {
+	switch {
+	case m.noMatchFilter:
+		background = "No matching changes for the given paths."
+	case len(m.files) == 0:
 		background = "No unstaged changes to stage."
-	} else {
+	default:
 		contentHeight := m.height - 1
 		m.statusBar.SetWidth(m.width)
 		m.statusBar.SetHints(m.hintsWithProgress())
 
 		if !m.showDiff {
 			panelW := m.width - 1
-			m.hunkList.SetWidth(panelW)
-			m.hunkList.SetHeight(contentHeight)
-			leftPanel := tui.StyleFocusBorder.Width(panelW).Height(contentHeight).MaxHeight(contentHeight).Render(m.hunkList.View())
+			m.fileList.SetWidth(panelW)
+			m.fileList.SetHeight(contentHeight)
+			leftPanel := tui.StyleFocusBorder.Width(panelW).Height(contentHeight).MaxHeight(contentHeight).Render(m.fileList.View())
 			background = leftPanel + "\n" + m.statusBar.View()
 		} else if m.diffMaximized {
 			rightW := m.width - 1
@@ -246,8 +294,8 @@ func (m *HunkAddModel) View() string {
 			leftW--
 			rightW--
 
-			m.hunkList.SetWidth(leftW)
-			m.hunkList.SetHeight(contentHeight)
+			m.fileList.SetWidth(leftW)
+			m.fileList.SetHeight(contentHeight)
 			m.diffView.SetWidth(rightW)
 			m.diffView.SetHeight(contentHeight)
 
@@ -256,7 +304,7 @@ func (m *HunkAddModel) View() string {
 				leftBorder, rightBorder = tui.StyleDimBorder, tui.StyleFocusBorder
 			}
 
-			leftPanel := leftBorder.Width(leftW).Height(contentHeight).MaxHeight(contentHeight).Render(m.hunkList.View())
+			leftPanel := leftBorder.Width(leftW).Height(contentHeight).MaxHeight(contentHeight).Render(m.fileList.View())
 			rightPanel := rightBorder.Width(rightW).Height(contentHeight).MaxHeight(contentHeight).Render(m.diffView.View())
 
 			panels := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
@@ -267,68 +315,59 @@ func (m *HunkAddModel) View() string {
 	return m.help.View(background, m.width, m.height)
 }
 
-// hintsWithProgress returns the status bar hint string.
+// hintsWithProgress returns the status bar hint string including hunk progress.
+// When the right panel has focus, it shows scroll hints instead of action hints.
 func (m *HunkAddModel) hintsWithProgress() string {
 	if m.diffMaximized {
-		return "F: restore  ?: help  q: quit"
+		if len(m.hunks) == 0 {
+			return "F: restore  ?: help  q: quit"
+		}
+		progress := fmt.Sprintf("Hunk %d/%d", m.hunkIdx+1, len(m.hunks))
+		return fmt.Sprintf("%s  F: restore  ?: help  q: quit", progress)
 	}
 	if m.focusRight {
-		return "h/l: scroll  Tab: panel  ?: help  q: quit"
+		if len(m.hunks) == 0 {
+			return "h/l: scroll  Tab: panel  ?: help  q: quit"
+		}
+		progress := fmt.Sprintf("Hunk %d/%d", m.hunkIdx+1, len(m.hunks))
+		return fmt.Sprintf("%s  h/l: scroll  Tab: panel  ?: help  q: quit", progress)
 	}
-	return "Space: toggle  Enter: apply  s: split  ?: help  q: quit"
+	if len(m.hunks) == 0 {
+		return "y: stage  n: skip  Tab: panel  ?: help  q: quit"
+	}
+	progress := fmt.Sprintf("Hunk %d/%d", m.hunkIdx+1, len(m.hunks))
+	return fmt.Sprintf("%s  y: stage  n: skip  Tab: panel  ?: help  q: quit", progress)
 }
 
-// applyAllStaged applies all staged hunks via git apply --cached and pops.
-func (m *HunkAddModel) applyAllStaged() tea.Cmd {
-	staged := m.hunkList.StagedHunks()
-	if len(staged) == 0 {
-		errCmd := m.statusBar.SetMessage("No hunks staged", components.Info)
-		_ = errCmd
-		return nil
+// loadFileHunks loads the hunks for the file at fileIdx and renders the first hunk.
+func (m *HunkAddModel) loadFileHunks(idx int) {
+	if idx >= len(m.files) {
+		return
 	}
-
-	anySucceeded := false
-	var lastErr error
-
-	for _, sh := range staged {
-		if sh.FileIdx >= len(m.files) {
-			continue
-		}
-		header := m.patchHeader(m.files[sh.FileIdx])
-		err := git.StageHunk(m.ctx, m.runner, header, sh.Hunk.Body)
-		if err != nil {
-			lastErr = err
-		} else {
-			anySucceeded = true
-		}
-	}
-
-	if lastErr != nil {
-		errCmd := m.statusBar.SetMessage(fmt.Sprintf("Stage failed: %v", lastErr), components.Error)
-		_ = errCmd
-	}
-
-	mutated := anySucceeded
-	return func() tea.Msg {
-		return app.PopModelMsg{MutatedGit: mutated}
-	}
+	m.fileIdx = idx
+	m.hunks = git.ParseHunks(m.files[idx].RawDiff)
+	m.hunkIdx = 0
+	m.decided = make(map[int]bool)
+	m.allDecided = false
+	m.renderCurrentHunk()
 }
 
-// renderCurrentHunk updates the right-panel diff view with the hunk under the cursor.
+// renderCurrentHunk updates the right-panel diff view with the current hunk body.
 func (m *HunkAddModel) renderCurrentHunk() {
-	fi := m.hunkList.CurrentFileIdx()
-	hi := m.hunkList.CurrentHunkIdx()
-
-	if fi >= len(m.allHunks) || len(m.allHunks[fi]) == 0 {
+	if len(m.hunks) == 0 {
 		m.diffView.SetContent("(no hunks)")
 		return
 	}
-	if hi >= len(m.allHunks[fi]) {
+	if m.allDecided {
+		m.diffView.SetContent("All hunks decided for this file.")
+		return
+	}
+	if m.hunkIdx >= len(m.hunks) {
 		m.diffView.SetContent("(no more hunks)")
 		return
 	}
 
-	raw := m.allHunks[fi][hi].Body
+	raw := m.hunks[m.hunkIdx].Body
 	rendered, err := m.renderer.Render(raw)
 	if err != nil {
 		rendered = raw
@@ -336,34 +375,91 @@ func (m *HunkAddModel) renderCurrentHunk() {
 	m.diffView.SetContent(rendered)
 }
 
-// splitCurrentHunk splits the hunk under the cursor and rebuilds the hunk list.
+// stageCurrentHunk stages the current hunk via git apply --cached.
+func (m *HunkAddModel) stageCurrentHunk() tea.Cmd {
+	if len(m.hunks) == 0 || m.allDecided {
+		return nil
+	}
+	if m.fileIdx >= len(m.files) {
+		return nil
+	}
+
+	hunk := m.hunks[m.hunkIdx]
+	header := m.patchHeader(m.files[m.fileIdx])
+
+	err := git.StageHunk(m.ctx, m.runner, header, hunk.Body)
+	if err != nil {
+		errCmd := m.statusBar.SetMessage(fmt.Sprintf("Stage failed: %v", err), components.Error)
+		_ = errCmd
+		return nil
+	}
+
+	m.decided[m.hunkIdx] = true
+	return m.advanceHunk()
+}
+
+// skipCurrentHunk marks the current hunk as skipped and advances.
+func (m *HunkAddModel) skipCurrentHunk() tea.Cmd {
+	if len(m.hunks) == 0 || m.allDecided {
+		return nil
+	}
+	m.decided[m.hunkIdx] = false
+	return m.advanceHunk()
+}
+
+// stageAllRemaining stages all undecided hunks from the current hunk onwards.
+func (m *HunkAddModel) stageAllRemaining() tea.Cmd {
+	if len(m.hunks) == 0 || m.allDecided || m.fileIdx >= len(m.files) {
+		return nil
+	}
+
+	header := m.patchHeader(m.files[m.fileIdx])
+	var lastErr error
+
+	for i := m.hunkIdx; i < len(m.hunks); i++ {
+		if _, already := m.decided[i]; already {
+			continue
+		}
+		err := git.StageHunk(m.ctx, m.runner, header, m.hunks[i].Body)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		m.decided[i] = true
+	}
+
+	if lastErr != nil {
+		errCmd := m.statusBar.SetMessage(fmt.Sprintf("Stage failed: %v", lastErr), components.Error)
+		_ = errCmd
+	}
+
+	m.allDecided = true
+	m.renderCurrentHunk()
+	return m.tryNextFile()
+}
+
+// splitCurrentHunk attempts to split the current hunk into sub-hunks.
+// If the hunk cannot be split further (only one context-block), it shows a message.
 func (m *HunkAddModel) splitCurrentHunk() {
-	fi := m.hunkList.CurrentFileIdx()
-	hi := m.hunkList.CurrentHunkIdx()
-
-	if fi >= len(m.allHunks) || len(m.allHunks[fi]) == 0 {
-		return
-	}
-	if hi >= len(m.allHunks[fi]) {
+	if len(m.hunks) == 0 || m.allDecided || m.hunkIdx >= len(m.hunks) {
 		return
 	}
 
-	sub := splitHunk(m.allHunks[fi][hi])
+	sub := splitHunk(m.hunks[m.hunkIdx])
 	if len(sub) <= 1 {
 		msgCmd := m.statusBar.SetMessage("Cannot split hunk further", components.Info)
 		_ = msgCmd
 		return
 	}
 
-	before := m.allHunks[fi][:hi]
-	after := m.allHunks[fi][hi+1:]
-	newHunks := make([]git.Hunk, 0, len(before)+len(sub)+len(after))
-	newHunks = append(newHunks, before...)
-	newHunks = append(newHunks, sub...)
-	newHunks = append(newHunks, after...)
-	m.allHunks[fi] = newHunks
+	// Replace current hunk with sub-hunks
+	before := m.hunks[:m.hunkIdx]
+	after := m.hunks[m.hunkIdx+1:]
+	m.hunks = make([]git.Hunk, 0, len(before)+len(sub)+len(after))
+	m.hunks = append(m.hunks, before...)
+	m.hunks = append(m.hunks, sub...)
+	m.hunks = append(m.hunks, after...)
 
-	m.hunkList.ReplaceHunks(fi, newHunks)
 	m.renderCurrentHunk()
 }
 
@@ -429,6 +525,64 @@ func splitHunk(h git.Hunk) []git.Hunk {
 	return result
 }
 
+// advanceHunk moves to the next undecided hunk, or marks all decided.
+// Returns a tea.Cmd if we should move to the next file.
+func (m *HunkAddModel) advanceHunk() tea.Cmd {
+	for i := m.hunkIdx + 1; i < len(m.hunks); i++ {
+		if _, already := m.decided[i]; !already {
+			m.hunkIdx = i
+			m.renderCurrentHunk()
+			return nil
+		}
+	}
+
+	// All hunks decided
+	m.allDecided = true
+	m.renderCurrentHunk()
+	return m.tryNextFile()
+}
+
+// tryNextFile moves to the next file with hunks, or pops the model if done.
+// mutated indicates whether any hunk was actually staged during this session.
+func (m *HunkAddModel) tryNextFile() tea.Cmd {
+	for next := m.fileIdx + 1; next < len(m.files); next++ {
+		hunks := git.ParseHunks(m.files[next].RawDiff)
+		if len(hunks) > 0 {
+			m.loadFileHunks(next)
+			return nil
+		}
+	}
+	// No more files - pop; MutatedGit reflects whether anything was staged
+	mutated := m.anyStagedDecision()
+	return func() tea.Msg {
+		return app.PopModelMsg{MutatedGit: mutated}
+	}
+}
+
+// anyStagedDecision reports whether any hunk across all files was staged (decided=true).
+func (m *HunkAddModel) anyStagedDecision() bool {
+	for _, staged := range m.decided {
+		if staged {
+			return true
+		}
+	}
+	return false
+}
+
+// syncFileSelection detects if the tree cursor moved to a different file and loads its hunks.
+func (m *HunkAddModel) syncFileSelection() {
+	path := m.fileList.SelectedPath()
+	if path == "" {
+		return
+	}
+	for i, f := range m.files {
+		if f.DisplayPath() == path && i != m.fileIdx {
+			m.loadFileHunks(i)
+			return
+		}
+	}
+}
+
 // patchHeader builds a minimal unified diff header for git apply.
 func (m *HunkAddModel) patchHeader(fd git.FileDiff) string {
 	oldPath := "a/" + fd.OldPath
@@ -443,8 +597,8 @@ func (m *HunkAddModel) resize() {
 
 	if !m.showDiff {
 		panelW := m.width - 1
-		m.hunkList.SetWidth(panelW)
-		m.hunkList.SetHeight(contentHeight)
+		m.fileList.SetWidth(panelW)
+		m.fileList.SetHeight(contentHeight)
 		return
 	}
 
@@ -460,8 +614,8 @@ func (m *HunkAddModel) resize() {
 	leftW--
 	rightW--
 
-	m.hunkList.SetWidth(leftW)
-	m.hunkList.SetHeight(contentHeight)
+	m.fileList.SetWidth(leftW)
+	m.fileList.SetHeight(contentHeight)
 	m.diffView.SetWidth(rightW)
 	m.diffView.SetHeight(contentHeight)
 }

@@ -3,6 +3,7 @@ package commands
 
 import (
 	"context"
+	"fmt"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -18,6 +19,8 @@ import (
 // DiffModel is the command model for the diff TUI.
 // It follows the child component pattern: Update returns tea.Cmd, View returns string.
 type DiffModel struct {
+	ctx           context.Context
+	runner        git.Runner
 	files         []git.FileDiff
 	fileTree      components.FileTree
 	diffView      components.DiffView
@@ -33,9 +36,12 @@ type DiffModel struct {
 	focusRight    bool
 	showDiff      bool
 	diffMaximized bool
+	filterPaths   []string
+	noMatchFilter bool
 }
 
 // NewDiffModel creates a DiffModel by running git diff and parsing the output.
+// filterPaths optionally restricts the file list to specific paths.
 func NewDiffModel(
 	ctx context.Context,
 	runner git.Runner,
@@ -43,8 +49,17 @@ func NewDiffModel(
 	renderer diff.Renderer,
 	revision string,
 	staged bool,
+	filterPaths ...[]string,
 ) *DiffModel {
+	var paths []string
+	if len(filterPaths) > 0 {
+		paths = expandGlobs(filterPaths[0])
+	}
 	args := git.DiffArgs(revision, staged)
+	if len(paths) > 0 {
+		args = append(args, "--")
+		args = append(args, paths...)
+	}
 	rawDiff, _ := runner.Run(ctx, args...)
 	branchName, _ := git.BranchName(ctx, runner)
 
@@ -55,11 +70,17 @@ func NewDiffModel(
 		entries[i] = components.FileEntry{Path: f.DisplayPath(), Status: f.Status}
 	}
 
+	noMatch := len(filterPaths) > 0 && len(filterPaths[0]) > 0 && len(files) == 0
+
 	m := &DiffModel{
-		files:     files,
-		fileTree:  components.NewFileTree(entries, false),
-		diffView:  components.NewDiffView(80, 20),
-		statusBar: components.NewStatusBar(120),
+		ctx:           ctx,
+		runner:        runner,
+		files:         files,
+		fileTree:      components.NewFileTree(entries, false),
+		filterPaths:   paths,
+		noMatchFilter: noMatch,
+		diffView:      components.NewDiffView(80, 20),
+		statusBar:     components.NewStatusBar(120),
 		help: components.NewHelpOverlay([]components.KeyGroup{
 			{
 				Name: "Navigation",
@@ -107,6 +128,19 @@ func (m *DiffModel) Update(msg tea.Msg) tea.Cmd {
 	sbCmd := m.statusBar.Update(msg)
 
 	switch msg := msg.(type) {
+	case git.EditDiffMsg:
+		if msg.Err != nil {
+			_ = m.statusBar.SetMessage(fmt.Sprintf("Edit failed: %v", msg.Err), components.Error)
+			return sbCmd
+		}
+		// diff is read-only but we still attempt apply and refresh.
+		if err := git.ApplyEditedDiff(m.ctx, m.runner, msg.OriginalDiff, msg.EditedPath); err != nil {
+			_ = m.statusBar.SetMessage(fmt.Sprintf("Apply failed: %v", err), components.Error)
+			return sbCmd
+		}
+		_ = m.statusBar.SetMessage("Patch applied", components.Info)
+		return sbCmd
+
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -144,6 +178,16 @@ func (m *DiffModel) Update(msg tea.Msg) tea.Cmd {
 
 		if msg.String() == "w" && m.focusRight {
 			m.diffView.SetSoftWrap(!m.diffView.SoftWrap())
+			return sbCmd
+		}
+
+		if msg.String() == "e" {
+			// Edit the selected file's diff
+			for _, f := range m.files {
+				if f.DisplayPath() == m.selectedPath && f.RawDiff != "" {
+					return git.EditDiff(m.ctx, m.runner, f.RawDiff)
+				}
+			}
 			return sbCmd
 		}
 
@@ -205,9 +249,12 @@ func (m *DiffModel) View() string {
 	}
 
 	var background string
-	if len(m.files) == 0 {
+	switch {
+	case m.noMatchFilter:
+		background = "No matching changes for the given paths."
+	case len(m.files) == 0:
 		background = "No changes to display."
-	} else {
+	default:
 		contentHeight := m.height - 1 // reserve 1 row for status bar
 		m.statusBar.SetWidth(m.width)
 

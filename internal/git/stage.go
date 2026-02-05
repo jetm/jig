@@ -50,6 +50,114 @@ func ListUnstagedFiles(ctx context.Context, r Runner) ([]StatusFile, error) {
 	return files, nil
 }
 
+// ListUnstagedFilesFiltered returns unstaged files optionally filtered by paths.
+// When paths is empty it behaves identically to ListUnstagedFiles.
+// When paths is non-empty it appends "-- <paths>" to the git diff calls so only
+// the specified files are included.
+func ListUnstagedFilesFiltered(ctx context.Context, r Runner, paths []string) ([]StatusFile, error) {
+	args := []string{"diff", "--name-status"}
+	if len(paths) > 0 {
+		args = append(args, "--")
+		args = append(args, paths...)
+	}
+	nameStatus, err := r.Run(ctx, args...)
+	if err != nil {
+		return nil, fmt.Errorf("git diff --name-status: %w", err)
+	}
+
+	var files []StatusFile
+	for line := range strings.SplitSeq(nameStatus, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		sf := parseNameStatusLine(line)
+		files = append(files, sf)
+	}
+
+	// Untracked files (only when no path filter; path-filtered untracked is complex)
+	if len(paths) == 0 {
+		untracked, err := r.Run(ctx, "ls-files", "--others", "--exclude-standard")
+		if err != nil {
+			return nil, fmt.Errorf("git ls-files --others: %w", err)
+		}
+		for line := range strings.SplitSeq(untracked, "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			files = append(files, StatusFile{Path: line, Status: Added})
+		}
+	} else {
+		// For path-filtered mode, check each path individually as untracked.
+		untrackedArgs := append([]string{"ls-files", "--others", "--exclude-standard", "--"}, paths...)
+		untracked, err := r.Run(ctx, untrackedArgs...)
+		if err == nil {
+			for line := range strings.SplitSeq(untracked, "\n") {
+				line = strings.TrimSpace(line)
+				if line == "" {
+					continue
+				}
+				files = append(files, StatusFile{Path: line, Status: Added})
+			}
+		}
+	}
+
+	return files, nil
+}
+
+// ListModifiedFilesFiltered returns working-tree modified files filtered by paths.
+// When paths is empty it behaves identically to ListModifiedFiles.
+func ListModifiedFilesFiltered(ctx context.Context, r Runner, paths []string) ([]StatusFile, error) {
+	args := []string{"diff", "--name-status"}
+	if len(paths) > 0 {
+		args = append(args, "--")
+		args = append(args, paths...)
+	}
+	nameStatus, err := r.Run(ctx, args...)
+	if err != nil {
+		return nil, fmt.Errorf("git diff --name-status: %w", err)
+	}
+
+	var files []StatusFile
+	for line := range strings.SplitSeq(nameStatus, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		sf := parseNameStatusLine(line)
+		files = append(files, sf)
+	}
+
+	return files, nil
+}
+
+// ListStagedFilesFiltered returns staged files optionally filtered by paths.
+// When paths is empty it behaves identically to ListStagedFiles.
+func ListStagedFilesFiltered(ctx context.Context, r Runner, paths []string) ([]StatusFile, error) {
+	args := []string{"diff", "--cached", "--name-status"}
+	if len(paths) > 0 {
+		args = append(args, "--")
+		args = append(args, paths...)
+	}
+	nameStatus, err := r.Run(ctx, args...)
+	if err != nil {
+		return nil, fmt.Errorf("git diff --cached --name-status: %w", err)
+	}
+
+	var files []StatusFile
+	for line := range strings.SplitSeq(nameStatus, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		sf := parseNameStatusLine(line)
+		files = append(files, sf)
+	}
+
+	return files, nil
+}
+
 // ListModifiedFiles returns working-tree modified files (for checkout/discard).
 // It only includes files tracked by git (not untracked), using git diff --name-status.
 func ListModifiedFiles(ctx context.Context, r Runner) ([]StatusFile, error) {

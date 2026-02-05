@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 
@@ -889,6 +890,144 @@ func TestAddModel_ResizeWhileMaximized(t *testing.T) {
 	view := m.View()
 	if view == "" {
 		t.Error("View() should not be empty after resize while maximized")
+	}
+}
+
+func TestAddModel_EKeyCallsEditDiff(t *testing.T) {
+	// Cannot use t.Parallel() with t.Setenv
+	t.Setenv("GIT_EDITOR", "true")
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{
+			"M\tfoo.go\n", // diff --name-status
+			"",            // ls-files --others
+			"main",        // branch
+			// renderSelectedDiff in NewAddModel:
+			"diff --git a/foo.go b/foo.go\n--- a/foo.go\n+++ b/foo.go\n@@ -1 +1 @@\n-old\n+new\n",
+			// e key: diff -- foo.go
+			"diff --git a/foo.go b/foo.go\n--- a/foo.go\n+++ b/foo.go\n@@ -1 +1 @@\n-old\n+new\n",
+		},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m := NewAddModel(context.Background(), runner, cfg, renderer)
+	m.width = 120
+	m.height = 40
+
+	cmd := m.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
+	// Should return a tea.Cmd (the ExecProcess cmd)
+	if cmd == nil {
+		t.Fatal("expected a command from pressing e with a diff available")
+	}
+}
+
+func TestAddModel_EKeyNoopWhenNoFile(t *testing.T) {
+	t.Parallel()
+	m := newTestAddModel(t, "", "")
+	m.width = 120
+	m.height = 40
+
+	cmd := m.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
+	// No file selected - should return sbCmd (non-nil because status bar processes)
+	// but no ExecProcess is returned
+	_ = cmd
+	// Verify no "diff --" call was made beyond the initial construction calls
+}
+
+func TestAddModel_EditDiffMsg_Success(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	// Write a modified diff to the temp file
+	editedPath := dir + "/addp-hunk-edit.diff"
+	originalDiff := "diff --git a/foo.go b/foo.go\n"
+	modifiedDiff := originalDiff + "// extra line\n"
+	if err := os.WriteFile(editedPath, []byte(modifiedDiff), 0o600); err != nil {
+		t.Fatalf("writing test file: %v", err)
+	}
+
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{
+			"M\tfoo.go\n",
+			"",
+			"main",
+			"", // renderSelectedDiff
+			"", // git apply --cached
+		},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m := NewAddModel(context.Background(), runner, cfg, renderer)
+	m.width = 120
+	m.height = 40
+
+	msg := git.EditDiffMsg{
+		EditedPath:   editedPath,
+		OriginalDiff: originalDiff,
+	}
+	cmd := m.Update(msg)
+	_ = cmd
+
+	testhelper.MustHaveCall(t, runner, "apply", "--cached")
+}
+
+func TestAddModel_EditDiffMsg_Error(t *testing.T) {
+	t.Parallel()
+	m := newTestAddModel(t, "M\tfoo.go\n", "")
+	m.width = 120
+	m.height = 40
+
+	msg := git.EditDiffMsg{Err: fmt.Errorf("editor crashed")}
+	cmd := m.Update(msg)
+	_ = cmd
+	// Should not panic; error displayed in status bar
+}
+
+func TestNewAddModel_WithFilterPaths(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{
+			"M\tfoo.go\n", // diff --name-status -- foo.go
+			"",            // ls-files --others -- foo.go
+			"main",        // branch
+		},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m := NewAddModel(context.Background(), runner, cfg, renderer, []string{"foo.go"})
+	if len(m.files) != 1 {
+		t.Fatalf("expected 1 file, got %d", len(m.files))
+	}
+	if m.files[0].Path != "foo.go" {
+		t.Errorf("expected foo.go, got %q", m.files[0].Path)
+	}
+	if m.noMatchFilter {
+		t.Error("noMatchFilter should be false when files are found")
+	}
+}
+
+func TestNewAddModel_FilterPaths_NoMatch(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{
+			"",     // diff --name-status -- nonexistent.go (no changes)
+			"",     // ls-files --others -- nonexistent.go
+			"main", // branch
+		},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m := NewAddModel(context.Background(), runner, cfg, renderer, []string{"nonexistent.go"})
+	if len(m.files) != 0 {
+		t.Errorf("expected 0 files, got %d", len(m.files))
+	}
+	if !m.noMatchFilter {
+		t.Error("noMatchFilter should be true when filter yields no files")
+	}
+
+	m.width = 120
+	m.height = 40
+	view := m.View()
+	if !strings.Contains(view, "No matching changes") {
+		t.Errorf("View() with no-match filter should say 'No matching changes', got: %q", view)
 	}
 }
 

@@ -35,16 +35,24 @@ type CheckoutModel struct {
 	focusRight    bool
 	showDiff      bool
 	diffMaximized bool
+	filterPaths   []string
+	noMatchFilter bool
 }
 
 // NewCheckoutModel creates a CheckoutModel by listing modified working-tree files.
+// filterPaths optionally restricts the file list to specific paths.
 func NewCheckoutModel(
 	ctx context.Context,
 	runner git.Runner,
 	cfg config.Config,
 	renderer diff.Renderer,
+	filterPaths ...[]string,
 ) *CheckoutModel {
-	files, _ := git.ListModifiedFiles(ctx, runner)
+	var paths []string
+	if len(filterPaths) > 0 {
+		paths = expandGlobs(filterPaths[0])
+	}
+	files, _ := git.ListModifiedFilesFiltered(ctx, runner, paths)
 	branchName, _ := git.BranchName(ctx, runner)
 
 	entries := make([]components.FileEntry, len(files))
@@ -52,15 +60,19 @@ func NewCheckoutModel(
 		entries[i] = components.FileEntry{Path: f.Path, Status: f.Status}
 	}
 
+	noMatch := len(filterPaths) > 0 && len(filterPaths[0]) > 0 && len(files) == 0
+
 	m := &CheckoutModel{
-		ctx:       ctx,
-		runner:    runner,
-		renderer:  renderer,
-		cfg:       cfg,
-		files:     files,
-		fileList:  components.NewFileList(entries, true),
-		diffView:  components.NewDiffView(80, 20),
-		statusBar: components.NewStatusBar(120),
+		ctx:           ctx,
+		runner:        runner,
+		renderer:      renderer,
+		cfg:           cfg,
+		files:         files,
+		fileList:      components.NewFileList(entries, true),
+		filterPaths:   paths,
+		noMatchFilter: noMatch,
+		diffView:      components.NewDiffView(80, 20),
+		statusBar:     components.NewStatusBar(120),
 		help: components.NewHelpOverlay([]components.KeyGroup{
 			{
 				Name: "Navigation",
@@ -108,6 +120,18 @@ func (m *CheckoutModel) Update(msg tea.Msg) tea.Cmd {
 	sbCmd := m.statusBar.Update(msg)
 
 	switch msg := msg.(type) {
+	case git.EditDiffMsg:
+		if msg.Err != nil {
+			_ = m.statusBar.SetMessage(fmt.Sprintf("Edit failed: %v", msg.Err), components.Error)
+			return sbCmd
+		}
+		if err := git.ApplyEditedDiff(m.ctx, m.runner, msg.OriginalDiff, msg.EditedPath); err != nil {
+			_ = m.statusBar.SetMessage(fmt.Sprintf("Apply failed: %v", err), components.Error)
+			return sbCmd
+		}
+		m.renderSelectedDiff()
+		return sbCmd
+
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -151,6 +175,19 @@ func (m *CheckoutModel) Update(msg tea.Msg) tea.Cmd {
 		if msg.String() == "w" && m.focusRight {
 			m.diffView.SetSoftWrap(!m.diffView.SoftWrap())
 			return sbCmd
+		}
+
+		if msg.String() == "e" {
+			path := m.fileList.SelectedPath()
+			if path == "" {
+				return sbCmd
+			}
+			rawDiff, err := m.runner.Run(m.ctx, "diff", "--", path)
+			if err != nil || rawDiff == "" {
+				_ = m.statusBar.SetMessage("No diff to edit", components.Info)
+				return sbCmd
+			}
+			return git.EditDiff(m.ctx, m.runner, rawDiff)
 		}
 
 		if msg.String() == "[" {
@@ -241,9 +278,12 @@ func (m *CheckoutModel) View() string {
 	}
 
 	var background string
-	if len(m.files) == 0 {
+	switch {
+	case m.noMatchFilter:
+		background = "No matching changes for the given paths."
+	case len(m.files) == 0:
 		background = "Nothing to discard."
-	} else {
+	default:
 		contentHeight := m.height - 1
 		m.statusBar.SetWidth(m.width)
 

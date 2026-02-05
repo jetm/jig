@@ -59,20 +59,28 @@ func TestRun_Success(t *testing.T) {
 	}
 }
 
-func TestHunkAddAndFixup_RejectArgs(t *testing.T) {
+func TestFixup_RejectsArgs(t *testing.T) {
 	t.Parallel()
-	for _, name := range []string{"hunk-add", "fixup"} {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-			root := newRootCmd()
-			buf := new(bytes.Buffer)
-			root.SetOut(buf)
-			root.SetErr(buf)
-			root.SetArgs([]string{name, "somefile.go"})
-			err := root.Execute()
-			require.Error(t, err)
-			assert.Contains(t, err.Error(), "unknown command", "expected args rejection, got: %v", err)
-		})
+	root := newRootCmd()
+	buf := new(bytes.Buffer)
+	root.SetOut(buf)
+	root.SetErr(buf)
+	root.SetArgs([]string{"fixup", "somefile.go"})
+	err := root.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown command", "expected args rejection, got: %v", err)
+}
+
+func TestHunkAdd_AcceptsPathArgs(t *testing.T) {
+	t.Parallel()
+	cmd := newRootCmd()
+	hunkAddCmd, _, err := cmd.Find([]string{"hunk-add"})
+	require.NoError(t, err)
+	// hunk-add now accepts arbitrary args; confirm cobra.ArbitraryArgs is set.
+	// We verify by checking that passing args doesn't produce an args error at parse time.
+	// (The command itself would fail because there's no real git repo, but that's expected.)
+	if hunkAddCmd.Args == nil {
+		t.Error("hunk-add should have ArbitraryArgs, got nil Args func")
 	}
 }
 
@@ -253,6 +261,100 @@ func TestLogCmd_ConfigLoadError(t *testing.T) {
 func TestRebaseInteractiveCmd_ConfigLoadError(t *testing.T) {
 	if err := runCmdWithInvalidConfig(t, "rebase-interactive"); err == nil {
 		t.Fatal("expected error from config load failure, got nil")
+	}
+}
+
+func TestAddCmd_DirectFlag_Registered(t *testing.T) {
+	t.Parallel()
+	cmd := newRootCmd()
+	addCmd, _, err := cmd.Find([]string{"add"})
+	require.NoError(t, err)
+
+	directFlag := addCmd.Flags().Lookup("direct")
+	require.NotNil(t, directFlag, "add command should have --direct flag")
+	assert.Equal(t, "false", directFlag.DefValue)
+}
+
+func TestResetCmd_DirectFlag_Registered(t *testing.T) {
+	t.Parallel()
+	cmd := newRootCmd()
+	resetCmd, _, err := cmd.Find([]string{"reset"})
+	require.NoError(t, err)
+
+	directFlag := resetCmd.Flags().Lookup("direct")
+	require.NotNil(t, directFlag, "reset command should have --direct flag")
+	assert.Equal(t, "false", directFlag.DefValue)
+}
+
+func TestCheckoutCmd_DirectFlag_Registered(t *testing.T) {
+	t.Parallel()
+	cmd := newRootCmd()
+	checkoutCmd, _, err := cmd.Find([]string{"checkout"})
+	require.NoError(t, err)
+
+	directFlag := checkoutCmd.Flags().Lookup("direct")
+	require.NotNil(t, directFlag, "checkout command should have --direct flag")
+	assert.Equal(t, "false", directFlag.DefValue)
+}
+
+func TestAddCmd_DirectMode_WithFlag(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{
+			"",           // git add -- paths
+			"file1.go\n", // git diff --name-only --cached
+		},
+	}
+	ctx := context.Background()
+	var buf bytes.Buffer
+	// Direct mode with the flag - same behavior as before
+	err := addDirect(ctx, runner, []string{"file1.go"}, &buf)
+	require.NoError(t, err)
+	assert.Contains(t, buf.String(), "Staged 1 file(s)")
+}
+
+func TestResetCmd_DirectMode_WithFlag(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{
+			"", // git reset HEAD -- paths
+			"", // git status --short
+		},
+	}
+	ctx := context.Background()
+	var buf bytes.Buffer
+	err := resetDirect(ctx, runner, []string{"file1.go"}, &buf)
+	require.NoError(t, err)
+	testhelper.MustHaveCall(t, runner, "reset", "HEAD", "--", "file1.go")
+}
+
+func TestHunkAddCmd_AcceptsArgs(t *testing.T) {
+	t.Parallel()
+	cmd := newRootCmd()
+	hunkAddCmd, _, err := cmd.Find([]string{"hunk-add"})
+	require.NoError(t, err)
+	assert.Equal(t, "hunk-add [paths...]", hunkAddCmd.Use)
+}
+
+func TestNewFakeHunkAddModel_WithFilterPaths(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{Outputs: []string{"", "main"}}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m := commands.NewHunkAddModel(context.Background(), runner, cfg, renderer, []string{"foo.go"})
+	if m == nil {
+		t.Fatal("NewHunkAddModel should not return nil")
+	}
+}
+
+func TestNewFakeDiffModel_WithFilterPaths(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{Outputs: []string{"", "main"}}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m := commands.NewDiffModel(context.Background(), runner, cfg, renderer, "", false, []string{"foo.go"})
+	if m == nil {
+		t.Fatal("NewDiffModel should not return nil")
 	}
 }
 

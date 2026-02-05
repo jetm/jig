@@ -72,6 +72,133 @@ func TestListUnstagedFiles_UntrackedError(t *testing.T) {
 	}
 }
 
+func TestListUnstagedFilesFiltered_WithPaths(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{
+			"M\tfoo.go\n", // git diff --name-status -- foo.go
+			"",            // ls-files --others -- foo.go
+		},
+	}
+	files, err := ListUnstagedFilesFiltered(context.Background(), runner, []string{"foo.go"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(files) != 1 {
+		t.Fatalf("expected 1 file, got %d: %v", len(files), files)
+	}
+	testhelper.MustHaveCall(t, runner, "diff", "--name-status", "--", "foo.go")
+}
+
+func TestListUnstagedFilesFiltered_NoPaths(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{
+			"M\tfoo.go\n", // git diff --name-status (no -- separator)
+			"",            // ls-files --others
+		},
+	}
+	files, err := ListUnstagedFilesFiltered(context.Background(), runner, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(files) != 1 {
+		t.Fatalf("expected 1 file, got %d", len(files))
+	}
+	// Verify no -- separator in the diff call when no paths.
+	calls := runner.Calls
+	if len(calls) == 0 {
+		t.Fatal("expected at least one call")
+	}
+	for _, arg := range calls[0].Args {
+		if arg == "--" {
+			t.Error("should not include -- separator when no paths given")
+		}
+	}
+}
+
+func TestListModifiedFilesFiltered_WithPaths(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{"M\tbar.go\n"},
+	}
+	files, err := ListModifiedFilesFiltered(context.Background(), runner, []string{"bar.go"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(files) != 1 || files[0].Path != "bar.go" {
+		t.Errorf("expected [{bar.go Modified}], got %v", files)
+	}
+	testhelper.MustHaveCall(t, runner, "diff", "--name-status", "--", "bar.go")
+}
+
+func TestListModifiedFilesFiltered_NoPaths(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{"M\tbar.go\n"},
+	}
+	files, err := ListModifiedFilesFiltered(context.Background(), runner, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(files) != 1 {
+		t.Errorf("expected 1 file, got %d", len(files))
+	}
+}
+
+func TestListStagedFilesFiltered_WithPaths(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{"M\tbaz.go\n"},
+	}
+	files, err := ListStagedFilesFiltered(context.Background(), runner, []string{"baz.go"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(files) != 1 || files[0].Path != "baz.go" {
+		t.Errorf("expected [{baz.go Modified}], got %v", files)
+	}
+	testhelper.MustHaveCall(t, runner, "diff", "--cached", "--name-status", "--", "baz.go")
+}
+
+func TestListStagedFilesFiltered_NoPaths(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{"M\tbaz.go\n"},
+	}
+	files, err := ListStagedFilesFiltered(context.Background(), runner, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(files) != 1 {
+		t.Errorf("expected 1 file, got %d", len(files))
+	}
+}
+
+func TestListModifiedFilesFiltered_DiffError(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{""},
+		Errors:  []error{errors.New("diff failed")},
+	}
+	_, err := ListModifiedFilesFiltered(context.Background(), runner, nil)
+	if err == nil {
+		t.Fatal("expected error from diff failure")
+	}
+}
+
+func TestListStagedFilesFiltered_DiffError(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{""},
+		Errors:  []error{errors.New("diff failed")},
+	}
+	_, err := ListStagedFilesFiltered(context.Background(), runner, nil)
+	if err == nil {
+		t.Fatal("expected error from diff failure")
+	}
+}
+
 func TestListUnstagedFiles_Renamed(t *testing.T) {
 	t.Parallel()
 	runner := &testhelper.FakeRunner{

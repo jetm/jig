@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"os"
 	"strings"
 	"testing"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/jetm/gti/internal/app"
 	"github.com/jetm/gti/internal/config"
 	"github.com/jetm/gti/internal/diff"
+	"github.com/jetm/gti/internal/git"
 	"github.com/jetm/gti/internal/testhelper"
 )
 
@@ -697,5 +699,160 @@ func TestCheckoutModel_ResizeWhileMaximized(t *testing.T) {
 	view := m.View()
 	if view == "" {
 		t.Error("View() should not be empty after resize while maximized")
+	}
+}
+
+func TestCheckoutModel_EKey_NoDiff(t *testing.T) {
+	t.Parallel()
+	// When the runner returns empty string for diff, e key shows "No diff to edit".
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{
+			"M\tfoo.go\n", // diff --name-status
+			"main",        // branch name
+			"",            // renderSelectedDiff
+			"",            // e key: diff -- foo.go (empty = no diff)
+		},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m := NewCheckoutModel(context.Background(), runner, cfg, renderer)
+	m.width = 120
+	m.height = 40
+
+	cmd := m.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
+	_ = cmd // sbCmd returned, no editor launched
+}
+
+func TestCheckoutModel_EKey_NoSelection(t *testing.T) {
+	t.Parallel()
+	// When there are no files, e key should be a noop.
+	m := newTestCheckoutModel(t, "")
+	m.width = 120
+	m.height = 40
+
+	cmd := m.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
+	_ = cmd // sbCmd returned
+}
+
+func TestCheckoutModel_EditDiffMsg_Error(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{
+			"M\tfoo.go\n", // diff --name-status
+			"main",        // branch name
+		},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m := NewCheckoutModel(context.Background(), runner, cfg, renderer)
+	m.width = 120
+	m.height = 40
+
+	// Send EditDiffMsg with error directly.
+	cmd := m.Update(git.EditDiffMsg{Err: context.DeadlineExceeded})
+	_ = cmd // sbCmd returned
+}
+
+func TestCheckoutModel_EditDiffMsg_ApplyError(t *testing.T) {
+	t.Parallel()
+	// Write a temp file with modified content so ApplyEditedDiff tries to apply it.
+	editedPath := t.TempDir() + "/addp-hunk-edit.diff"
+
+	originalDiff := "diff --git a/foo.go b/foo.go\n--- a/foo.go\n+++ b/foo.go\n@@ -1 +1 @@\n-old\n+new\n"
+	modifiedDiff := originalDiff + "extra"
+
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{
+			"M\tfoo.go\n", // diff --name-status
+			"main",        // branch name
+			"",            // git apply --cached (will fail)
+		},
+		Errors: []error{nil, nil, context.DeadlineExceeded},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m := NewCheckoutModel(context.Background(), runner, cfg, renderer)
+	m.width = 120
+	m.height = 40
+
+	// Write modified diff to the temp edited path.
+	if err := os.WriteFile(editedPath, []byte(modifiedDiff), 0o600); err != nil {
+		t.Fatalf("failed to write edited diff: %v", err)
+	}
+
+	cmd := m.Update(git.EditDiffMsg{
+		EditedPath:   editedPath,
+		OriginalDiff: originalDiff,
+	})
+	_ = cmd // sbCmd with error message
+}
+
+func TestCheckoutModel_EditDiffMsg_Success(t *testing.T) {
+	t.Parallel()
+	// Write a temp file with the SAME content so ApplyEditedDiff skips apply.
+	editedPath := t.TempDir() + "/addp-hunk-edit.diff"
+	originalDiff := "diff --git a/foo.go b/foo.go\n--- a/foo.go\n+++ b/foo.go\n@@ -1 +1 @@\n-old\n+new\n"
+
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{
+			"M\tfoo.go\n", // diff --name-status
+			"main",        // branch name
+			"",            // renderSelectedDiff after success
+		},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m := NewCheckoutModel(context.Background(), runner, cfg, renderer)
+	m.width = 120
+	m.height = 40
+
+	if err := os.WriteFile(editedPath, []byte(originalDiff), 0o600); err != nil {
+		t.Fatalf("failed to write edited diff: %v", err)
+	}
+
+	cmd := m.Update(git.EditDiffMsg{
+		EditedPath:   editedPath,
+		OriginalDiff: originalDiff,
+	})
+	_ = cmd // sbCmd returned, renderSelectedDiff called
+}
+
+func TestNewCheckoutModel_WithFilterPaths(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{
+			"M\tfoo.go\n", // git diff --name-status -- foo.go
+			"main",        // branch name
+			"",            // renderSelectedDiff
+		},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m := NewCheckoutModel(context.Background(), runner, cfg, renderer, []string{"foo.go"})
+	if len(m.files) != 1 {
+		t.Fatalf("expected 1 file, got %d", len(m.files))
+	}
+	testhelper.MustHaveCall(t, runner, "diff", "--name-status", "--", "foo.go")
+}
+
+func TestNewCheckoutModel_FilterPaths_NoMatch(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{
+			"", // git diff --name-status -- nonexistent.go (no files)
+			"main",
+		},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m := NewCheckoutModel(context.Background(), runner, cfg, renderer, []string{"nonexistent.go"})
+	if !m.noMatchFilter {
+		t.Error("noMatchFilter should be true when filter paths match no files")
+	}
+	m.width = 120
+	m.height = 40
+	view := m.View()
+	if !strings.Contains(view, "No matching") {
+		t.Errorf("View() should show no-match message, got: %q", view)
 	}
 }

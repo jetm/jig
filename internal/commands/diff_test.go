@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"os"
 	"strings"
 	"testing"
 
@@ -569,5 +570,155 @@ func TestDiffModel_ResizeWhileMaximized(t *testing.T) {
 	view := m.View()
 	if view == "" {
 		t.Error("View() should not be empty after resize while maximized")
+	}
+}
+
+func TestDiffModel_EKey_WithFile(t *testing.T) {
+	t.Parallel()
+	m := newTestModel(t, "", false, sampleDiff)
+	m.width = 120
+	m.height = 40
+
+	// e key with a selected file that has RawDiff returns a non-nil cmd.
+	cmd := m.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
+	if cmd == nil {
+		t.Error("e key with selected file should return non-nil cmd")
+	}
+}
+
+func TestDiffModel_EKey_NoMatch(t *testing.T) {
+	t.Parallel()
+	m := newTestModel(t, "", false, sampleDiff)
+	m.width = 120
+	m.height = 40
+	// Point selectedPath to a non-existent file.
+	m.selectedPath = "nonexistent.go"
+
+	cmd := m.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
+	_ = cmd // returns sbCmd (noop)
+}
+
+func TestDiffModel_EKey_EmptyFiles(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{"", "main"},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m := NewDiffModel(context.Background(), runner, cfg, renderer, "", false)
+	m.width = 120
+	m.height = 40
+
+	cmd := m.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
+	_ = cmd // returns sbCmd (noop, no files)
+}
+
+func TestDiffModel_EditDiffMsg_Error(t *testing.T) {
+	t.Parallel()
+	m := newTestModel(t, "", false, sampleDiff)
+	m.width = 120
+	m.height = 40
+
+	cmd := m.Update(git.EditDiffMsg{Err: context.DeadlineExceeded})
+	_ = cmd
+}
+
+func TestDiffModel_EditDiffMsg_ApplyError(t *testing.T) {
+	t.Parallel()
+	editedPath := t.TempDir() + "/addp-hunk-edit.diff"
+	originalDiff := "diff --git a/main.go b/main.go\n--- a/main.go\n+++ b/main.go\n@@ -1 +1 @@\n-old\n+new\n"
+	modifiedDiff := originalDiff + "extra"
+
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{
+			sampleDiff, // git diff
+			"main",     // branch name
+			"",         // git apply --cached (will fail)
+		},
+		Errors: []error{nil, nil, context.DeadlineExceeded},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m := NewDiffModel(context.Background(), runner, cfg, renderer, "", false)
+	m.width = 120
+	m.height = 40
+
+	if err := os.WriteFile(editedPath, []byte(modifiedDiff), 0o600); err != nil {
+		t.Fatalf("failed to write edited diff: %v", err)
+	}
+
+	cmd := m.Update(git.EditDiffMsg{
+		EditedPath:   editedPath,
+		OriginalDiff: originalDiff,
+	})
+	_ = cmd
+}
+
+func TestDiffModel_EditDiffMsg_Success(t *testing.T) {
+	t.Parallel()
+	editedPath := t.TempDir() + "/addp-hunk-edit.diff"
+	originalDiff := "diff --git a/main.go b/main.go\n--- a/main.go\n+++ b/main.go\n@@ -1 +1 @@\n-old\n+new\n"
+
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{
+			sampleDiff, // git diff
+			"main",     // branch name
+		},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m := NewDiffModel(context.Background(), runner, cfg, renderer, "", false)
+	m.width = 120
+	m.height = 40
+
+	// Same content — ApplyEditedDiff skips apply; "Patch applied" is shown.
+	if err := os.WriteFile(editedPath, []byte(originalDiff), 0o600); err != nil {
+		t.Fatalf("failed to write edited diff: %v", err)
+	}
+
+	cmd := m.Update(git.EditDiffMsg{
+		EditedPath:   editedPath,
+		OriginalDiff: originalDiff,
+	})
+	_ = cmd
+}
+
+func TestNewDiffModel_WithFilterPaths(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{
+			sampleDiff, // git diff -- main.go
+			"main",     // branch name
+		},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, []string{"main.go"})
+	if len(m.files) != 1 {
+		t.Fatalf("expected 1 file, got %d", len(m.files))
+	}
+	// Verify -- separator was used.
+	testhelper.MustHaveCall(t, runner, "diff", "--", "main.go")
+}
+
+func TestNewDiffModel_FilterPaths_NoMatch(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{
+			"",     // git diff -- nonexistent.go (empty)
+			"main", // branch name
+		},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, []string{"nonexistent.go"})
+	if !m.noMatchFilter {
+		t.Error("noMatchFilter should be true when filter paths match no files")
+	}
+	m.width = 120
+	m.height = 40
+	view := m.View()
+	if !strings.Contains(view, "No matching") {
+		t.Errorf("View() should show no-match message, got: %q", view)
 	}
 }

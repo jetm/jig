@@ -262,6 +262,16 @@ func newAddTestModel(tb testing.TB, repoDir string) *testModel {
 	return newTestModel(tb, appModel)
 }
 
+// newAddTestModelFiltered creates an in-process add TUI model with path filters.
+func newAddTestModelFiltered(tb testing.TB, repoDir string, filterPaths []string) *testModel {
+	tb.Helper()
+	runner := newRunnerInDir(tb, repoDir)
+	cfg := defaultConfig()
+	m := commands.NewAddModel(context.Background(), runner, cfg, plainRenderer(), filterPaths)
+	appModel := app.New(&addTeaModelAdapter{inner: m}, runner, cfg)
+	return newTestModel(tb, appModel)
+}
+
 // newCheckoutTestModel creates an in-process checkout TUI model for a temp repo.
 func newCheckoutTestModel(tb testing.TB, repoDir string) *testModel {
 	tb.Helper()
@@ -352,4 +362,38 @@ func gitRun(tb testing.TB, repoDir string, args ...string) string {
 		tb.Fatalf("git %v: %v", args, err)
 	}
 	return strings.TrimSpace(out)
+}
+
+// assertGitStaged fatally fails if any of the given files is absent from
+// the git index (git diff --cached --name-only).
+func assertGitStaged(tb testing.TB, repoDir string, files ...string) {
+	tb.Helper()
+	cached := gitRun(tb, repoDir, "diff", "--cached", "--name-only")
+	for _, f := range files {
+		if !strings.Contains(cached, f) {
+			tb.Fatalf("assertGitStaged: %q not found in staged files.\nStaged:\n%s", f, cached)
+		}
+	}
+}
+
+// assertGitNotStaged fatally fails if any of the given files appears in
+// the git index (git diff --cached --name-only).
+func assertGitNotStaged(tb testing.TB, repoDir string, files ...string) {
+	tb.Helper()
+	cached := gitRun(tb, repoDir, "diff", "--cached", "--name-only")
+	for _, f := range files {
+		if strings.Contains(cached, f) {
+			tb.Fatalf("assertGitNotStaged: %q found in staged files but should not be.\nStaged:\n%s", f, cached)
+		}
+	}
+}
+
+// assertOutputContains fatally fails if text is not present in the current
+// TUI output buffer.
+func assertOutputContains(tb testing.TB, tm *testModel, text string) {
+	tb.Helper()
+	out := tm.out.String()
+	if !strings.Contains(out, text) {
+		tb.Fatalf("assertOutputContains: %q not found in TUI output.\nOutput (%d bytes):\n%s", text, len(out), out)
+	}
 }

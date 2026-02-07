@@ -109,9 +109,8 @@ func (d *diffTeaModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (d *diffTeaModel) View() tea.View {
 	return tea.NewView(d.inner.View())
 }
-
 func newAddCmd() *cobra.Command {
-	var direct bool
+	var interactive bool
 
 	cmd := &cobra.Command{
 		Use:   "add [paths...]",
@@ -124,7 +123,7 @@ func newAddCmd() *cobra.Command {
 				return fmt.Errorf("initializing git runner: %w", err)
 			}
 
-			if direct && len(args) > 0 {
+			if len(args) > 0 && !interactive {
 				return addDirect(ctx, runner, args, cmd.OutOrStdout())
 			}
 
@@ -149,7 +148,7 @@ func newAddCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().BoolVarP(&direct, "direct", "d", false, "Stage files directly without opening TUI")
+	cmd.Flags().BoolVarP(&interactive, "interactive", "i", false, "Open TUI even when paths are given")
 	return cmd
 }
 

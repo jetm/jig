@@ -60,8 +60,8 @@ func (h *HelpOverlay) HandleKey(msg tea.KeyPressMsg) bool {
 
 // View renders the overlay composited over background. When the overlay is
 // hidden, background is returned unchanged. When visible, the overlay box is
-// centered over background using line-by-line compositing so background content
-// remains visible outside the box.
+// centered over background using lipgloss Canvas/Layer compositing so that
+// ANSI-styled backgrounds are handled correctly.
 func (h *HelpOverlay) View(background string, width, height int) string {
 	if !h.visible {
 		return background
@@ -97,99 +97,16 @@ func (h *HelpOverlay) View(background string, width, height int) string {
 
 	box := overlayStyle.Render(content)
 
-	// Composite the box centered over the background.
-	return overlayOnBackground(background, box, width, height)
-}
+	// Center the box over the background using ANSI-aware lipgloss dimensions.
+	boxW := lipgloss.Width(box)
+	boxH := lipgloss.Height(box)
+	x := max((width-boxW)/2, 0)
+	y := max((height-boxH)/2, 0)
 
-// overlayOnBackground places box centered over background line-by-line.
-// Lines of the background outside the overlay region are preserved verbatim.
-func overlayOnBackground(background, box string, width, height int) string {
-	bgLines := strings.Split(background, "\n")
-	boxLines := strings.Split(box, "\n")
-
-	boxH := len(boxLines)
-	boxW := min(
-		// Clamp to available space.
-		lipgloss.Width(box), width)
-
-	topStart := max((height-boxH)/2, 0)
-	leftStart := max((width-boxW)/2, 0)
-
-	// Ensure background has enough lines to cover height.
-	for len(bgLines) < height {
-		bgLines = append(bgLines, "")
-	}
-
-	out := make([]string, height)
-	for i := range height {
-		bgLine := ""
-		if i < len(bgLines) {
-			bgLine = bgLines[i]
-		}
-
-		boxRow := i - topStart
-		if boxRow < 0 || boxRow >= len(boxLines) {
-			// Outside overlay region: emit background line as-is.
-			out[i] = bgLine
-			continue
-		}
-
-		// Composite this row: background | overlay | background remainder.
-		overlayLine := boxLines[boxRow]
-		overlayLineW := lipgloss.Width(overlayLine)
-
-		// Left segment of background (runes before leftStart column).
-		leftSeg := runeColumns(bgLine, 0, leftStart)
-		// Pad left segment to exactly leftStart columns.
-		leftSeg = padRight(leftSeg, leftStart)
-
-		// Right segment of background (runes after leftStart+boxW columns).
-		rightSeg := runeColumnsFrom(bgLine, leftStart+overlayLineW)
-
-		out[i] = leftSeg + overlayLine + rightSeg
-	}
-
-	return strings.Join(out, "\n")
-}
-
-// runeColumns returns the substring of s covering display columns [from, to).
-// It is ANSI-naive: treats each byte sequence without escape codes as one cell.
-// For plain text backgrounds this is sufficient.
-func runeColumns(s string, from, to int) string {
-	if from >= to {
-		return ""
-	}
-	var b strings.Builder
-	col := 0
-	for _, r := range s {
-		if col >= to {
-			break
-		}
-		if col >= from {
-			b.WriteRune(r)
-		}
-		col++
-	}
-	return b.String()
-}
-
-// runeColumnsFrom returns the substring of s starting at display column start.
-func runeColumnsFrom(s string, start int) string {
-	runes := []rune(s)
-	if start >= len(runes) {
-		return ""
-	}
-	if start <= 0 {
-		return s
-	}
-	return string(runes[start:])
-}
-
-// padRight pads s with spaces on the right until its rune length equals width.
-func padRight(s string, width int) string {
-	runes := []rune(s)
-	if len(runes) >= width {
-		return string(runes[:width])
-	}
-	return s + strings.Repeat(" ", width-len(runes))
+	bgLayer := lipgloss.NewLayer(background).Z(0)
+	boxLayer := lipgloss.NewLayer(box).X(x).Y(y).Z(1)
+	comp := lipgloss.NewCompositor(bgLayer, boxLayer)
+	canvas := lipgloss.NewCanvas(width, height)
+	canvas.Compose(comp)
+	return canvas.Render()
 }

@@ -116,6 +116,64 @@ func (hl *HunkList) StagedHunks() []StagedHunk {
 	return result
 }
 
+// FileSummary returns a rendered string with one line per file showing the
+// file name and its staged/total hunk count, e.g. "main.go  1/3".
+func (hl *HunkList) FileSummary() string {
+	if len(hl.files) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	for fi, fd := range hl.files {
+		total := 0
+		staged := 0
+		for i, r := range hl.rows {
+			if r.kind == rowKindHunk && r.hunk.fileIdx == fi {
+				total++
+				if hl.staged[i] {
+					staged++
+				}
+			}
+		}
+		if fi > 0 {
+			sb.WriteString("\n")
+		}
+		fmt.Fprintf(&sb, "%s  %d/%d", fd.DisplayPath(), staged, total)
+	}
+	return sb.String()
+}
+
+// CurrentHunk returns the hunk under the cursor, or false if no hunk is selected.
+func (hl *HunkList) CurrentHunk() (git.Hunk, bool) {
+	if hl.cursor >= len(hl.rows) || hl.rows[hl.cursor].kind != rowKindHunk {
+		return git.Hunk{}, false
+	}
+	r := hl.rows[hl.cursor]
+	fileHunks := hl.hunksForFile(r.hunk.fileIdx, hl.files[r.hunk.fileIdx])
+	if r.hunk.hunkIdx >= len(fileHunks) {
+		return git.Hunk{}, false
+	}
+	return fileHunks[r.hunk.hunkIdx], true
+}
+
+// FileHunks returns the hunk slice for the given file index.
+func (hl *HunkList) FileHunks(fileIdx int) []git.Hunk {
+	if fileIdx >= len(hl.files) {
+		return nil
+	}
+	return hl.hunksForFile(fileIdx, hl.files[fileIdx])
+}
+
+// ScrollToFile moves the cursor to the first hunk of the given file.
+func (hl *HunkList) ScrollToFile(fileIdx int) {
+	for i, r := range hl.rows {
+		if r.kind == rowKindHunk && r.hunk.fileIdx == fileIdx {
+			hl.cursor = i
+			hl.clampOffset()
+			return
+		}
+	}
+}
+
 // ReplaceHunks swaps out the hunks for a single file and rebuilds the affected rows.
 // Staged state for rows within the file is cleared; other files' state is preserved.
 func (hl *HunkList) ReplaceHunks(fileIdx int, hunks []git.Hunk) {

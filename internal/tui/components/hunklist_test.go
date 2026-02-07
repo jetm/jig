@@ -392,3 +392,177 @@ func TestHunkList_Update_NonKeyMsg(t *testing.T) {
 		t.Error("Update(nil) should return nil cmd")
 	}
 }
+
+func TestHunkList_FileSummary_SingleFile(t *testing.T) {
+	t.Parallel()
+	files := []git.FileDiff{testFileDiffH("main.go")}
+	hunks := [][]git.Hunk{{testHunk("@@ -1 +1 @@"), testHunk("@@ -5 +5 @@"), testHunk("@@ -10 +10 @@")}}
+	hl := NewHunkList(files, hunks)
+	// Stage 1 of 3 hunks.
+	hl.staged[1] = true
+
+	summary := hl.FileSummary()
+	if !strings.Contains(summary, "main.go") {
+		t.Errorf("FileSummary() should contain file name, got:\n%s", summary)
+	}
+	if !strings.Contains(summary, "1/3") {
+		t.Errorf("FileSummary() should contain '1/3', got:\n%s", summary)
+	}
+}
+
+func TestHunkList_FileSummary_MultipleFiles(t *testing.T) {
+	t.Parallel()
+	files := []git.FileDiff{testFileDiffH("alpha.go"), testFileDiffH("beta.go")}
+	hunks := [][]git.Hunk{
+		{testHunk("@@ -1 +1 @@"), testHunk("@@ -5 +5 @@")},
+		{testHunk("@@ -2 +2 @@")},
+	}
+	hl := NewHunkList(files, hunks)
+	// Rows: [0]=header_a [1]=hunk_a0 [2]=hunk_a1 [3]=header_b [4]=hunk_b0
+	// Stage both hunks of alpha.go.
+	hl.staged[1] = true
+	hl.staged[2] = true
+
+	summary := hl.FileSummary()
+	if !strings.Contains(summary, "alpha.go") {
+		t.Errorf("FileSummary() should contain 'alpha.go', got:\n%s", summary)
+	}
+	if !strings.Contains(summary, "beta.go") {
+		t.Errorf("FileSummary() should contain 'beta.go', got:\n%s", summary)
+	}
+	// alpha.go: 2/2 staged
+	if !strings.Contains(summary, "2/2") {
+		t.Errorf("FileSummary() should contain '2/2', got:\n%s", summary)
+	}
+	// beta.go: 0/1 staged
+	if !strings.Contains(summary, "0/1") {
+		t.Errorf("FileSummary() should contain '0/1', got:\n%s", summary)
+	}
+}
+
+func TestHunkList_FileSummary_CountersUpdateAfterToggle(t *testing.T) {
+	t.Parallel()
+	files := []git.FileDiff{testFileDiffH("foo.go")}
+	hunks := [][]git.Hunk{{testHunk("@@ -1 +1 @@"), testHunk("@@ -5 +5 @@")}}
+	hl := NewHunkList(files, hunks)
+	// Initially 0/2.
+	summary := hl.FileSummary()
+	if !strings.Contains(summary, "0/2") {
+		t.Errorf("before toggle: FileSummary() should contain '0/2', got:\n%s", summary)
+	}
+
+	// Toggle first hunk (cursor at row 1).
+	hl.Update(tea.KeyPressMsg{Code: tea.KeySpace})
+	summary = hl.FileSummary()
+	if !strings.Contains(summary, "1/2") {
+		t.Errorf("after 1 toggle: FileSummary() should contain '1/2', got:\n%s", summary)
+	}
+
+	// Toggle second hunk (move to row 2 then Space).
+	hl.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
+	hl.Update(tea.KeyPressMsg{Code: tea.KeySpace})
+	summary = hl.FileSummary()
+	if !strings.Contains(summary, "2/2") {
+		t.Errorf("after 2 toggles: FileSummary() should contain '2/2', got:\n%s", summary)
+	}
+
+	// Untoggle first hunk.
+	hl.Update(tea.KeyPressMsg{Code: 'k', Text: "k"})
+	hl.Update(tea.KeyPressMsg{Code: tea.KeySpace})
+	summary = hl.FileSummary()
+	if !strings.Contains(summary, "1/2") {
+		t.Errorf("after untoggle: FileSummary() should contain '1/2', got:\n%s", summary)
+	}
+}
+
+func TestHunkList_FileSummary_Empty(t *testing.T) {
+	t.Parallel()
+	hl := NewHunkList(nil, nil)
+	summary := hl.FileSummary()
+	if summary != "" {
+		t.Errorf("FileSummary() on empty list should return empty string, got: %q", summary)
+	}
+}
+
+func TestHunkList_CurrentHunk_ReturnsHunkUnderCursor(t *testing.T) {
+	t.Parallel()
+	files := []git.FileDiff{testFileDiffH("a.go")}
+	h := testHunk("@@ -1,3 +1,4 @@")
+	hunks := [][]git.Hunk{{h}}
+	hl := NewHunkList(files, hunks)
+
+	hunk, ok := hl.CurrentHunk()
+	if !ok {
+		t.Fatal("CurrentHunk should return true for list with hunks")
+	}
+	if hunk.Header != "@@ -1,3 +1,4 @@" {
+		t.Errorf("CurrentHunk header = %q, want %q", hunk.Header, "@@ -1,3 +1,4 @@")
+	}
+}
+
+func TestHunkList_CurrentHunk_EmptyList(t *testing.T) {
+	t.Parallel()
+	hl := NewHunkList(nil, nil)
+	_, ok := hl.CurrentHunk()
+	if ok {
+		t.Error("CurrentHunk on empty list should return false")
+	}
+}
+
+func TestHunkList_FileHunks_ReturnsFileSlice(t *testing.T) {
+	t.Parallel()
+	files := []git.FileDiff{testFileDiffH("a.go"), testFileDiffH("b.go")}
+	hunks := [][]git.Hunk{
+		{testHunk("@@ -1 +1 @@")},
+		{testHunk("@@ -2 +2 @@"), testHunk("@@ -5 +5 @@")},
+	}
+	hl := NewHunkList(files, hunks)
+
+	fh := hl.FileHunks(1)
+	if len(fh) != 2 {
+		t.Errorf("FileHunks(1) should return 2 hunks, got %d", len(fh))
+	}
+}
+
+func TestHunkList_FileHunks_OutOfBounds(t *testing.T) {
+	t.Parallel()
+	hl := NewHunkList(nil, nil)
+	fh := hl.FileHunks(99)
+	if fh != nil {
+		t.Error("FileHunks out of bounds should return nil")
+	}
+}
+
+func TestHunkList_ScrollToFile_MovesToFirstHunk(t *testing.T) {
+	t.Parallel()
+	files := []git.FileDiff{testFileDiffH("a.go"), testFileDiffH("b.go")}
+	hunks := [][]git.Hunk{
+		{testHunk("@@ -1 +1 @@")},
+		{testHunk("@@ -2 +2 @@")},
+	}
+	hl := NewHunkList(files, hunks)
+
+	// Starts at file 0
+	if hl.CurrentFileIdx() != 0 {
+		t.Fatal("should start at file 0")
+	}
+
+	// Scroll to file 1
+	hl.ScrollToFile(1)
+	if hl.CurrentFileIdx() != 1 {
+		t.Errorf("after ScrollToFile(1) CurrentFileIdx = %d, want 1", hl.CurrentFileIdx())
+	}
+}
+
+func TestHunkList_ScrollToFile_NoMatchDoesNothing(t *testing.T) {
+	t.Parallel()
+	files := []git.FileDiff{testFileDiffH("a.go")}
+	hunks := [][]git.Hunk{{testHunk("@@ -1 +1 @@")}}
+	hl := NewHunkList(files, hunks)
+
+	before := hl.cursor
+	hl.ScrollToFile(99) // no such file
+	if hl.cursor != before {
+		t.Error("ScrollToFile with invalid index should not change cursor")
+	}
+}

@@ -40,10 +40,11 @@ func TestHunkAdd_TUI_StageHunk(t *testing.T) {
 	// Wait for the TUI to render the file
 	tm.waitFor(t, containsOutput("file1.txt"))
 
-	// 'a' to stage all remaining hunks in this file
-	sendKey(tm, 'a')
+	// Space to toggle the hunk, then Enter to apply staged hunks
+	sendSpace(tm)
+	sendEnter(tm)
 
-	// The program should finish after all hunks are decided
+	// The program should finish after applying staged hunks
 	tm.waitDone(t)
 
 	// Verify the change was staged

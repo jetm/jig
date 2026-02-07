@@ -638,11 +638,11 @@ func TestRebaseInteractiveModel_DKey_NoCommits_IsNoop(t *testing.T) {
 	assert.Equal(t, callsBefore, callsAfter, "D with no entries should not trigger any git calls")
 }
 
-func TestRebaseInteractiveModel_Tab_NoopWhenDiffHidden(t *testing.T) {
+func TestRebaseInteractiveModel_Tab_WithHiddenDiffShowsAndFocusesPanel(t *testing.T) {
 	logOutput := "abc1234\x1ffeat: first\n"
-	// Use config with ShowDiffPanel=false to test Tab no-op behavior
+	// Use config with ShowDiffPanel=false so diff starts hidden
 	runner := &testhelper.FakeRunner{
-		Outputs: []string{logOutput, "main"},
+		Outputs: []string{logOutput, "main", "diff --git a/foo.go b/foo.go\n+new"},
 	}
 	cfg := config.NewDefault()
 	cfg.ShowDiffPanel = false
@@ -650,13 +650,13 @@ func TestRebaseInteractiveModel_Tab_NoopWhenDiffHidden(t *testing.T) {
 	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~1", "")
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 
-	// showDiff is false from config; Tab should not move focus to right panel
-	view1 := m.View()
+	// showDiff is false; Tab should show the diff panel and focus it
+	viewBefore := m.View()
 	_ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
-	view2 := m.View()
+	viewAfter := m.View()
 
-	// View should be unchanged - Tab had no effect
-	assert.Equal(t, view1, view2, "Tab should be a no-op when diff panel is hidden")
+	// View should change: Tab opened and focused the diff panel
+	assert.NotEqual(t, viewBefore, viewAfter, "Tab should show and focus diff panel when it was hidden")
 }
 
 func TestRebaseInteractiveModel_Tab_WorksWhenDiffVisible(t *testing.T) {

@@ -201,7 +201,12 @@ func (m *RebaseInteractiveModel) Update(msg tea.Msg) tea.Cmd {
 
 		switch msg.String() {
 		case "tab":
-			if m.showDiff && !m.diffMaximized {
+			if !m.showDiff {
+				m.showDiff = true
+				m.focusRight = true
+				m.renderSelectedDiff()
+				m.updateHints()
+			} else if !m.diffMaximized {
 				m.focusRight = !m.focusRight
 				m.updateHints()
 			}

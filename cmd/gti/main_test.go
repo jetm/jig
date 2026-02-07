@@ -264,15 +264,66 @@ func TestRebaseInteractiveCmd_ConfigLoadError(t *testing.T) {
 	}
 }
 
-func TestAddCmd_DirectFlag_Registered(t *testing.T) {
+func TestAddCmd_InteractiveFlagRegistered(t *testing.T) {
+	t.Parallel()
+	cmd := newRootCmd()
+	addCmd, _, err := cmd.Find([]string{"add"})
+	require.NoError(t, err)
+
+	interactiveFlag := addCmd.Flags().Lookup("interactive")
+	require.NotNil(t, interactiveFlag, "add command should have --interactive flag")
+	assert.Equal(t, "false", interactiveFlag.DefValue)
+}
+
+func TestAddCmd_DirectFlagRemoved(t *testing.T) {
 	t.Parallel()
 	cmd := newRootCmd()
 	addCmd, _, err := cmd.Find([]string{"add"})
 	require.NoError(t, err)
 
 	directFlag := addCmd.Flags().Lookup("direct")
-	require.NotNil(t, directFlag, "add command should have --direct flag")
-	assert.Equal(t, "false", directFlag.DefValue)
+	assert.Nil(t, directFlag, "add command should NOT have --direct flag")
+}
+
+func TestAddCmd_WithArgsAndNoInteractiveFlag_CallsDirect(t *testing.T) {
+	t.Parallel()
+	// When args are present and -i is not set, addDirect() should be called.
+	// We verify dispatch by checking that the runner receives "git add -- <paths>".
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{
+			"",           // git add -- paths
+			"file1.go\n", // git diff --name-only --cached
+		},
+	}
+	ctx := context.Background()
+	var buf bytes.Buffer
+	err := addDirect(ctx, runner, []string{"file1.go"}, &buf)
+	require.NoError(t, err)
+	assert.Contains(t, buf.String(), "Staged 1 file(s)")
+	testhelper.MustHaveCall(t, runner, "add", "--", "file1.go")
+}
+
+func TestAddCmd_ShortInteractiveFlag_Registered(t *testing.T) {
+	t.Parallel()
+	cmd := newRootCmd()
+	addCmd, _, err := cmd.Find([]string{"add"})
+	require.NoError(t, err)
+
+	// The short flag -i should be registered
+	iFlag := addCmd.Flags().ShorthandLookup("i")
+	require.NotNil(t, iFlag, "add command should have -i shorthand flag")
+}
+
+func TestAddCmd_ShortDirectFlag_Unknown(t *testing.T) {
+	t.Parallel()
+	root := newRootCmd()
+	buf := new(bytes.Buffer)
+	root.SetOut(buf)
+	root.SetErr(buf)
+	root.SetArgs([]string{"add", "-d", "file.go"})
+	err := root.Execute()
+	require.Error(t, err, "gti add -d should return an error for unknown flag")
+	assert.Contains(t, err.Error(), "unknown shorthand flag")
 }
 
 func TestResetCmd_DirectFlag_Registered(t *testing.T) {
@@ -311,6 +362,35 @@ func TestAddCmd_DirectMode_WithFlag(t *testing.T) {
 	err := addDirect(ctx, runner, []string{"file1.go"}, &buf)
 	require.NoError(t, err)
 	assert.Contains(t, buf.String(), "Staged 1 file(s)")
+}
+
+func TestAddCmd_WithInteractiveFlagAndArgs_AcceptsFlag(t *testing.T) {
+	// gti add -i file.go must not error at cobra parse level - the flag is valid.
+	// The TUI path is exercised; we can only verify the flag is accepted without error
+	// before the TUI/runner starts (config load error gates it).
+	t.Setenv("GTI_LOG_COMMIT_LIMIT", "notanumber")
+	root := newRootCmd()
+	buf := new(bytes.Buffer)
+	root.SetOut(buf)
+	root.SetErr(buf)
+	root.SetArgs([]string{"add", "-i", "file.go"})
+	err := root.Execute()
+	// Config load error means we reached the TUI dispatch path, not a flag parse error.
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "unknown shorthand flag", "gti add -i should be a valid flag")
+	assert.Contains(t, err.Error(), "loading config", "expected to reach TUI path (config load)")
+}
+
+func TestNewFakeAddModel_WithFilterPaths(t *testing.T) {
+	t.Parallel()
+	// Covers the gti add -i file.go code path: NewAddModel is called with filter paths.
+	runner := &testhelper.FakeRunner{Outputs: []string{"", "", "main"}}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m := commands.NewAddModel(context.Background(), runner, cfg, renderer, []string{"foo.go"})
+	if m == nil {
+		t.Fatal("NewAddModel with filter paths should not return nil")
+	}
 }
 
 func TestResetCmd_DirectMode_WithFlag(t *testing.T) {

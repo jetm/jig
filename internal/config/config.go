@@ -47,7 +47,7 @@ func NewDefault() Config {
 		UITheme:           "dark",
 		ShowDiffPanel:     true,
 		PanelRatio:        40,
-		SoftWrap:          false,
+		SoftWrap:          true,
 	}
 }
 

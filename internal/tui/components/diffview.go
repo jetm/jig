@@ -4,6 +4,9 @@ package components
 import (
 	"strings"
 
+	"github.com/muesli/reflow/wordwrap"
+	"github.com/muesli/reflow/wrap"
+
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 )
@@ -39,9 +42,10 @@ func (d *DiffView) applyContent() {
 	d.vp.SetContent(wrapContent(d.rawContent, d.vp.Width()))
 }
 
-// wrapContent wraps lines in s that exceed width characters.
-// Continuation lines are prefixed with two spaces so diff +/- prefixes stay on
-// the first physical line of each logical line.
+// wrapContent wraps lines in s that exceed width visible characters.
+// It uses ANSI-aware word wrapping (breaking at spaces) with a fallback to
+// forced character breaks for overlong tokens. Continuation lines are indented
+// with 1 space to align with content after the unified diff prefix (+/-/ ).
 func wrapContent(s string, width int) string {
 	if width <= 0 {
 		return s
@@ -49,18 +53,22 @@ func wrapContent(s string, width int) string {
 	lines := strings.Split(s, "\n")
 	out := make([]string, 0, len(lines))
 	for _, line := range lines {
-		if len(line) <= width {
-			out = append(out, line)
-			continue
-		}
-		// Break long line into width-sized chunks.
-		remaining := line
-		for len(remaining) > width {
-			out = append(out, remaining[:width])
-			remaining = "  " + remaining[width:]
-		}
-		if remaining != "" {
-			out = append(out, remaining)
+		// First pass: break at word boundaries (ANSI-aware).
+		wrapped := wordwrap.String(line, width)
+		// Second pass: force-break any remaining overlong words.
+		wrapped = wrap.String(wrapped, width)
+
+		parts := strings.Split(wrapped, "\n")
+		out = append(out, parts[0])
+		// Indent continuation lines with 1 space, wrapping at width-1
+		// to account for the indent. Each sub-line gets the indent.
+		for _, cont := range parts[1:] {
+			effWidth := max(width-1, 1)
+			rewrapped := wordwrap.String(cont, effWidth)
+			rewrapped = wrap.String(rewrapped, effWidth)
+			for sub := range strings.SplitSeq(rewrapped, "\n") {
+				out = append(out, " "+sub)
+			}
 		}
 	}
 	return strings.Join(out, "\n")

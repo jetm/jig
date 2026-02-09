@@ -14,6 +14,9 @@ func TestChain_PlainFallback(t *testing.T) {
 	}
 	defer func() { newChromaFunc = orig }()
 
+	// Ensure delta is not auto-detected.
+	t.Setenv("PATH", t.TempDir())
+
 	cfg := config.Config{DeltaPath: ""}
 	r := Chain(cfg)
 

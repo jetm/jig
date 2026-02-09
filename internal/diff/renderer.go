@@ -19,12 +19,19 @@ var newChromaFunc = NewChromaRenderer
 
 // Chain resolves the correct Renderer based on configuration.
 // If Config.DeltaPath is non-empty and the binary exists, it returns a
-// DeltaRenderer. Otherwise it returns a ChromaRenderer. PlainRenderer is
-// the defensive fallback if ChromaRenderer construction fails.
+// DeltaRenderer. If DeltaPath is empty, it tries to auto-detect "delta" in
+// $PATH. Otherwise it returns a ChromaRenderer. PlainRenderer is the
+// defensive fallback if ChromaRenderer construction fails.
 func Chain(cfg config.Config) Renderer {
 	if cfg.DeltaPath != "" {
 		if _, err := exec.LookPath(cfg.DeltaPath); err == nil {
 			return NewDeltaRenderer(cfg.DeltaPath)
+		}
+	}
+
+	if cfg.DeltaPath == "" {
+		if path, err := exec.LookPath("delta"); err == nil {
+			return NewDeltaRenderer(path)
 		}
 	}
 

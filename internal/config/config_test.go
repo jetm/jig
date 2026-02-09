@@ -534,8 +534,8 @@ func TestLoad_PanelRatioInvalidEnv(t *testing.T) {
 
 func TestNewDefault_SoftWrap(t *testing.T) {
 	cfg := NewDefault()
-	if cfg.SoftWrap {
-		t.Error("SoftWrap: got true, want false")
+	if !cfg.SoftWrap {
+		t.Error("SoftWrap: got false, want true")
 	}
 }
 
@@ -545,8 +545,8 @@ func TestLoad_SoftWrapDefault(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
-	if cfg.SoftWrap {
-		t.Error("SoftWrap: got true, want false (default)")
+	if !cfg.SoftWrap {
+		t.Error("SoftWrap: got false, want true (default)")
 	}
 }
 
@@ -591,8 +591,8 @@ ui:
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
-	if cfg.SoftWrap {
-		t.Error("SoftWrap: got true, want false (default when file omits it)")
+	if !cfg.SoftWrap {
+		t.Error("SoftWrap: got false, want true (default when file omits it)")
 	}
 }
 

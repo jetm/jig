@@ -102,8 +102,8 @@ func TestApplyEditedDiff_ModifiedDiffApplies(t *testing.T) {
 		t.Fatalf("ApplyEditedDiff returned error: %v", err)
 	}
 
-	// Verify git apply --cached was called with the modified diff content.
-	testhelper.MustHaveCall(t, fr, "apply", "--cached")
+	// Verify git apply --cached --recount was called.
+	testhelper.MustHaveCall(t, fr, "apply", "--cached", "--recount")
 	testhelper.MustHaveStdin(t, fr, "// modified")
 }
 

@@ -55,8 +55,9 @@ func EditDiff(ctx context.Context, runner Runner, rawDiff string) tea.Cmd {
 	})
 }
 
-// ApplyEditedDiff reads the file at editedPath, compares its content to
-// originalDiff, and if different applies it via `git apply --cached`.
+// ApplyEditedDiff reads the file at editedPath, sanitizes the content to
+// handle common editor side effects (trailing whitespace stripping, comment
+// lines), and applies it via `git apply --cached --recount`.
 // Returns nil if the content is unchanged (no-op), or an error if apply fails.
 func ApplyEditedDiff(ctx context.Context, runner Runner, originalDiff, editedPath string) error {
 	edited, err := os.ReadFile(editedPath) //nolint:gosec // path is controlled by our code
@@ -64,14 +65,71 @@ func ApplyEditedDiff(ctx context.Context, runner Runner, originalDiff, editedPat
 		return fmt.Errorf("reading edited diff: %w", err)
 	}
 
-	if string(edited) == originalDiff {
+	sanitized := sanitizeEditedDiff(string(edited))
+
+	if sanitized == sanitizeEditedDiff(originalDiff) {
 		// Unchanged - nothing to do.
 		return nil
 	}
 
-	_, err = runner.RunWithStdin(ctx, string(edited), "apply", "--cached")
+	_, err = runner.RunWithStdin(ctx, sanitized, "apply", "--cached", "--recount")
 	if err != nil {
 		return fmt.Errorf("git apply --cached: %w", err)
 	}
 	return nil
+}
+
+// sanitizeEditedDiff post-processes editor output to fix common side effects:
+//   - Restores leading space on context lines whose prefix was stripped by
+//     editors that remove trailing whitespace
+//   - Strips comment lines (starting with #) matching git add -p behavior
+func sanitizeEditedDiff(s string) string {
+	lines := strings.Split(s, "\n")
+	out := make([]string, 0, len(lines))
+
+	// Find the last non-empty line index to identify trailing empty lines.
+	lastNonEmpty := -1
+	for i := len(lines) - 1; i >= 0; i-- {
+		if lines[i] != "" {
+			lastNonEmpty = i
+			break
+		}
+	}
+
+	for i, line := range lines {
+		// Strip comment lines.
+		if strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		// Preserve trailing empty lines as-is.
+		if line == "" && i > lastNonEmpty {
+			out = append(out, line)
+			continue
+		}
+
+		// If the line doesn't start with a valid diff prefix, it's a context
+		// line that lost its leading space to editor whitespace stripping.
+		// Empty lines between content are also stripped context lines.
+		if !hasValidDiffPrefix(line) {
+			line = " " + line
+		}
+
+		out = append(out, line)
+	}
+
+	return strings.Join(out, "\n")
+}
+
+// hasValidDiffPrefix reports whether line starts with a character that is a
+// valid unified diff line prefix: '+', '-', '\', '@', or ' ' (space).
+func hasValidDiffPrefix(line string) bool {
+	if line == "" {
+		return false
+	}
+	switch line[0] {
+	case '+', '-', '\\', '@', ' ':
+		return true
+	}
+	return false
 }

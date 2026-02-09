@@ -1031,6 +1031,185 @@ func TestNewAddModel_FilterPaths_NoMatch(t *testing.T) {
 	}
 }
 
+func TestAddModel_CKeyStagesAndReturnsExecCmd(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{
+			"M\tfoo.go\n", // diff --name-status
+			"",            // ls-files --others
+			"main",        // branch name
+			"",            // renderSelectedDiff
+			"",            // git add (stage call)
+		},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m := NewAddModel(context.Background(), runner, cfg, renderer)
+	m.width = 120
+	m.height = 40
+
+	// Select the file
+	m.Update(tea.KeyPressMsg{Code: ' ', Text: " "})
+
+	// Press c to commit
+	cmd := m.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
+	if cmd == nil {
+		t.Fatal("expected a command from pressing c")
+	}
+	// Verify staging happened
+	testhelper.MustHaveCall(t, runner, "add", "--", "foo.go")
+}
+
+func TestAddModel_ShiftCKeyStagesAndReturnsExecCmd(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{
+			"M\tfoo.go\n", // diff --name-status
+			"",            // ls-files --others
+			"main",        // branch name
+			"",            // renderSelectedDiff
+			"",            // git add (stage call)
+		},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m := NewAddModel(context.Background(), runner, cfg, renderer)
+	m.width = 120
+	m.height = 40
+
+	// Press C (shift-c) - should stage focused file and return exec cmd
+	cmd := m.Update(tea.KeyPressMsg{Code: 'C', ShiftedCode: 'C', Mod: tea.ModShift, Text: "C"})
+	if cmd == nil {
+		t.Fatal("expected a command from pressing C")
+	}
+	testhelper.MustHaveCall(t, runner, "add", "--", "foo.go")
+}
+
+func TestAddModel_CKeyStageFailureReturnsNil(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{
+			"M\tfoo.go\n", // diff --name-status
+			"",            // ls-files --others
+			"main",        // branch name
+			"",            // renderSelectedDiff
+			"",            // git add (will fail)
+		},
+		Errors: []error{nil, nil, nil, nil, fmt.Errorf("staging failed")},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m := NewAddModel(context.Background(), runner, cfg, renderer)
+	m.width = 120
+	m.height = 40
+
+	cmd := m.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
+	// staging failed -> no exec cmd returned, just status bar update
+	if cmd != nil {
+		// cmd should be the statusbar cmd, not an exec cmd
+		msg := cmd()
+		if _, ok := msg.(CommitDoneMsg); ok {
+			t.Error("should not return CommitDoneMsg when staging fails")
+		}
+	}
+}
+
+func TestAddModel_CommitDoneMsg_RefreshesState(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{
+			"M\tfoo.go\n", // diff --name-status (initial)
+			"",            // ls-files --others (initial)
+			"main",        // branch name (initial)
+			"",            // renderSelectedDiff (initial)
+			"",            // diff --name-status (refresh - no files left)
+			"",            // ls-files --others (refresh)
+		},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m := NewAddModel(context.Background(), runner, cfg, renderer)
+	m.width = 120
+	m.height = 40
+
+	if len(m.files) != 1 {
+		t.Fatalf("expected 1 file initially, got %d", len(m.files))
+	}
+
+	// Simulate commit done
+	cmd := m.Update(CommitDoneMsg{Err: nil})
+	_ = cmd
+
+	// After refresh, files should be empty (all committed)
+	if len(m.files) != 0 {
+		t.Errorf("expected 0 files after commit, got %d", len(m.files))
+	}
+}
+
+func TestAddModel_CommitDoneMsg_ErrorShowsAborted(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{
+			"M\tfoo.go\n", // diff --name-status (initial)
+			"",            // ls-files --others (initial)
+			"main",        // branch name (initial)
+			"",            // renderSelectedDiff (initial)
+			"M\tfoo.go\n", // diff --name-status (refresh)
+			"",            // ls-files --others (refresh)
+		},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m := NewAddModel(context.Background(), runner, cfg, renderer)
+	m.width = 120
+	m.height = 40
+
+	// Simulate commit aborted
+	cmd := m.Update(CommitDoneMsg{Err: fmt.Errorf("exit status 1")})
+	_ = cmd
+
+	// Files should still be present (commit was aborted)
+	if len(m.files) != 1 {
+		t.Errorf("expected 1 file after aborted commit, got %d", len(m.files))
+	}
+}
+
+func TestAddModel_CKeyNoFilesReturnsNil(t *testing.T) {
+	t.Parallel()
+	m := newTestAddModel(t, "", "")
+	m.width = 120
+	m.height = 40
+
+	cmd := m.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
+	// No files -> execCommit returns nil -> should not crash
+	_ = cmd
+}
+
+func TestAddModel_HelpOverlay_ShowsCommitKeys(t *testing.T) {
+	t.Parallel()
+	m := newTestAddModel(t, "M\tfoo.go\n", "")
+	m.width = 120
+	m.height = 40
+
+	m.Update(tea.KeyPressMsg{Code: '?', Text: "?"})
+	view := m.View()
+	if !strings.Contains(view, "stage and commit") {
+		t.Error("help overlay should mention 'stage and commit'")
+	}
+}
+
+func TestAddModel_HintsIncludeCommit(t *testing.T) {
+	t.Parallel()
+	m := newTestAddModel(t, "M\tfoo.go\n", "")
+	m.width = 120
+	m.height = 40
+
+	view := m.View()
+	if !strings.Contains(view, "c: commit") {
+		t.Error("status bar hints should contain 'c: commit'")
+	}
+}
+
 func TestAddModel_KeyJForwardsToList(t *testing.T) {
 	t.Parallel()
 	runner := &testhelper.FakeRunner{

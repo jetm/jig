@@ -153,6 +153,11 @@ func newAddCmd() *cobra.Command {
 }
 
 func addDirect(ctx context.Context, runner git.Runner, paths []string, w io.Writer) error {
+	paths = commands.ExpandGlobs(paths)
+	if len(paths) == 0 {
+		_, _ = fmt.Fprintln(w, "Staged 0 file(s)")
+		return nil
+	}
 	if err := git.StageFiles(ctx, runner, paths); err != nil {
 		return fmt.Errorf("staging files: %w", err)
 	}
@@ -234,6 +239,11 @@ func newCheckoutCmd() *cobra.Command {
 }
 
 func checkoutDirect(ctx context.Context, runner git.Runner, paths []string, in io.Reader, w io.Writer) error {
+	paths = commands.ExpandGlobs(paths)
+	if len(paths) == 0 {
+		_, _ = fmt.Fprintln(w, "No changes to discard")
+		return nil
+	}
 	// Show what will be discarded
 	diffArgs := append([]string{"diff", "--name-only", "--"}, paths...)
 	affected, err := runner.Run(ctx, diffArgs...)
@@ -451,7 +461,7 @@ func (l *logTeaModel) View() tea.View {
 }
 
 func newResetCmd() *cobra.Command {
-	var direct bool
+	var interactive bool
 
 	cmd := &cobra.Command{
 		Use:   "reset [paths...]",
@@ -464,7 +474,7 @@ func newResetCmd() *cobra.Command {
 				return fmt.Errorf("initializing git runner: %w", err)
 			}
 
-			if direct && len(args) > 0 {
+			if len(args) > 0 && !interactive {
 				return resetDirect(ctx, runner, args, cmd.OutOrStdout())
 			}
 
@@ -489,11 +499,16 @@ func newResetCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().BoolVarP(&direct, "direct", "d", false, "Unstage files directly without opening TUI")
+	cmd.Flags().BoolVarP(&interactive, "interactive", "i", false, "Open TUI even when paths are given")
 	return cmd
 }
 
 func resetDirect(ctx context.Context, runner git.Runner, paths []string, w io.Writer) error {
+	paths = commands.ExpandGlobs(paths)
+	if len(paths) == 0 {
+		_, _ = fmt.Fprintln(w, "Nothing to unstage")
+		return nil
+	}
 	if err := git.UnstageFiles(ctx, runner, paths); err != nil {
 		return fmt.Errorf("unstaging files: %w", err)
 	}

@@ -5,10 +5,10 @@ import (
 	"strings"
 )
 
-// expandGlobs expands any path that contains glob characters ('*', '?', '[')
+// ExpandGlobs expands any path that contains glob characters ('*', '?', '[')
 // via filepath.Glob. Literal paths (no glob characters) are passed through as-is.
 // Returns nil if the resulting slice is empty (no matches and no literals).
-func expandGlobs(paths []string) []string {
+func ExpandGlobs(paths []string) []string {
 	if len(paths) == 0 {
 		return nil
 	}

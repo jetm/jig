@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"fmt"
+	"os/exec"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -49,7 +50,7 @@ func NewAddModel(
 ) *AddModel {
 	var paths []string
 	if len(filterPaths) > 0 {
-		paths = expandGlobs(filterPaths[0])
+		paths = ExpandGlobs(filterPaths[0])
 	}
 	files, _ := git.ListUnstagedFilesFiltered(ctx, runner, paths)
 	branchName, _ := git.BranchName(ctx, runner)
@@ -90,6 +91,8 @@ func NewAddModel(
 				Name: "Actions",
 				Bindings: []components.KeyBinding{
 					{Key: "Enter", Desc: "stage selected files"},
+					{Key: "c", Desc: "stage and commit"},
+					{Key: "C", Desc: "stage and commit (title only)"},
 					{Key: "w", Desc: "toggle soft-wrap (diff panel)"},
 					{Key: "F", Desc: "maximize diff panel"},
 					{Key: "q/Esc", Desc: "quit without staging"},
@@ -119,6 +122,13 @@ func (m *AddModel) Update(msg tea.Msg) tea.Cmd {
 	sbCmd := m.statusBar.Update(msg)
 
 	switch msg := msg.(type) {
+	case CommitDoneMsg:
+		if msg.Err != nil {
+			_ = m.statusBar.SetMessage("Commit aborted", components.Info)
+		}
+		m.refreshFiles()
+		return sbCmd
+
 	case git.EditDiffMsg:
 		if msg.Err != nil {
 			_ = m.statusBar.SetMessage(fmt.Sprintf("Edit failed: %v", msg.Err), components.Error)
@@ -208,6 +218,14 @@ func (m *AddModel) Update(msg tea.Msg) tea.Cmd {
 				m.resize()
 			}
 			return sbCmd
+		}
+
+		if msg.String() == "c" {
+			return m.execCommit(false)
+		}
+
+		if msg.String() == "C" {
+			return m.execCommit(true)
 		}
 
 		switch msg.Code {
@@ -384,7 +402,7 @@ func (m *AddModel) isTracked(path string) bool {
 }
 
 const (
-	addHintsLeft     = "Tab: panel  Enter: stage  D: diff  ?: help  q: quit"
+	addHintsLeft     = "Tab: panel  Enter: stage  c: commit  D: diff  ?: help  q: quit"
 	addHintsRight    = "w: wrap  F: maximize  Tab: panel  ?: help  q: quit"
 	addHintsMaximize = "F: restore  ?: help  q: quit"
 )
@@ -399,6 +417,46 @@ func (m *AddModel) updateHints() {
 	default:
 		m.statusBar.SetHints(addHintsLeft)
 	}
+}
+
+// execCommit stages selected files and launches devtool commit as a subprocess.
+// If titleOnly is true, passes -t for a title-only commit message.
+// Returns nil if staging fails (error shown in status bar).
+func (m *AddModel) execCommit(titleOnly bool) tea.Cmd {
+	paths := m.selectedPaths()
+	if len(paths) == 0 {
+		return nil
+	}
+	if err := git.StageFiles(m.ctx, m.runner, paths); err != nil {
+		_ = m.statusBar.SetMessage(fmt.Sprintf("Stage failed: %v", err), components.Error)
+		return nil
+	}
+	args := []string{"commit"}
+	if titleOnly {
+		args = append(args, "-t")
+	}
+	cmd := exec.Command("devtool", args...) //nolint:gosec // devtool is a trusted user tool
+	return tea.ExecProcess(cmd, func(err error) tea.Msg {
+		return CommitDoneMsg{Err: err}
+	})
+}
+
+// refreshFiles re-queries git state and rebuilds the file list.
+// Called after a commit completes to reflect the new index state.
+func (m *AddModel) refreshFiles() {
+	files, _ := git.ListUnstagedFilesFiltered(m.ctx, m.runner, m.filterPaths)
+	m.files = files
+
+	entries := make([]components.FileEntry, len(files))
+	for i, f := range files {
+		entries[i] = components.FileEntry{Path: f.Path, Status: f.Status}
+	}
+	m.fileList = components.NewFileList(entries, true)
+
+	if len(files) > 0 && m.showDiff {
+		m.renderSelectedDiff()
+	}
+	m.resize()
 }
 
 // resize recalculates component dimensions after a terminal resize.

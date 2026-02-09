@@ -846,6 +846,155 @@ func TestHunkAddModel_EKey_SendsFullPatchToEditDiff(t *testing.T) {
 	}
 }
 
+func TestHunkAddModel_CKeyStagesAndReturnsExecCmd(t *testing.T) {
+	t.Parallel()
+	m, runner := newHunkAddTestModel(t, singleHunkDiff, "" /* git apply output */)
+	m.width = 120
+	m.height = 40
+
+	// Toggle hunk staged with Space
+	m.Update(tea.KeyPressMsg{Code: tea.KeySpace})
+
+	// Press c to commit
+	cmd := m.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
+	if cmd == nil {
+		t.Fatal("expected a command from pressing c")
+	}
+	// Verify staging happened
+	testhelper.MustHaveCall(t, runner, "apply", "--cached")
+}
+
+func TestHunkAddModel_ShiftCKeyStagesAndReturnsExecCmd(t *testing.T) {
+	t.Parallel()
+	m, runner := newHunkAddTestModel(t, singleHunkDiff, "" /* git apply output */)
+	m.width = 120
+	m.height = 40
+
+	// Toggle hunk staged
+	m.Update(tea.KeyPressMsg{Code: tea.KeySpace})
+
+	// Press C (shift-c)
+	cmd := m.Update(tea.KeyPressMsg{Code: 'C', ShiftedCode: 'C', Mod: tea.ModShift, Text: "C"})
+	if cmd == nil {
+		t.Fatal("expected a command from pressing C")
+	}
+	testhelper.MustHaveCall(t, runner, "apply", "--cached")
+}
+
+func TestHunkAddModel_CKeyNoStagedReturnsNil(t *testing.T) {
+	t.Parallel()
+	m, _ := newHunkAddTestModel(t, singleHunkDiff)
+	m.width = 120
+	m.height = 40
+
+	// Press c without toggling anything
+	cmd := m.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
+	// No staged hunks -> should not return an exec cmd
+	if cmd != nil {
+		msg := cmd()
+		if _, ok := msg.(CommitDoneMsg); ok {
+			t.Error("should not return CommitDoneMsg when nothing staged")
+		}
+	}
+}
+
+func TestHunkAddModel_CKeyStageFailureReturnsNil(t *testing.T) {
+	t.Parallel()
+	applyErr := fmt.Errorf("apply failed")
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{singleHunkDiff, "main", ""},
+		Errors:  []error{nil, nil, applyErr},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m := NewHunkAddModel(context.Background(), runner, cfg, renderer)
+	m.width = 120
+	m.height = 40
+
+	// Toggle and press c
+	m.Update(tea.KeyPressMsg{Code: tea.KeySpace})
+	cmd := m.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
+	// All hunks failed to stage -> no exec cmd
+	if cmd != nil {
+		msg := cmd()
+		if _, ok := msg.(CommitDoneMsg); ok {
+			t.Error("should not return CommitDoneMsg when all staging fails")
+		}
+	}
+}
+
+func TestHunkAddModel_CommitDoneMsg_RefreshesState(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{
+			singleHunkDiff, // git diff (initial)
+			"main",         // branch name (initial)
+			"",             // git diff (refresh - no files left)
+		},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m := NewHunkAddModel(context.Background(), runner, cfg, renderer)
+	m.width = 120
+	m.height = 40
+
+	if len(m.files) != 1 {
+		t.Fatalf("expected 1 file initially, got %d", len(m.files))
+	}
+
+	cmd := m.Update(CommitDoneMsg{Err: nil})
+	_ = cmd
+
+	if len(m.files) != 0 {
+		t.Errorf("expected 0 files after commit, got %d", len(m.files))
+	}
+}
+
+func TestHunkAddModel_CommitDoneMsg_ErrorShowsAborted(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{
+			singleHunkDiff, // git diff (initial)
+			"main",         // branch name (initial)
+			singleHunkDiff, // git diff (refresh)
+		},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m := NewHunkAddModel(context.Background(), runner, cfg, renderer)
+	m.width = 120
+	m.height = 40
+
+	cmd := m.Update(CommitDoneMsg{Err: fmt.Errorf("exit status 1")})
+	_ = cmd
+
+	if len(m.files) != 1 {
+		t.Errorf("expected 1 file after aborted commit, got %d", len(m.files))
+	}
+}
+
+func TestHunkAddModel_HelpOverlay_ShowsCommitKeys(t *testing.T) {
+	t.Parallel()
+	m, _ := newHunkAddTestModel(t, singleHunkDiff)
+	m.width = 120
+	m.height = 40
+
+	m.Update(tea.KeyPressMsg{Code: '?', Text: "?"})
+	view := m.View()
+	if !strings.Contains(view, "stage and commit") {
+		t.Error("help overlay should mention 'stage and commit'")
+	}
+}
+
+func TestHunkAddModel_HintsIncludeCommit(t *testing.T) {
+	t.Parallel()
+	m, _ := newHunkAddTestModel(t, singleHunkDiff)
+	hints := m.hintsForContext()
+	if !strings.Contains(hints, "c: commit") {
+		t.Errorf("hints should contain 'c: commit', got: %q", hints)
+	}
+}
+
 func TestHunkAddModel_DKeyTogglesDiffPanel(t *testing.T) {
 	t.Parallel()
 	m, _ := newHunkAddTestModel(t, singleHunkDiff)

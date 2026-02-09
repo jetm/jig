@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"fmt"
+	"os/exec"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -54,7 +55,7 @@ func NewHunkAddModel(
 ) *HunkAddModel {
 	var paths []string
 	if len(filterPaths) > 0 {
-		paths = expandGlobs(filterPaths[0])
+		paths = ExpandGlobs(filterPaths[0])
 	}
 	// Only modified tracked files have patchable hunks.
 	diffArgs := []string{"diff"}
@@ -101,6 +102,8 @@ func NewHunkAddModel(
 				Bindings: []components.KeyBinding{
 					{Key: "Space", Desc: "toggle hunk staged"},
 					{Key: "Enter", Desc: "apply staged hunks"},
+					{Key: "c", Desc: "stage and commit"},
+					{Key: "C", Desc: "stage and commit (title only)"},
 					{Key: "s", Desc: "split hunk"},
 					{Key: "e", Desc: "edit hunk in editor"},
 					{Key: "w", Desc: "toggle soft-wrap (diff panel)"},
@@ -132,6 +135,13 @@ func (m *HunkAddModel) Update(msg tea.Msg) tea.Cmd {
 	sbCmd := m.statusBar.Update(msg)
 
 	switch msg := msg.(type) {
+	case CommitDoneMsg:
+		if msg.Err != nil {
+			_ = m.statusBar.SetMessage("Commit aborted", components.Info)
+		}
+		m.refreshHunks()
+		return sbCmd
+
 	case git.EditDiffMsg:
 		if msg.Err != nil {
 			_ = m.statusBar.SetMessage(fmt.Sprintf("Edit failed: %v", msg.Err), components.Error)
@@ -218,6 +228,14 @@ func (m *HunkAddModel) Update(msg tea.Msg) tea.Cmd {
 				m.resize()
 			}
 			return sbCmd
+		}
+
+		if msg.String() == "c" {
+			return m.execCommit(false)
+		}
+
+		if msg.String() == "C" {
+			return m.execCommit(true)
 		}
 
 		switch msg.Code {
@@ -343,7 +361,7 @@ func (m *HunkAddModel) hintsForContext() string {
 	if m.focusRight {
 		return "h/l: scroll  Tab: panel  ?: help  q: quit"
 	}
-	return "Space: toggle  Enter: apply  Tab: panel  ?: help  q: quit"
+	return "Space: toggle  Enter: apply  c: commit  Tab: panel  ?: help  q: quit"
 }
 
 // renderCurrentHunk updates the right-panel diff view with the hunk under the cursor.
@@ -503,6 +521,73 @@ func (m *HunkAddModel) patchHeader(fd git.FileDiff) string {
 	oldPath := "a/" + fd.OldPath
 	newPath := "b/" + fd.NewPath
 	return fmt.Sprintf("diff --git %s %s\n--- %s\n+++ %s", oldPath, newPath, oldPath, newPath)
+}
+
+// execCommit stages checked hunks and launches devtool commit as a subprocess.
+// If titleOnly is true, passes -t for a title-only commit message.
+// Returns nil if staging fails (error shown in status bar).
+func (m *HunkAddModel) execCommit(titleOnly bool) tea.Cmd {
+	staged := m.hunkList.StagedHunks()
+	if len(staged) == 0 {
+		return nil
+	}
+
+	var lastErr error
+	applied := 0
+	for _, sh := range staged {
+		if sh.FileIdx >= len(m.files) {
+			continue
+		}
+		header := m.patchHeader(m.files[sh.FileIdx])
+		if err := git.StageHunk(m.ctx, m.runner, header, sh.Hunk.Body); err != nil {
+			lastErr = err
+			continue
+		}
+		applied++
+	}
+
+	if applied == 0 {
+		if lastErr != nil {
+			_ = m.statusBar.SetMessage(fmt.Sprintf("Stage failed: %v", lastErr), components.Error)
+		}
+		return nil
+	}
+
+	args := []string{"commit"}
+	if titleOnly {
+		args = append(args, "-t")
+	}
+	cmd := exec.Command("devtool", args...) //nolint:gosec // devtool is a trusted user tool
+	return tea.ExecProcess(cmd, func(err error) tea.Msg {
+		return CommitDoneMsg{Err: err}
+	})
+}
+
+// refreshHunks re-queries git state and rebuilds the hunk list.
+// Called after a commit completes to reflect the new index state.
+func (m *HunkAddModel) refreshHunks() {
+	diffArgs := []string{"diff"}
+	if len(m.filterPaths) > 0 {
+		diffArgs = append(diffArgs, "--")
+		diffArgs = append(diffArgs, m.filterPaths...)
+	}
+	rawDiff, _ := m.runner.Run(m.ctx, diffArgs...)
+	files := git.ParseFileDiffs(rawDiff)
+
+	hunks := make([][]git.Hunk, len(files))
+	for i, f := range files {
+		hunks[i] = git.ParseHunks(f.RawDiff)
+	}
+
+	m.files = files
+	m.hunkList = components.NewHunkList(files, hunks)
+	m.prevFileIdx = 0
+	m.prevHunkIdx = 0
+
+	if len(files) > 0 {
+		m.renderCurrentHunk()
+	}
+	m.resize()
 }
 
 // resize recalculates component dimensions after a terminal resize.

@@ -53,7 +53,7 @@ func NewDiffModel(
 ) *DiffModel {
 	var paths []string
 	if len(filterPaths) > 0 {
-		paths = expandGlobs(filterPaths[0])
+		paths = ExpandGlobs(filterPaths[0])
 	}
 	args := git.DiffArgs(revision, staged)
 	if len(paths) > 0 {

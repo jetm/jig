@@ -326,15 +326,151 @@ func TestAddCmd_ShortDirectFlag_Unknown(t *testing.T) {
 	assert.Contains(t, err.Error(), "unknown shorthand flag")
 }
 
-func TestResetCmd_DirectFlag_Registered(t *testing.T) {
+func TestAddCmd_DirectMode_GlobExpansion(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	// Create test files for glob matching.
+	for _, name := range []string{"a.go", "b.go"} {
+		if err := os.WriteFile(dir+"/"+name, nil, 0o600); err != nil {
+			t.Fatalf("creating test file: %v", err)
+		}
+	}
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{
+			"",             // git add -- expanded paths
+			"a.go\nb.go\n", // git diff --name-only --cached
+		},
+	}
+	ctx := context.Background()
+	var buf bytes.Buffer
+	err := addDirect(ctx, runner, []string{dir + "/*.go"}, &buf)
+	require.NoError(t, err)
+	assert.Contains(t, buf.String(), "Staged 2 file(s)")
+	// Verify the glob was expanded: the add call should contain the actual file paths, not the glob.
+	require.GreaterOrEqual(t, len(runner.Calls), 1)
+	addArgs := runner.Calls[0].Args
+	assert.NotContains(t, addArgs, dir+"/*.go", "glob should be expanded, not passed raw")
+}
+
+func TestAddCmd_DirectMode_GlobNoMatch(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	var buf bytes.Buffer
+	runner := &testhelper.FakeRunner{}
+	ctx := context.Background()
+	err := addDirect(ctx, runner, []string{dir + "/*.xyz"}, &buf)
+	require.NoError(t, err)
+	assert.Contains(t, buf.String(), "Staged 0 file(s)")
+	assert.Empty(t, runner.Calls, "no git calls when glob matches nothing")
+}
+
+func TestResetCmd_DirectMode_GlobExpansion(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	for _, name := range []string{"a.go", "b.go"} {
+		if err := os.WriteFile(dir+"/"+name, nil, 0o600); err != nil {
+			t.Fatalf("creating test file: %v", err)
+		}
+	}
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{
+			"",                   // git reset HEAD -- expanded paths
+			" M a.go\n M b.go\n", // git status --short
+		},
+	}
+	ctx := context.Background()
+	var buf bytes.Buffer
+	err := resetDirect(ctx, runner, []string{dir + "/*.go"}, &buf)
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(runner.Calls), 1)
+	assert.NotContains(t, runner.Calls[0].Args, dir+"/*.go")
+}
+
+func TestCheckoutCmd_DirectMode_GlobExpansion(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	for _, name := range []string{"a.go", "b.go"} {
+		if err := os.WriteFile(dir+"/"+name, nil, 0o600); err != nil {
+			t.Fatalf("creating test file: %v", err)
+		}
+	}
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{
+			"a.go\nb.go\n", // git diff --name-only -- expanded paths
+			"",             // git checkout -- expanded paths
+		},
+	}
+	ctx := context.Background()
+	var buf bytes.Buffer
+	in := strings.NewReader("y\n")
+	err := checkoutDirect(ctx, runner, []string{dir + "/*.go"}, in, &buf)
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(runner.Calls), 1)
+	assert.NotContains(t, runner.Calls[0].Args, dir+"/*.go")
+}
+
+func TestResetCmd_InteractiveFlagRegistered(t *testing.T) {
+	t.Parallel()
+	cmd := newRootCmd()
+	resetCmd, _, err := cmd.Find([]string{"reset"})
+	require.NoError(t, err)
+
+	interactiveFlag := resetCmd.Flags().Lookup("interactive")
+	require.NotNil(t, interactiveFlag, "reset command should have --interactive flag")
+	assert.Equal(t, "false", interactiveFlag.DefValue)
+
+	iFlag := resetCmd.Flags().ShorthandLookup("i")
+	require.NotNil(t, iFlag, "reset command should have -i shorthand flag")
+}
+
+func TestResetCmd_DirectFlagRemoved(t *testing.T) {
 	t.Parallel()
 	cmd := newRootCmd()
 	resetCmd, _, err := cmd.Find([]string{"reset"})
 	require.NoError(t, err)
 
 	directFlag := resetCmd.Flags().Lookup("direct")
-	require.NotNil(t, directFlag, "reset command should have --direct flag")
-	assert.Equal(t, "false", directFlag.DefValue)
+	assert.Nil(t, directFlag, "reset command should NOT have --direct flag")
+}
+
+func TestResetCmd_ShortDirectFlag_Unknown(t *testing.T) {
+	t.Parallel()
+	root := newRootCmd()
+	buf := new(bytes.Buffer)
+	root.SetOut(buf)
+	root.SetErr(buf)
+	root.SetArgs([]string{"reset", "-d", "file.go"})
+	err := root.Execute()
+	require.Error(t, err, "gti reset -d should return an error for unknown flag")
+	assert.Contains(t, err.Error(), "unknown shorthand flag")
+}
+
+func TestResetCmd_WithArgsAndNoInteractiveFlag_CallsDirect(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{
+			"", // git reset HEAD -- paths
+			"", // git status --short
+		},
+	}
+	ctx := context.Background()
+	var buf bytes.Buffer
+	err := resetDirect(ctx, runner, []string{"file1.go"}, &buf)
+	require.NoError(t, err)
+	testhelper.MustHaveCall(t, runner, "reset", "HEAD", "--", "file1.go")
+}
+
+func TestResetCmd_WithInteractiveFlagAndArgs_AcceptsFlag(t *testing.T) {
+	t.Setenv("GTI_LOG_COMMIT_LIMIT", "notanumber")
+	root := newRootCmd()
+	buf := new(bytes.Buffer)
+	root.SetOut(buf)
+	root.SetErr(buf)
+	root.SetArgs([]string{"reset", "-i", "file.go"})
+	err := root.Execute()
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "unknown shorthand flag", "gti reset -i should be a valid flag")
+	assert.Contains(t, err.Error(), "loading config", "expected to reach TUI path (config load)")
 }
 
 func TestCheckoutCmd_DirectFlag_Registered(t *testing.T) {

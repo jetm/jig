@@ -50,7 +50,7 @@ func NewCheckoutModel(
 ) *CheckoutModel {
 	var paths []string
 	if len(filterPaths) > 0 {
-		paths = expandGlobs(filterPaths[0])
+		paths = ExpandGlobs(filterPaths[0])
 	}
 	files, _ := git.ListModifiedFilesFiltered(ctx, runner, paths)
 	branchName, _ := git.BranchName(ctx, runner)

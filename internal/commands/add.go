@@ -125,9 +125,12 @@ func (m *AddModel) Update(msg tea.Msg) tea.Cmd {
 	case CommitDoneMsg:
 		if msg.Err != nil {
 			_ = m.statusBar.SetMessage("Commit aborted", components.Info)
+			m.refreshFiles()
+			return sbCmd
 		}
-		m.refreshFiles()
-		return sbCmd
+		return func() tea.Msg {
+			return app.PopModelMsg{MutatedGit: true}
+		}
 
 	case git.EditDiffMsg:
 		if msg.Err != nil {

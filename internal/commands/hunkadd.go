@@ -138,9 +138,12 @@ func (m *HunkAddModel) Update(msg tea.Msg) tea.Cmd {
 	case CommitDoneMsg:
 		if msg.Err != nil {
 			_ = m.statusBar.SetMessage("Commit aborted", components.Info)
+			m.refreshHunks()
+			return sbCmd
 		}
-		m.refreshHunks()
-		return sbCmd
+		return func() tea.Msg {
+			return app.PopModelMsg{MutatedGit: true}
+		}
 
 	case git.EditDiffMsg:
 		if msg.Err != nil {

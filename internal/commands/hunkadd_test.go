@@ -923,13 +923,12 @@ func TestHunkAddModel_CKeyStageFailureReturnsNil(t *testing.T) {
 	}
 }
 
-func TestHunkAddModel_CommitDoneMsg_RefreshesState(t *testing.T) {
+func TestHunkAddModel_CommitDoneMsg_SuccessQuitsWithPop(t *testing.T) {
 	t.Parallel()
 	runner := &testhelper.FakeRunner{
 		Outputs: []string{
 			singleHunkDiff, // git diff (initial)
 			"main",         // branch name (initial)
-			"",             // git diff (refresh - no files left)
 		},
 	}
 	cfg := config.NewDefault()
@@ -938,15 +937,14 @@ func TestHunkAddModel_CommitDoneMsg_RefreshesState(t *testing.T) {
 	m.width = 120
 	m.height = 40
 
-	if len(m.files) != 1 {
-		t.Fatalf("expected 1 file initially, got %d", len(m.files))
+	cmd := m.Update(CommitDoneMsg{Err: nil})
+	if cmd == nil {
+		t.Fatal("expected a command, got nil")
 	}
 
-	cmd := m.Update(CommitDoneMsg{Err: nil})
-	_ = cmd
-
-	if len(m.files) != 0 {
-		t.Errorf("expected 0 files after commit, got %d", len(m.files))
+	msg := cmd()
+	if _, ok := msg.(app.PopModelMsg); !ok {
+		t.Errorf("expected PopModelMsg, got %T", msg)
 	}
 }
 

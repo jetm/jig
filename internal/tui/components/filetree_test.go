@@ -150,10 +150,10 @@ func TestFileNodeView_StatusIcons(t *testing.T) {
 		status     git.FileStatus
 		wantPrefix string
 	}{
-		{"modified shows pencil", git.Modified, tui.IconModified},
-		{"added shows plus", git.Added, tui.IconAdded},
-		{"deleted shows minus", git.Deleted, tui.IconDeleted},
-		{"renamed shows rename", git.Renamed, tui.IconRenamed},
+		{"modified shows M", git.Modified, "M"},
+		{"added shows A", git.Added, "A"},
+		{"deleted shows D", git.Deleted, "D"},
+		{"renamed shows R", git.Renamed, "R"},
 	}
 
 	for _, tt := range tests {

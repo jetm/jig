@@ -36,11 +36,6 @@ func TestPaletteColorsAreValidHex(t *testing.T) {
 
 func TestIconConstantsAreNonEmpty(t *testing.T) {
 	icons := map[string]string{
-		"IconModified":  IconModified,
-		"IconAdded":     IconAdded,
-		"IconDeleted":   IconDeleted,
-		"IconRenamed":   IconRenamed,
-		"IconUntracked": IconUntracked,
 		"IconBranch":    IconBranch,
 		"IconCommit":    IconCommit,
 		"IconChecked":   IconChecked,

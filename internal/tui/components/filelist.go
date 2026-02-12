@@ -167,16 +167,16 @@ func (fl *FileList) View() string {
 	return sb.String()
 }
 
-// fileListStatusIcon returns the icon for a git file status.
+// fileListStatusIcon returns the status letter for a git file status.
 func fileListStatusIcon(s git.FileStatus) string {
 	switch s {
 	case git.Added:
-		return tui.IconAdded
+		return "A"
 	case git.Deleted:
-		return tui.IconDeleted
+		return "D"
 	case git.Renamed:
-		return tui.IconRenamed
+		return "R"
 	default:
-		return tui.IconModified
+		return "M"
 	}
 }

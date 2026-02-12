@@ -44,11 +44,6 @@ var (
 
 // Nerd Font icons.
 const (
-	IconModified  = "\uf040" // nf-fa-pencil
-	IconAdded     = "\uf067" // nf-fa-plus
-	IconDeleted   = "\uf068" // nf-fa-minus
-	IconRenamed   = "\uf553" // nf-mdi-rename_box
-	IconUntracked = "\uf128" // nf-fa-question
 	IconBranch    = "\ue725" // nf-dev-git_branch
 	IconCommit    = "\uf417" // nf-oct-git_commit
 	IconChecked   = "\uf046" // nf-fa-check_square_o

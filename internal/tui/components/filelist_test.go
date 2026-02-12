@@ -135,7 +135,7 @@ func TestFileList_ViewContainsModifiedIcon(t *testing.T) {
 	fl.SetWidth(80)
 	fl.SetHeight(24)
 	view := fl.View()
-	assert.Contains(t, view, tui.IconModified)
+	assert.Contains(t, view, "M")
 }
 
 func TestFileList_ViewContainsAddedIcon(t *testing.T) {
@@ -147,7 +147,7 @@ func TestFileList_ViewContainsAddedIcon(t *testing.T) {
 	fl.SetWidth(80)
 	fl.SetHeight(24)
 	view := fl.View()
-	assert.Contains(t, view, tui.IconAdded)
+	assert.Contains(t, view, "A")
 }
 
 func TestFileList_ViewContainsDeletedIcon(t *testing.T) {
@@ -159,7 +159,7 @@ func TestFileList_ViewContainsDeletedIcon(t *testing.T) {
 	fl.SetWidth(80)
 	fl.SetHeight(24)
 	view := fl.View()
-	assert.Contains(t, view, tui.IconDeleted)
+	assert.Contains(t, view, "D")
 }
 
 func TestFileList_ViewContainsRenamedIcon(t *testing.T) {
@@ -171,7 +171,7 @@ func TestFileList_ViewContainsRenamedIcon(t *testing.T) {
 	fl.SetWidth(80)
 	fl.SetHeight(24)
 	view := fl.View()
-	assert.Contains(t, view, tui.IconRenamed)
+	assert.Contains(t, view, "R")
 }
 
 func TestFileList_CheckboxEnabled_UncheckedShowsUncheckedIcon(t *testing.T) {

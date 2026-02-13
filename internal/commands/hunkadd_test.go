@@ -1125,7 +1125,7 @@ func TestHunkAddModel_JKNavigationUpdatesDiffPreview(t *testing.T) {
 	}
 }
 
-func TestHunkAddModel_SplitPanelView_ShowsFileSummary(t *testing.T) {
+func TestHunkAddModel_SplitPanelView_ShowsFileHeaders(t *testing.T) {
 	t.Parallel()
 	m, _ := newHunkAddTestModel(t, twoFileDiff)
 	m.width = 120
@@ -1133,13 +1133,13 @@ func TestHunkAddModel_SplitPanelView_ShowsFileSummary(t *testing.T) {
 
 	view := m.View()
 	if !strings.Contains(view, "a.go") {
-		t.Error("View should contain file 'a.go' in summary")
+		t.Error("View should contain file 'a.go' in file header")
 	}
 	if !strings.Contains(view, "b.go") {
-		t.Error("View should contain file 'b.go' in summary")
+		t.Error("View should contain file 'b.go' in file header")
 	}
-	if !strings.Contains(view, "0/1") {
-		t.Error("View should contain '0/1' counter for unstaged files")
+	if !strings.Contains(view, "0/1 staged") {
+		t.Error("View should contain '0/1 staged' counter in file headers")
 	}
 }
 

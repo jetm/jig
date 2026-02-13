@@ -14,7 +14,7 @@ func testHunk(header string) git.Hunk {
 	return git.Hunk{Header: header, Body: header + "\n context\n+added\n"}
 }
 
-// testFileDiff builds a minimal git.FileDiff.
+// testFileDiffH builds a minimal git.FileDiff.
 func testFileDiffH(path string) git.FileDiff {
 	return git.FileDiff{OldPath: path, NewPath: path, Status: git.Modified}
 }
@@ -248,7 +248,7 @@ func TestHunkList_View_ContainsStagedCount(t *testing.T) {
 	}
 }
 
-func TestHunkList_View_ContainsHunkHeader(t *testing.T) {
+func TestHunkList_View_ContainsLineNumberAndCounts(t *testing.T) {
 	t.Parallel()
 	files := []git.FileDiff{testFileDiffH("x.go")}
 	hunks := [][]git.Hunk{{testHunk("@@ -3,5 +3,6 @@")}}
@@ -257,8 +257,11 @@ func TestHunkList_View_ContainsHunkHeader(t *testing.T) {
 	hl.SetHeight(20)
 
 	view := hl.View()
-	if !strings.Contains(view, "@@ -3,5 +3,6 @@") {
-		t.Errorf("View() should contain hunk header, got:\n%s", view)
+	if !strings.Contains(view, "L3") {
+		t.Errorf("View() should contain line number 'L3', got:\n%s", view)
+	}
+	if !strings.Contains(view, "+1") {
+		t.Errorf("View() should contain change count '+1', got:\n%s", view)
 	}
 }
 
@@ -393,97 +396,6 @@ func TestHunkList_Update_NonKeyMsg(t *testing.T) {
 	}
 }
 
-func TestHunkList_FileSummary_SingleFile(t *testing.T) {
-	t.Parallel()
-	files := []git.FileDiff{testFileDiffH("main.go")}
-	hunks := [][]git.Hunk{{testHunk("@@ -1 +1 @@"), testHunk("@@ -5 +5 @@"), testHunk("@@ -10 +10 @@")}}
-	hl := NewHunkList(files, hunks)
-	// Stage 1 of 3 hunks.
-	hl.staged[1] = true
-
-	summary := hl.FileSummary()
-	if !strings.Contains(summary, "main.go") {
-		t.Errorf("FileSummary() should contain file name, got:\n%s", summary)
-	}
-	if !strings.Contains(summary, "1/3") {
-		t.Errorf("FileSummary() should contain '1/3', got:\n%s", summary)
-	}
-}
-
-func TestHunkList_FileSummary_MultipleFiles(t *testing.T) {
-	t.Parallel()
-	files := []git.FileDiff{testFileDiffH("alpha.go"), testFileDiffH("beta.go")}
-	hunks := [][]git.Hunk{
-		{testHunk("@@ -1 +1 @@"), testHunk("@@ -5 +5 @@")},
-		{testHunk("@@ -2 +2 @@")},
-	}
-	hl := NewHunkList(files, hunks)
-	// Rows: [0]=header_a [1]=hunk_a0 [2]=hunk_a1 [3]=header_b [4]=hunk_b0
-	// Stage both hunks of alpha.go.
-	hl.staged[1] = true
-	hl.staged[2] = true
-
-	summary := hl.FileSummary()
-	if !strings.Contains(summary, "alpha.go") {
-		t.Errorf("FileSummary() should contain 'alpha.go', got:\n%s", summary)
-	}
-	if !strings.Contains(summary, "beta.go") {
-		t.Errorf("FileSummary() should contain 'beta.go', got:\n%s", summary)
-	}
-	// alpha.go: 2/2 staged
-	if !strings.Contains(summary, "2/2") {
-		t.Errorf("FileSummary() should contain '2/2', got:\n%s", summary)
-	}
-	// beta.go: 0/1 staged
-	if !strings.Contains(summary, "0/1") {
-		t.Errorf("FileSummary() should contain '0/1', got:\n%s", summary)
-	}
-}
-
-func TestHunkList_FileSummary_CountersUpdateAfterToggle(t *testing.T) {
-	t.Parallel()
-	files := []git.FileDiff{testFileDiffH("foo.go")}
-	hunks := [][]git.Hunk{{testHunk("@@ -1 +1 @@"), testHunk("@@ -5 +5 @@")}}
-	hl := NewHunkList(files, hunks)
-	// Initially 0/2.
-	summary := hl.FileSummary()
-	if !strings.Contains(summary, "0/2") {
-		t.Errorf("before toggle: FileSummary() should contain '0/2', got:\n%s", summary)
-	}
-
-	// Toggle first hunk (cursor at row 1).
-	hl.Update(tea.KeyPressMsg{Code: tea.KeySpace})
-	summary = hl.FileSummary()
-	if !strings.Contains(summary, "1/2") {
-		t.Errorf("after 1 toggle: FileSummary() should contain '1/2', got:\n%s", summary)
-	}
-
-	// Toggle second hunk (move to row 2 then Space).
-	hl.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
-	hl.Update(tea.KeyPressMsg{Code: tea.KeySpace})
-	summary = hl.FileSummary()
-	if !strings.Contains(summary, "2/2") {
-		t.Errorf("after 2 toggles: FileSummary() should contain '2/2', got:\n%s", summary)
-	}
-
-	// Untoggle first hunk.
-	hl.Update(tea.KeyPressMsg{Code: 'k', Text: "k"})
-	hl.Update(tea.KeyPressMsg{Code: tea.KeySpace})
-	summary = hl.FileSummary()
-	if !strings.Contains(summary, "1/2") {
-		t.Errorf("after untoggle: FileSummary() should contain '1/2', got:\n%s", summary)
-	}
-}
-
-func TestHunkList_FileSummary_Empty(t *testing.T) {
-	t.Parallel()
-	hl := NewHunkList(nil, nil)
-	summary := hl.FileSummary()
-	if summary != "" {
-		t.Errorf("FileSummary() on empty list should return empty string, got: %q", summary)
-	}
-}
-
 func TestHunkList_CurrentHunk_ReturnsHunkUnderCursor(t *testing.T) {
 	t.Parallel()
 	files := []git.FileDiff{testFileDiffH("a.go")}
@@ -564,5 +476,203 @@ func TestHunkList_ScrollToFile_NoMatchDoesNothing(t *testing.T) {
 	hl.ScrollToFile(99) // no such file
 	if hl.cursor != before {
 		t.Error("ScrollToFile with invalid index should not change cursor")
+	}
+}
+
+// --- Helper function tests ---
+
+func TestParseHunkLineNumber(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		header string
+		want   int
+	}{
+		{"@@ -1,3 +1,4 @@", 1},
+		{"@@ -72,6 +72,10 @@ func main()", 72},
+		{"@@ -1 +1 @@", 1},
+		{"@@ -150,5 +151,6 @@", 151},
+		{"@@ -10,3 +10,5 @@", 10},
+		{"@@", 0},
+		{"", 0},
+	}
+	for _, tt := range tests {
+		got := parseHunkLineNumber(tt.header)
+		if got != tt.want {
+			t.Errorf("parseHunkLineNumber(%q) = %d, want %d", tt.header, got, tt.want)
+		}
+	}
+}
+
+func TestCountHunkChanges(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name        string
+		body        string
+		wantAdded   int
+		wantRemoved int
+	}{
+		{
+			name:        "pure addition",
+			body:        "@@ -1 +1 @@\n context\n+line1\n+line2\n+line3\n+line4\n",
+			wantAdded:   4,
+			wantRemoved: 0,
+		},
+		{
+			name:        "pure deletion",
+			body:        "@@ -1 +1 @@\n context\n-line1\n-line2\n-line3\n",
+			wantAdded:   0,
+			wantRemoved: 3,
+		},
+		{
+			name:        "mixed changes",
+			body:        "@@ -1 +1 @@\n context\n+added1\n+added2\n-removed1\n",
+			wantAdded:   2,
+			wantRemoved: 1,
+		},
+		{
+			name:        "empty body",
+			body:        "",
+			wantAdded:   0,
+			wantRemoved: 0,
+		},
+	}
+	for _, tt := range tests {
+		added, removed := countHunkChanges(tt.body)
+		if added != tt.wantAdded || removed != tt.wantRemoved {
+			t.Errorf("countHunkChanges(%s) = (%d, %d), want (%d, %d)",
+				tt.name, added, removed, tt.wantAdded, tt.wantRemoved)
+		}
+	}
+}
+
+func TestFormatChangeCounts(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		added   int
+		removed int
+		want    string
+	}{
+		{4, 0, "+4"},
+		{0, 3, "-3"},
+		{2, 1, "+2,-1"},
+		{0, 0, "+0"},
+	}
+	for _, tt := range tests {
+		got := formatChangeCounts(tt.added, tt.removed)
+		if got != tt.want {
+			t.Errorf("formatChangeCounts(%d, %d) = %q, want %q",
+				tt.added, tt.removed, got, tt.want)
+		}
+	}
+}
+
+func TestHunkContextSnippet(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		header string
+		want   string
+	}{
+		{"@@ -72,6 +72,10 @@ func main()", "func main()"},
+		{"@@ -3,5 +3,10 @@", ""},
+		{"@@ -1 +1 @@", ""},
+		{"@@ -1,3 +1,4 @@ for i := range items {", "for i := range items {"},
+	}
+	for _, tt := range tests {
+		got := hunkContextSnippet(tt.header)
+		if got != tt.want {
+			t.Errorf("hunkContextSnippet(%q) = %q, want %q", tt.header, got, tt.want)
+		}
+	}
+}
+
+func TestComputeLineNumWidth(t *testing.T) {
+	t.Parallel()
+	files := []git.FileDiff{testFileDiffH("a.go"), testFileDiffH("b.go"), testFileDiffH("c.go")}
+	hunks := [][]git.Hunk{
+		{git.Hunk{Header: "@@ -3,5 +3,6 @@", Body: "@@ -3,5 +3,6 @@\n+x\n"}},
+		{git.Hunk{Header: "@@ -70,5 +72,6 @@", Body: "@@ -70,5 +72,6 @@\n+x\n"}},
+		{git.Hunk{Header: "@@ -150,5 +151,6 @@", Body: "@@ -150,5 +151,6 @@\n+x\n"}},
+	}
+	hl := NewHunkList(files, hunks)
+	width := hl.computeLineNumWidth()
+	// L151 = 4 chars
+	if width != 4 {
+		t.Errorf("computeLineNumWidth = %d, want 4", width)
+	}
+}
+
+func TestHunkList_View_BlankLineBetweenFiles(t *testing.T) {
+	t.Parallel()
+	files := []git.FileDiff{testFileDiffH("a.go"), testFileDiffH("b.go")}
+	hunks := [][]git.Hunk{
+		{testHunk("@@ -1 +1 @@")},
+		{testHunk("@@ -2 +2 @@")},
+	}
+	hl := NewHunkList(files, hunks)
+	hl.SetWidth(80)
+	hl.SetHeight(20)
+
+	view := hl.View()
+	if !strings.Contains(view, "\n\n") {
+		t.Errorf("View() should contain a blank line between file groups, got:\n%s", view)
+	}
+}
+
+func TestHunkList_View_NoBlankLineForSingleFile(t *testing.T) {
+	t.Parallel()
+	files := []git.FileDiff{testFileDiffH("a.go")}
+	hunks := [][]git.Hunk{{testHunk("@@ -1 +1 @@")}}
+	hl := NewHunkList(files, hunks)
+	hl.SetWidth(80)
+	hl.SetHeight(20)
+
+	view := hl.View()
+	if strings.Contains(view, "\n\n") {
+		t.Errorf("View() for single file should not contain blank line separator, got:\n%s", view)
+	}
+}
+
+func TestHunkList_View_HunkRowFormat(t *testing.T) {
+	t.Parallel()
+	files := []git.FileDiff{testFileDiffH("main.go")}
+	h := git.Hunk{
+		Header: "@@ -72,6 +72,10 @@ func main()",
+		Body:   "@@ -72,6 +72,10 @@ func main()\n context\n+line1\n+line2\n-removed\n",
+	}
+	hunks := [][]git.Hunk{{h}}
+	hl := NewHunkList(files, hunks)
+	hl.SetWidth(80)
+	hl.SetHeight(20)
+
+	view := hl.View()
+	if !strings.Contains(view, "L72") {
+		t.Errorf("View() should contain 'L72', got:\n%s", view)
+	}
+	if !strings.Contains(view, "+2,-1") {
+		t.Errorf("View() should contain '+2,-1' for mixed changes, got:\n%s", view)
+	}
+	if !strings.Contains(view, "func main()") {
+		t.Errorf("View() should contain context snippet 'func main()', got:\n%s", view)
+	}
+}
+
+func TestHunkList_View_RightAlignedLineNumbers(t *testing.T) {
+	t.Parallel()
+	files := []git.FileDiff{testFileDiffH("a.go")}
+	hunks := [][]git.Hunk{{
+		git.Hunk{Header: "@@ -3,5 +3,6 @@", Body: "@@ -3,5 +3,6 @@\n+x\n"},
+		git.Hunk{Header: "@@ -150,5 +151,6 @@", Body: "@@ -150,5 +151,6 @@\n+x\n"},
+	}}
+	hl := NewHunkList(files, hunks)
+	hl.SetWidth(0) // no width constraint for easier assertion
+	hl.SetHeight(20)
+
+	view := hl.View()
+	// L3 should be right-padded to match L151 width (4 chars): "  L3"
+	if !strings.Contains(view, "  L3") {
+		t.Errorf("View() should contain right-aligned '  L3', got:\n%s", view)
+	}
+	if !strings.Contains(view, "L151") {
+		t.Errorf("View() should contain 'L151', got:\n%s", view)
 	}
 }

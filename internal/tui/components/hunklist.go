@@ -116,32 +116,6 @@ func (hl *HunkList) StagedHunks() []StagedHunk {
 	return result
 }
 
-// FileSummary returns a rendered string with one line per file showing the
-// file name and its staged/total hunk count, e.g. "main.go  1/3".
-func (hl *HunkList) FileSummary() string {
-	if len(hl.files) == 0 {
-		return ""
-	}
-	var sb strings.Builder
-	for fi, fd := range hl.files {
-		total := 0
-		staged := 0
-		for i, r := range hl.rows {
-			if r.kind == rowKindHunk && r.hunk.fileIdx == fi {
-				total++
-				if hl.staged[i] {
-					staged++
-				}
-			}
-		}
-		if fi > 0 {
-			sb.WriteString("\n")
-		}
-		fmt.Fprintf(&sb, "%s  %d/%d", fd.DisplayPath(), staged, total)
-	}
-	return sb.String()
-}
-
 // CurrentHunk returns the hunk under the cursor, or false if no hunk is selected.
 func (hl *HunkList) CurrentHunk() (git.Hunk, bool) {
 	if hl.cursor >= len(hl.rows) || hl.rows[hl.cursor].kind != rowKindHunk {
@@ -283,7 +257,8 @@ func (hl *HunkList) clampCursor() {
 	hl.clampOffset()
 }
 
-// clampOffset adjusts the scroll offset so the cursor row is always visible.
+// clampOffset adjusts the scroll offset so the cursor row is always visible,
+// accounting for blank separator lines between file groups.
 func (hl *HunkList) clampOffset() {
 	if hl.height <= 0 {
 		return
@@ -291,33 +266,46 @@ func (hl *HunkList) clampOffset() {
 	if hl.cursor < hl.offset {
 		hl.offset = hl.cursor
 	}
-	if hl.cursor >= hl.offset+hl.height {
-		hl.offset = hl.cursor - hl.height + 1
+	// Count blank separator lines between offset and cursor.
+	blanks := 0
+	for i := hl.offset + 1; i <= hl.cursor && i < len(hl.rows); i++ {
+		if hl.rows[i].kind == rowKindFileHeader {
+			blanks++
+		}
+	}
+	if hl.cursor-hl.offset+1+blanks > hl.height {
+		hl.offset = max(0, hl.cursor-hl.height+1+blanks)
 	}
 }
 
-// View renders the visible slice of rows.
+// View renders the visible slice of rows with blank line separators between file groups.
 func (hl *HunkList) View() string {
 	if len(hl.rows) == 0 {
 		return ""
 	}
 
-	start := hl.offset
-	end := len(hl.rows)
-	if hl.height > 0 && start+hl.height < end {
-		end = start + hl.height
-	}
-	if start > len(hl.rows) {
-		start = len(hl.rows)
-	}
+	lineNumWidth := hl.computeLineNumWidth()
 
 	headerStyle := lipgloss.NewStyle().Foreground(tui.ColorFgSubtle)
 	cursorStyle := lipgloss.NewStyle().Background(tui.ColorBgSel)
 	normalStyle := lipgloss.NewStyle()
 
-	var sb strings.Builder
-	for i := start; i < end; i++ {
+	var lines []string
+	for i := hl.offset; i < len(hl.rows); i++ {
+		if hl.height > 0 && len(lines) >= hl.height {
+			break
+		}
+
 		r := hl.rows[i]
+
+		// Blank line before file headers (except the first visible row).
+		if r.kind == rowKindFileHeader && len(lines) > 0 {
+			if hl.height > 0 && len(lines)+1 >= hl.height {
+				break
+			}
+			lines = append(lines, "")
+		}
+
 		var line string
 		switch r.kind {
 		case rowKindFileHeader:
@@ -327,14 +315,12 @@ func (hl *HunkList) View() string {
 			if i == hl.cursor {
 				style = cursorStyle
 			}
-			line = hl.renderHunkRow(i, r, style)
+			line = hl.renderHunkRow(i, r, style, lineNumWidth)
 		}
-		sb.WriteString(line)
-		if i < end-1 {
-			sb.WriteString("\n")
-		}
+		lines = append(lines, line)
 	}
-	return sb.String()
+
+	return strings.Join(lines, "\n")
 }
 
 // renderFileHeader renders a file header row showing filename and staged count.
@@ -360,15 +346,12 @@ func (hl *HunkList) renderFileHeader(fi int, style lipgloss.Style) string {
 	return style.Render(text)
 }
 
-// renderHunkRow renders a single hunk row with checkbox and header line.
-func (hl *HunkList) renderHunkRow(rowIdx int, r row, style lipgloss.Style) string {
+// renderHunkRow renders a single hunk row with checkbox, line number, change counts,
+// and optional context snippet.
+func (hl *HunkList) renderHunkRow(rowIdx int, r row, style lipgloss.Style, lineNumWidth int) string {
 	fi := r.hunk.fileIdx
 	hi := r.hunk.hunkIdx
 	fileHunks := hl.hunksForFile(fi, hl.files[fi])
-	header := "@@"
-	if hi < len(fileHunks) {
-		header = fileHunks[hi].Header
-	}
 
 	var checkbox string
 	if hl.staged[rowIdx] {
@@ -377,9 +360,117 @@ func (hl *HunkList) renderHunkRow(rowIdx int, r row, style lipgloss.Style) strin
 		checkbox = tui.IconUnchecked
 	}
 
-	text := checkbox + " " + header
+	header := "@@"
+	body := ""
+	if hi < len(fileHunks) {
+		header = fileHunks[hi].Header
+		body = fileHunks[hi].Body
+	}
+
+	lineNum := parseHunkLineNumber(header)
+	added, removed := countHunkChanges(body)
+	counts := formatChangeCounts(added, removed)
+	snippet := hunkContextSnippet(header)
+
+	lineStr := fmt.Sprintf("L%d", lineNum)
+	paddedLine := fmt.Sprintf("%*s", lineNumWidth, lineStr)
+
+	var text string
+	if snippet != "" {
+		text = fmt.Sprintf("%s %s  %-7s %s", checkbox, paddedLine, counts, snippet)
+	} else {
+		text = fmt.Sprintf("%s %s  %s", checkbox, paddedLine, counts)
+	}
+
 	if hl.width > 0 {
 		return style.Width(hl.width).MaxWidth(hl.width).Render(text)
 	}
 	return style.Render(text)
+}
+
+// computeLineNumWidth returns the character width needed for the widest L{number}
+// string across all hunk rows, for right-alignment.
+func (hl *HunkList) computeLineNumWidth() int {
+	maxWidth := 2 // minimum "L0"
+	for _, r := range hl.rows {
+		if r.kind != rowKindHunk {
+			continue
+		}
+		fi := r.hunk.fileIdx
+		hi := r.hunk.hunkIdx
+		if fi >= len(hl.files) {
+			continue
+		}
+		fileHunks := hl.hunksForFile(fi, hl.files[fi])
+		if hi >= len(fileHunks) {
+			continue
+		}
+		lineNum := parseHunkLineNumber(fileHunks[hi].Header)
+		w := len(fmt.Sprintf("L%d", lineNum))
+		if w > maxWidth {
+			maxWidth = w
+		}
+	}
+	return maxWidth
+}
+
+// parseHunkLineNumber extracts the new-file start line number from a @@ header.
+// For "@@ -72,6 +72,10 @@ func main()", it returns 72.
+func parseHunkLineNumber(header string) int {
+	_, after, ok := strings.Cut(header, " +")
+	if !ok {
+		return 0
+	}
+	num := 0
+	for _, ch := range after {
+		if ch >= '0' && ch <= '9' {
+			num = num*10 + int(ch-'0')
+		} else {
+			break
+		}
+	}
+	return num
+}
+
+// countHunkChanges counts added (+) and removed (-) lines in a hunk body.
+func countHunkChanges(body string) (added, removed int) {
+	for line := range strings.SplitSeq(body, "\n") {
+		if len(line) == 0 {
+			continue
+		}
+		switch line[0] {
+		case '+':
+			added++
+		case '-':
+			removed++
+		}
+	}
+	return
+}
+
+// formatChangeCounts formats added/removed counts as "+N", "-N", or "+N,-M".
+func formatChangeCounts(added, removed int) string {
+	switch {
+	case added > 0 && removed > 0:
+		return fmt.Sprintf("+%d,-%d", added, removed)
+	case added > 0:
+		return fmt.Sprintf("+%d", added)
+	case removed > 0:
+		return fmt.Sprintf("-%d", removed)
+	default:
+		return "+0"
+	}
+}
+
+// hunkContextSnippet extracts the function/scope text after the closing @@ in a header.
+func hunkContextSnippet(header string) string {
+	_, afterFirst, ok := strings.Cut(header, "@@")
+	if !ok {
+		return ""
+	}
+	_, afterSecond, ok := strings.Cut(afterFirst, "@@")
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(afterSecond)
 }

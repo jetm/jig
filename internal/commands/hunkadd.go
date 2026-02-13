@@ -324,36 +324,11 @@ func (m *HunkAddModel) View() string {
 	return m.help.View(background, m.width, m.height)
 }
 
-// renderLeftPanel renders the split left panel: top 60% hunk list, bottom 40% file summary.
+// renderLeftPanel renders the hunk list at full panel height.
 func (m *HunkAddModel) renderLeftPanel(width, height int) string {
-	separatorStyle := lipgloss.NewStyle().Foreground(tui.ColorFgSubtle)
-	separator := separatorStyle.Width(width).Render(strings.Repeat("─", width))
-	sepHeight := 1
-
-	topHeight := height * 60 / 100
-	bottomHeight := height - topHeight - sepHeight
-	if bottomHeight < 1 {
-		bottomHeight = 1
-		topHeight = height - sepHeight - bottomHeight
-	}
-
 	m.hunkList.SetWidth(width)
-	m.hunkList.SetHeight(topHeight)
-
-	top := m.hunkList.View()
-	bottom := m.hunkList.FileSummary()
-
-	// Pad bottom to fill available height.
-	bottomLines := strings.Count(bottom, "\n") + 1
-	if bottom == "" {
-		bottomLines = 0
-	}
-	for bottomLines < bottomHeight {
-		bottom += "\n"
-		bottomLines++
-	}
-
-	return top + "\n" + separator + "\n" + bottom
+	m.hunkList.SetHeight(height)
+	return m.hunkList.View()
 }
 
 // hintsForContext returns status bar hints based on current context.

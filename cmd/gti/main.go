@@ -571,7 +571,22 @@ func newRebaseInteractiveCmd() *cobra.Command {
 
 			rebaseTeaModel := newRebaseInteractiveTeaModel(rebaseModel)
 			appModel := app.New(rebaseTeaModel, runner, cfg)
-			p := tea.NewProgram(appModel)
+
+			// In editor mode (invoked as GIT_SEQUENCE_EDITOR), explicitly open
+			// /dev/tty for TUI I/O. Git may redirect stdin/stdout when calling
+			// the sequence editor, so we can't rely on inherited file descriptors.
+			var opts []tea.ProgramOption
+			if todoFilePath != "" {
+				ttyIn, ttyOut, err := tea.OpenTTY()
+				if err != nil {
+					return fmt.Errorf("opening terminal: %w", err)
+				}
+				defer func() { _ = ttyIn.Close() }()
+				defer func() { _ = ttyOut.Close() }()
+				opts = append(opts, tea.WithInput(ttyIn), tea.WithOutput(ttyOut))
+			}
+
+			p := tea.NewProgram(appModel, opts...)
 			if _, err = p.Run(); err != nil {
 				return fmt.Errorf("running rebase-interactive: %w", err)
 			}

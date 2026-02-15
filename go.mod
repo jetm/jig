@@ -8,6 +8,7 @@ require (
 	charm.land/lipgloss/v2 v2.0.1
 	github.com/alecthomas/chroma/v2 v2.23.1
 	github.com/mariusor/bubbles-tree v0.0.0-20251209123111-a799f65926a6
+	github.com/muesli/reflow v0.3.0
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.11.1
 	gopkg.in/yaml.v3 v3.0.1
@@ -29,7 +30,6 @@ require (
 	github.com/lucasb-eyer/go-colorful v1.3.0 // indirect
 	github.com/mattn/go-runewidth v0.0.20 // indirect
 	github.com/muesli/cancelreader v0.2.2 // indirect
-	github.com/muesli/reflow v0.3.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/sahilm/fuzzy v0.1.1 // indirect

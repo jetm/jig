@@ -155,9 +155,9 @@ func NewRebaseInteractiveModel(
 					{Key: "s", Desc: "squash"},
 					{Key: "f", Desc: "fixup"},
 					{Key: "d", Desc: "drop"},
-					{Key: "w", Desc: "toggle soft-wrap (diff panel)"},
+					{Key: "w/Enter", Desc: "write & execute rebase"},
+					{Key: "W", Desc: "toggle soft-wrap (diff panel)"},
 					{Key: "F", Desc: "maximize diff panel"},
-					{Key: "Enter", Desc: "confirm & execute rebase"},
 					{Key: "q/Esc", Desc: "abort"},
 				},
 			},
@@ -273,6 +273,9 @@ func (m *RebaseInteractiveModel) Update(msg tea.Msg) tea.Cmd {
 			return sbCmd
 
 		case "w":
+			return m.confirmRebase()
+
+		case "W":
 			if m.focusRight {
 				m.diffView.SetSoftWrap(!m.diffView.SoftWrap())
 			}
@@ -508,8 +511,8 @@ func (m *RebaseInteractiveModel) renderSelectedDiff() {
 }
 
 const (
-	rebaseHintsLeft     = "Space: action  K/J: reorder  Tab: panel  ?: help  q: quit"
-	rebaseHintsRight    = "w: wrap  F: maximize  Tab: panel  ?: help  q: quit"
+	rebaseHintsLeft     = "Space: action  K/J: reorder  w: write  Tab: panel  ?: help  q: quit"
+	rebaseHintsRight    = "W: wrap  F: maximize  Tab: panel  ?: help  q: quit"
 	rebaseHintsMaximize = "F: restore  ?: help  q: quit"
 )
 

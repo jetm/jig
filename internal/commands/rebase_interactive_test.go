@@ -793,3 +793,81 @@ func TestRebaseInteractiveModel_ResizeWhileMaximized(t *testing.T) {
 		t.Error("View() should not be empty after resize while maximized")
 	}
 }
+
+func TestRebaseInteractiveModel_WKey_ConfirmsRebase_StandaloneMode(t *testing.T) {
+	t.Parallel()
+	logOutput := "abc1234\x1ffeat: first\n"
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{logOutput, "main", ""},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~1", "")
+
+	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	cmd := m.Update(tea.KeyPressMsg{Code: 'w', Text: "w"})
+	require.NotNil(t, cmd, "w key should trigger confirmRebase")
+	msg := cmd()
+	require.NotNil(t, msg, "expected a message from confirmRebase")
+}
+
+func TestRebaseInteractiveModel_WKey_WritesTodo_EditorMode(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	todoPath := filepath.Join(dir, "git-rebase-todo")
+	todoContent := "pick abc1234 feat: first\npick bbb5678 fix: second\n"
+	require.NoError(t, os.WriteFile(todoPath, []byte(todoContent), 0o644))
+
+	runner := &testhelper.FakeRunner{Outputs: []string{"main"}}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "", todoPath)
+
+	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	// Change first entry to reword
+	_ = m.Update(tea.KeyPressMsg{Code: 'r', Text: "r"})
+
+	// Press w to write
+	cmd := m.Update(tea.KeyPressMsg{Code: 'w', Text: "w"})
+	require.NotNil(t, cmd, "w key should write todo file in editor mode")
+
+	written, err := os.ReadFile(todoPath)
+	require.NoError(t, err)
+
+	expected := git.FormatTodo([]git.RebaseTodoEntry{
+		{Action: git.ActionReword, Hash: "abc1234", Subject: "feat: first"},
+		{Action: git.ActionPick, Hash: "bbb5678", Subject: "fix: second"},
+	})
+	assert.Equal(t, expected, string(written))
+}
+
+func TestRebaseInteractiveModel_ShiftW_TogglesSoftWrap(t *testing.T) {
+	t.Parallel()
+	logOutput := "abc1234\x1ffeat: first\n"
+	m := newFakeRebaseModel(t, logOutput, "main", "HEAD~1")
+	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	// Tab to focus right panel (diff view)
+	_ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+
+	// Shift+W should toggle soft-wrap (not trigger confirmRebase)
+	cmd := m.Update(tea.KeyPressMsg{Code: 'W', ShiftedCode: 'W', Mod: tea.ModShift, Text: "W"})
+
+	// Should not return a confirmRebase command (which would produce a PopModelMsg)
+	if cmd != nil {
+		msg := cmd()
+		_, isPop := msg.(app.PopModelMsg)
+		assert.False(t, isPop, "Shift+W should toggle soft-wrap, not confirm rebase")
+	}
+}
+
+func TestRebaseInteractiveModel_HintsIncludeWriteKey(t *testing.T) {
+	t.Parallel()
+	logOutput := "abc1234\x1ffeat: first\n"
+	m := newFakeRebaseModel(t, logOutput, "main", "HEAD~1")
+	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	view := m.View()
+	assert.Contains(t, view, "w: write", "status bar should show w: write hint")
+}

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jetm/gti/internal/testhelper"
+	"github.com/jetm/jig/internal/testhelper"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -24,7 +24,7 @@ func TestLog_AllFlag_UnknownFlag(t *testing.T) {
 	testhelper.WriteFile(t, repoDir, "file1.txt", "content\n")
 	testhelper.AddCommit(t, repoDir, "add file1.txt")
 
-	// --all is not implemented; gti log should reject it
+	// --all is not implemented; jig log should reject it
 	stderr, err := runTUI(t, repoDir, "log", "--all")
 	assert.Error(t, err, "unknown flag should exit non-zero")
 	assert.Contains(t, stderr, "unknown flag", "should report unknown flag")

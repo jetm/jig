@@ -7,8 +7,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
-	"github.com/jetm/gti/internal/git"
-	"github.com/jetm/gti/internal/tui"
+	"github.com/jetm/jig/internal/git"
+	"github.com/jetm/jig/internal/tui"
 )
 
 // rowKind distinguishes the two kinds of rows in a HunkList.

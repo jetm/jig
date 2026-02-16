@@ -9,11 +9,11 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/jetm/gti/internal/app"
-	"github.com/jetm/gti/internal/commands"
-	"github.com/jetm/gti/internal/config"
-	"github.com/jetm/gti/internal/diff"
-	"github.com/jetm/gti/internal/testhelper"
+	"github.com/jetm/jig/internal/app"
+	"github.com/jetm/jig/internal/commands"
+	"github.com/jetm/jig/internal/config"
+	"github.com/jetm/jig/internal/diff"
+	"github.com/jetm/jig/internal/testhelper"
 )
 
 // newFakeFixupModel creates a FixupModel with scripted FakeRunner outputs.

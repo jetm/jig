@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/jetm/gti/internal/testhelper"
+	"github.com/jetm/jig/internal/testhelper"
 )
 
 func TestListUnstagedFiles_ModifiedAndUntracked(t *testing.T) {

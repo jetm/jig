@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/jetm/gti/internal/git"
-	"github.com/jetm/gti/internal/testhelper"
+	"github.com/jetm/jig/internal/git"
+	"github.com/jetm/jig/internal/testhelper"
 )
 
 // standardDiff is a diff using standard a/b/ prefixes.

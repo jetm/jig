@@ -54,7 +54,7 @@ func ExecuteRebaseInteractive(ctx context.Context, r Runner, base string, entrie
 	todo := FormatTodo(entries)
 
 	// Write todo to a temp file.
-	f, err := os.CreateTemp("", "gti-rebase-todo-*")
+	f, err := os.CreateTemp("", "jig-rebase-todo-*")
 	if err != nil {
 		return fmt.Errorf("creating temp todo file: %w", err)
 	}

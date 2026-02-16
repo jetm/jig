@@ -3,8 +3,8 @@ package app
 
 import (
 	tea "charm.land/bubbletea/v2"
-	"github.com/jetm/gti/internal/config"
-	"github.com/jetm/gti/internal/git"
+	"github.com/jetm/jig/internal/config"
+	"github.com/jetm/jig/internal/git"
 )
 
 // PushModelMsg tells Model to push a new command model onto the stack.

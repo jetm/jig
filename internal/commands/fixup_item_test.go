@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jetm/gti/internal/git"
+	"github.com/jetm/jig/internal/git"
 )
 
 func TestFixupItem_Methods(t *testing.T) {

@@ -5,7 +5,7 @@ package integration_test
 import (
 	"testing"
 
-	"github.com/jetm/gti/internal/testhelper"
+	"github.com/jetm/jig/internal/testhelper"
 	"github.com/stretchr/testify/assert"
 )
 

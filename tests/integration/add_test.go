@@ -9,7 +9,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/jetm/gti/internal/testhelper"
+	"github.com/jetm/jig/internal/testhelper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -22,15 +22,15 @@ func TestAdd_DirectMode_StagesFiles(t *testing.T) {
 	// Modify the file so it has unstaged changes
 	testhelper.WriteFile(t, repoDir, "file1.txt", "hello modified\n")
 
-	cmd := exec.Command(gtiBinary, "add", "file1.txt")
+	cmd := exec.Command(jigBinary, "add", "file1.txt")
 	cmd.Dir = repoDir
 	out, err := cmd.CombinedOutput()
-	require.NoError(t, err, "gti add direct mode should exit zero: %s", out)
+	require.NoError(t, err, "jig add direct mode should exit zero: %s", out)
 
 	// Verify file is now staged
 	cached, err := exec.Command("git", "-C", repoDir, "diff", "--name-only", "--cached").CombinedOutput()
 	require.NoError(t, err)
-	assert.Contains(t, string(cached), "file1.txt", "file should be staged after gti add")
+	assert.Contains(t, string(cached), "file1.txt", "file should be staged after jig add")
 }
 
 func TestAdd_ExitsCleanly(t *testing.T) {

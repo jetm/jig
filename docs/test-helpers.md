@@ -1,6 +1,6 @@
 # Test Helpers and Coverage
 
-gti-specific test infrastructure, helper packages, and per-package coverage requirements.
+jig-specific test infrastructure, helper packages, and per-package coverage requirements.
 
 ---
 
@@ -171,7 +171,7 @@ Each command follows the TDD sequence:
 
 ### `internal/config`
 
-- `GTI_UI_THEME=light` overrides `ui.theme: "dark"` from yaml file
+- `JIG_UI_THEME=light` overrides `ui.theme: "dark"` from yaml file
 - Use `t.Setenv` (auto-reverts) and `t.TempDir()` for config file
 - Env vars must take precedence over file values across all fields
 
@@ -239,7 +239,7 @@ assert.Empty(t, filterTTYError(stderrBuf.String()), "should start without errors
 
 The third test layer exercises the full `tea.Program` event loop with real git state mutations. Unlike the startup tests above (which launch the compiled binary), these construct models in-process with virtual I/O - no real TTY needed.
 
-**Why not upstream teatest?** The `github.com/charmbracelet/x/exp/teatest/v2` module imports `github.com/charmbracelet/bubbletea/v2`, but gti uses `charm.land/bubbletea/v2`. These are different Go module paths with incompatible types. The helpers in `teatest_helpers_test.go` are a ~150-line equivalent using our bubbletea directly.
+**Why not upstream teatest?** The `github.com/charmbracelet/x/exp/teatest/v2` module imports `github.com/charmbracelet/bubbletea/v2`, but jig uses `charm.land/bubbletea/v2`. These are different Go module paths with incompatible types. The helpers in `teatest_helpers_test.go` are a ~150-line equivalent using our bubbletea directly.
 
 **Architecture:**
 
@@ -281,7 +281,7 @@ func containsOutput(substr string) func(string) bool
 1. `newRunnerInDir(tb, dir)` - holds `cwdMu` during `os.Chdir` + `git.NewExecRunner` + restore
 2. `config.Load()` + `diff.PlainRenderer{}` (no delta/chroma dependency)
 3. `commands.NewXxxModel(...)` with command-specific parameters
-4. `xxxTeaModelAdapter` wrapping (duplicates unexported adapters from `cmd/gti/main.go`)
+4. `xxxTeaModelAdapter` wrapping (duplicates unexported adapters from `cmd/jig/main.go`)
 5. `app.New(adapter, runner, cfg)` as the root model
 6. `newTestModel(tb, appModel)` starts the program in a goroutine
 

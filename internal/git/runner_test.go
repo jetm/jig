@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jetm/gti/internal/git"
+	"github.com/jetm/jig/internal/git"
 )
 
 // initTempRepo creates a temporary git repository and changes the working directory to it.

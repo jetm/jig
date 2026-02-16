@@ -5,7 +5,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/jetm/gti/internal/tui"
+	"github.com/jetm/jig/internal/tui"
 )
 
 // KeyBinding describes a single keybinding for the help overlay.

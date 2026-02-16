@@ -3,7 +3,7 @@ package tui_test
 import (
 	"testing"
 
-	"github.com/jetm/gti/internal/tui"
+	"github.com/jetm/jig/internal/tui"
 )
 
 func TestColumns_Standard80(t *testing.T) {

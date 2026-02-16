@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/jetm/gti/internal/git"
-	"github.com/jetm/gti/internal/testhelper"
+	"github.com/jetm/jig/internal/git"
+	"github.com/jetm/jig/internal/testhelper"
 )
 
 func TestRepoRoot(t *testing.T) {

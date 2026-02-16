@@ -6,7 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/jetm/gti/internal/git"
+	"github.com/jetm/jig/internal/git"
 )
 
 // testHunk builds a git.Hunk with the given header.

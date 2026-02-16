@@ -1,4 +1,4 @@
-// Package tui provides shared styles, layout functions, and constants for the gti terminal UI.
+// Package tui provides shared styles, layout functions, and constants for the jig terminal UI.
 package tui
 
 const (

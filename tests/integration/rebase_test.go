@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jetm/gti/internal/git"
-	"github.com/jetm/gti/internal/testhelper"
+	"github.com/jetm/jig/internal/git"
+	"github.com/jetm/jig/internal/testhelper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -45,7 +45,7 @@ func TestRebaseInteractive_EditorMode_WritesBackTodo(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, gtiBinary, "rebase-interactive", todoPath)
+	cmd := exec.CommandContext(ctx, jigBinary, "rebase-interactive", todoPath)
 	cmd.Dir = repoDir
 	cmd.Stdin = strings.NewReader("q") // send quit to avoid hanging
 	cmd.Env = append(os.Environ(), "TERM=dumb")
@@ -144,7 +144,7 @@ func TestRebaseInteractive_EditorMode_AbortExitsNonZero(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, gtiBinary, "rebase-interactive", todoPath)
+	cmd := exec.CommandContext(ctx, jigBinary, "rebase-interactive", todoPath)
 	cmd.Dir = repoDir
 	cmd.Stdin = strings.NewReader("q")
 	cmd.Env = append(os.Environ(), "TERM=dumb")

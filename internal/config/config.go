@@ -1,4 +1,4 @@
-// Package config provides gti configuration loading and defaults.
+// Package config provides jig configuration loading and defaults.
 package config
 
 import (
@@ -10,7 +10,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Config holds all gti configuration values.
+// Config holds all jig configuration values.
 type Config struct {
 	Theme       string
 	CopyCmd     string
@@ -85,8 +85,8 @@ func configPaths() []string {
 	}
 
 	return []string{
-		filepath.Join(xdgConfigHome, "gti", "config.yaml"),
-		filepath.Join(home, ".gti.yaml"),
+		filepath.Join(xdgConfigHome, "jig", "config.yaml"),
+		filepath.Join(home, ".jig.yaml"),
 	}
 }
 
@@ -156,43 +156,43 @@ func applyFile(cfg *Config) error {
 
 // applyEnv overlays environment variable values onto cfg.
 func applyEnv(cfg *Config) error {
-	if v := os.Getenv("GTI_DIFF_RENDERER"); v != "" {
+	if v := os.Getenv("JIG_DIFF_RENDERER"); v != "" {
 		cfg.DiffRenderer = v
 	}
-	if v := os.Getenv("GTI_LOG_COMMIT_LIMIT"); v != "" {
+	if v := os.Getenv("JIG_LOG_COMMIT_LIMIT"); v != "" {
 		n, err := strconv.Atoi(v)
 		if err != nil {
-			return fmt.Errorf("invalid GTI_LOG_COMMIT_LIMIT %q: %w", v, err)
+			return fmt.Errorf("invalid JIG_LOG_COMMIT_LIMIT %q: %w", v, err)
 		}
 		cfg.LogCommitLimit = n
 	}
-	if v := os.Getenv("GTI_REBASE_DEFAULT_BASE"); v != "" {
+	if v := os.Getenv("JIG_REBASE_DEFAULT_BASE"); v != "" {
 		cfg.RebaseDefaultBase = v
 	}
-	if v := os.Getenv("GTI_UI_THEME"); v != "" {
+	if v := os.Getenv("JIG_UI_THEME"); v != "" {
 		cfg.UITheme = v
 	}
-	if v := os.Getenv("GTI_SHOW_DIFF_PANEL"); v != "" {
+	if v := os.Getenv("JIG_SHOW_DIFF_PANEL"); v != "" {
 		b, err := strconv.ParseBool(v)
 		if err != nil {
-			return fmt.Errorf("invalid GTI_SHOW_DIFF_PANEL %q: %w", v, err)
+			return fmt.Errorf("invalid JIG_SHOW_DIFF_PANEL %q: %w", v, err)
 		}
 		cfg.ShowDiffPanel = b
 	}
-	if v := os.Getenv("GTI_PANEL_RATIO"); v != "" {
+	if v := os.Getenv("JIG_PANEL_RATIO"); v != "" {
 		n, err := strconv.Atoi(v)
 		if err != nil {
-			return fmt.Errorf("invalid GTI_PANEL_RATIO %q: %w", v, err)
+			return fmt.Errorf("invalid JIG_PANEL_RATIO %q: %w", v, err)
 		}
 		if n < 20 || n > 80 {
-			return fmt.Errorf("GTI_PANEL_RATIO %d out of range [20, 80]", n)
+			return fmt.Errorf("JIG_PANEL_RATIO %d out of range [20, 80]", n)
 		}
 		cfg.PanelRatio = n
 	}
-	if v := os.Getenv("GTI_SOFT_WRAP"); v != "" {
+	if v := os.Getenv("JIG_SOFT_WRAP"); v != "" {
 		b, err := strconv.ParseBool(v)
 		if err != nil {
-			return fmt.Errorf("invalid GTI_SOFT_WRAP %q: %w", v, err)
+			return fmt.Errorf("invalid JIG_SOFT_WRAP %q: %w", v, err)
 		}
 		cfg.SoftWrap = b
 	}

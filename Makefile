@@ -1,4 +1,4 @@
-BINARY    := gti
+BINARY    := jig
 BUILD_DIR := bin
 THRESHOLD := 90
 VERSION   := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
@@ -7,7 +7,7 @@ LDFLAGS   := -ldflags "-X main.version=$(VERSION)"
 .PHONY: build test test-integration lint fmt vet fix coverage install clean snapshot check-release
 
 build:
-	go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY) ./cmd/gti
+	go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY) ./cmd/jig
 
 test:
 	go test -race -coverprofile=coverage.out -covermode=atomic ./...

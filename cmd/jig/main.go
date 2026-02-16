@@ -1,4 +1,4 @@
-// Package main provides the gti CLI entry point and subcommand registration.
+// Package main provides the jig CLI entry point and subcommand registration.
 package main
 
 import (
@@ -12,11 +12,11 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/spf13/cobra"
 
-	"github.com/jetm/gti/internal/app"
-	"github.com/jetm/gti/internal/commands"
-	"github.com/jetm/gti/internal/config"
-	"github.com/jetm/gti/internal/diff"
-	"github.com/jetm/gti/internal/git"
+	"github.com/jetm/jig/internal/app"
+	"github.com/jetm/jig/internal/commands"
+	"github.com/jetm/jig/internal/config"
+	"github.com/jetm/jig/internal/diff"
+	"github.com/jetm/jig/internal/git"
 )
 
 var (
@@ -27,14 +27,14 @@ var (
 
 func newRootCmd() *cobra.Command {
 	root := &cobra.Command{
-		Use:   "gti",
-		Short: "Interactive git TUI",
-		// Print version in the format: gti version <version> (commit: <hash>, built: <date>)
+		Use:   "jig",
+		Short: "Precision git jigs",
+		// Print version in the format: jig version <version> (commit: <hash>, built: <date>)
 		Version: fmt.Sprintf("%s (commit: %s, built: %s)", version, commit, date),
 	}
 
 	// Override version template to match spec format
-	root.SetVersionTemplate("gti version {{.Version}}\n")
+	root.SetVersionTemplate("jig version {{.Version}}\n")
 
 	// Register implemented commands
 	root.AddCommand(newDiffCmd())

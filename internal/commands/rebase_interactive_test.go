@@ -11,12 +11,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/jetm/gti/internal/app"
-	"github.com/jetm/gti/internal/commands"
-	"github.com/jetm/gti/internal/config"
-	"github.com/jetm/gti/internal/diff"
-	"github.com/jetm/gti/internal/git"
-	"github.com/jetm/gti/internal/testhelper"
+	"github.com/jetm/jig/internal/app"
+	"github.com/jetm/jig/internal/commands"
+	"github.com/jetm/jig/internal/config"
+	"github.com/jetm/jig/internal/diff"
+	"github.com/jetm/jig/internal/git"
+	"github.com/jetm/jig/internal/testhelper"
 )
 
 // newFakeRebaseModel creates a RebaseInteractiveModel in standalone mode with scripted git outputs.

@@ -30,7 +30,7 @@ repos:
         types: [go]
       - id: go-build
         name: go build
-        entry: go build ./cmd/gti
+        entry: go build ./cmd/jig
         language: system
         pass_filenames: false
         types: [go]

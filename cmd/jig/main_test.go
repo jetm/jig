@@ -12,10 +12,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/jetm/gti/internal/commands"
-	"github.com/jetm/gti/internal/config"
-	"github.com/jetm/gti/internal/diff"
-	"github.com/jetm/gti/internal/testhelper"
+	"github.com/jetm/jig/internal/commands"
+	"github.com/jetm/jig/internal/config"
+	"github.com/jetm/jig/internal/diff"
+	"github.com/jetm/jig/internal/testhelper"
 )
 
 func TestRootCommand_ShowsHelp(t *testing.T) {
@@ -46,14 +46,14 @@ func TestVersionFlag(t *testing.T) {
 	_ = cmd.Execute()
 
 	output := buf.String()
-	expected := "gti version dev (commit: none, built: unknown)"
+	expected := "jig version dev (commit: none, built: unknown)"
 	if !strings.Contains(output, expected) {
 		t.Errorf("version output = %q, want containing %q", output, expected)
 	}
 }
 
 func TestRun_Success(t *testing.T) {
-	os.Args = []string{"gti", "--version"}
+	os.Args = []string{"jig", "--version"}
 	if err := run(); err != nil {
 		t.Fatalf("run() returned error: %v", err)
 	}
@@ -195,18 +195,18 @@ func TestAddCmd_DirectMode_StageError(t *testing.T) {
 }
 
 func TestRun_UnknownCommandError(t *testing.T) {
-	os.Args = []string{"gti", "unknowncommand"}
+	os.Args = []string{"jig", "unknowncommand"}
 	err := run()
 	if err == nil {
 		t.Fatal("expected error for unknown command, got nil")
 	}
 }
 
-// runCmdWithInvalidConfig executes a subcommand with GTI_LOG_COMMIT_LIMIT set
+// runCmdWithInvalidConfig executes a subcommand with JIG_LOG_COMMIT_LIMIT set
 // to an invalid value so config.Load() returns an error before any TUI starts.
 func runCmdWithInvalidConfig(t *testing.T, args ...string) error {
 	t.Helper()
-	t.Setenv("GTI_LOG_COMMIT_LIMIT", "notanumber")
+	t.Setenv("JIG_LOG_COMMIT_LIMIT", "notanumber")
 	root := newRootCmd()
 	buf := new(bytes.Buffer)
 	root.SetOut(buf)
@@ -322,7 +322,7 @@ func TestAddCmd_ShortDirectFlag_Unknown(t *testing.T) {
 	root.SetErr(buf)
 	root.SetArgs([]string{"add", "-d", "file.go"})
 	err := root.Execute()
-	require.Error(t, err, "gti add -d should return an error for unknown flag")
+	require.Error(t, err, "jig add -d should return an error for unknown flag")
 	assert.Contains(t, err.Error(), "unknown shorthand flag")
 }
 
@@ -441,7 +441,7 @@ func TestResetCmd_ShortDirectFlag_Unknown(t *testing.T) {
 	root.SetErr(buf)
 	root.SetArgs([]string{"reset", "-d", "file.go"})
 	err := root.Execute()
-	require.Error(t, err, "gti reset -d should return an error for unknown flag")
+	require.Error(t, err, "jig reset -d should return an error for unknown flag")
 	assert.Contains(t, err.Error(), "unknown shorthand flag")
 }
 
@@ -461,7 +461,7 @@ func TestResetCmd_WithArgsAndNoInteractiveFlag_CallsDirect(t *testing.T) {
 }
 
 func TestResetCmd_WithInteractiveFlagAndArgs_AcceptsFlag(t *testing.T) {
-	t.Setenv("GTI_LOG_COMMIT_LIMIT", "notanumber")
+	t.Setenv("JIG_LOG_COMMIT_LIMIT", "notanumber")
 	root := newRootCmd()
 	buf := new(bytes.Buffer)
 	root.SetOut(buf)
@@ -469,7 +469,7 @@ func TestResetCmd_WithInteractiveFlagAndArgs_AcceptsFlag(t *testing.T) {
 	root.SetArgs([]string{"reset", "-i", "file.go"})
 	err := root.Execute()
 	require.Error(t, err)
-	assert.NotContains(t, err.Error(), "unknown shorthand flag", "gti reset -i should be a valid flag")
+	assert.NotContains(t, err.Error(), "unknown shorthand flag", "jig reset -i should be a valid flag")
 	assert.Contains(t, err.Error(), "loading config", "expected to reach TUI path (config load)")
 }
 
@@ -501,10 +501,10 @@ func TestAddCmd_DirectMode_WithFlag(t *testing.T) {
 }
 
 func TestAddCmd_WithInteractiveFlagAndArgs_AcceptsFlag(t *testing.T) {
-	// gti add -i file.go must not error at cobra parse level - the flag is valid.
+	// jig add -i file.go must not error at cobra parse level - the flag is valid.
 	// The TUI path is exercised; we can only verify the flag is accepted without error
 	// before the TUI/runner starts (config load error gates it).
-	t.Setenv("GTI_LOG_COMMIT_LIMIT", "notanumber")
+	t.Setenv("JIG_LOG_COMMIT_LIMIT", "notanumber")
 	root := newRootCmd()
 	buf := new(bytes.Buffer)
 	root.SetOut(buf)
@@ -513,13 +513,13 @@ func TestAddCmd_WithInteractiveFlagAndArgs_AcceptsFlag(t *testing.T) {
 	err := root.Execute()
 	// Config load error means we reached the TUI dispatch path, not a flag parse error.
 	require.Error(t, err)
-	assert.NotContains(t, err.Error(), "unknown shorthand flag", "gti add -i should be a valid flag")
+	assert.NotContains(t, err.Error(), "unknown shorthand flag", "jig add -i should be a valid flag")
 	assert.Contains(t, err.Error(), "loading config", "expected to reach TUI path (config load)")
 }
 
 func TestNewFakeAddModel_WithFilterPaths(t *testing.T) {
 	t.Parallel()
-	// Covers the gti add -i file.go code path: NewAddModel is called with filter paths.
+	// Covers the jig add -i file.go code path: NewAddModel is called with filter paths.
 	runner := &testhelper.FakeRunner{Outputs: []string{"", "", "main"}}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}

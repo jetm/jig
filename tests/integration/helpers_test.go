@@ -15,27 +15,27 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var gtiBinary string
+var jigBinary string
 
 func TestMain(m *testing.M) {
-	// Build the gti binary once for all integration tests.
-	tmpDir, err := os.MkdirTemp("", "gti-integration-*")
+	// Build the jig binary once for all integration tests.
+	tmpDir, err := os.MkdirTemp("", "jig-integration-*")
 	if err != nil {
 		panic("creating temp dir: " + err.Error())
 	}
 	defer os.RemoveAll(tmpDir)
 
-	gtiBinary = filepath.Join(tmpDir, "gti")
-	cmd := exec.Command("go", "build", "-o", gtiBinary, "../../cmd/gti")
+	jigBinary = filepath.Join(tmpDir, "jig")
+	cmd := exec.Command("go", "build", "-o", jigBinary, "../../cmd/jig")
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		panic("building gti: " + err.Error())
+		panic("building jig: " + err.Error())
 	}
 
 	os.Exit(m.Run())
 }
 
-// runTUI launches gti in TUI mode with a quit keystroke and timeout.
+// runTUI launches jig in TUI mode with a quit keystroke and timeout.
 // It returns stderr content (with expected TTY errors filtered out) and any
 // error. The caller asserts stderr is empty to catch pre-TUI startup failures
 // (e.g. git command errors, precondition failures) while tolerating the
@@ -45,7 +45,7 @@ func runTUI(t *testing.T, repoDir string, args ...string) (stderr string, err er
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, gtiBinary, args...)
+	cmd := exec.CommandContext(ctx, jigBinary, args...)
 	cmd.Dir = repoDir
 	cmd.Stdin = strings.NewReader("q\n")
 	cmd.Env = append(os.Environ(), "TERM=dumb")

@@ -5,7 +5,7 @@ import (
 	"os/exec"
 	"testing"
 
-	"github.com/jetm/gti/internal/diff"
+	"github.com/jetm/jig/internal/diff"
 )
 
 func TestDeltaRenderer_ProducesOutput(t *testing.T) {

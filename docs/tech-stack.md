@@ -7,5 +7,5 @@ charm.land/bubbles/v2              list, viewport, textinput, spinner
 github.com/sahilm/fuzzy            Fuzzy filtering for file lists
 alecthomas/chroma/v2               Native diff syntax highlighting
 spf13/cobra                        CLI subcommands
-gopkg.in/yaml.v3                   Config parsing (~/.config/gti/config.yaml)
+gopkg.in/yaml.v3                   Config parsing (~/.config/jig/config.yaml)
 ```

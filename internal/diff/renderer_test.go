@@ -4,8 +4,8 @@ import (
 	"os/exec"
 	"testing"
 
-	"github.com/jetm/gti/internal/config"
-	"github.com/jetm/gti/internal/diff"
+	"github.com/jetm/jig/internal/config"
+	"github.com/jetm/jig/internal/diff"
 )
 
 func TestChain_ValidDeltaPath(t *testing.T) {

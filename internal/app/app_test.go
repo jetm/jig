@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/jetm/gti/internal/config"
+	"github.com/jetm/jig/internal/config"
 )
 
 // mockModel is a simple tea.Model for testing that records calls.

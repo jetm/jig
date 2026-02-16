@@ -1,4 +1,4 @@
-module github.com/jetm/gti
+module github.com/jetm/jig
 
 go 1.26
 

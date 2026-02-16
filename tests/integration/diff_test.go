@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jetm/gti/internal/testhelper"
+	"github.com/jetm/jig/internal/testhelper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

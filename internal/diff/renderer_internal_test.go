@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/jetm/gti/internal/config"
+	"github.com/jetm/jig/internal/config"
 )
 
 func TestChain_PlainFallback(t *testing.T) {

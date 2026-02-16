@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jetm/gti/internal/diff"
+	"github.com/jetm/jig/internal/diff"
 )
 
 func TestChromaRenderer_ANSIEscapeCodes(t *testing.T) {

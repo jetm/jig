@@ -1,4 +1,4 @@
-// Package components provides reusable TUI widgets for the gti interface.
+// Package components provides reusable TUI widgets for the jig interface.
 package components
 
 import (

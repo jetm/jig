@@ -76,7 +76,7 @@ func TestLoad_NoFileReturnsDefaults(t *testing.T) {
 
 func TestLoad_XDGFileAllFields(t *testing.T) {
 	dir := t.TempDir()
-	cfgDir := filepath.Join(dir, ".config", "gti")
+	cfgDir := filepath.Join(dir, ".config", "jig")
 	if err := os.MkdirAll(cfgDir, 0o750); err != nil {
 		t.Fatal(err)
 	}
@@ -114,12 +114,12 @@ ui:
 
 func TestLoad_FallbackDotFile(t *testing.T) {
 	dir := t.TempDir()
-	// No XDG config dir, only ~/.gti.yaml
+	// No XDG config dir, only ~/.jig.yaml
 	content := `
 diff:
   renderer: plain
 `
-	if err := os.WriteFile(filepath.Join(dir, ".gti.yaml"), []byte(content), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, ".jig.yaml"), []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -138,7 +138,7 @@ diff:
 
 func TestLoad_PartialFile(t *testing.T) {
 	dir := t.TempDir()
-	cfgDir := filepath.Join(dir, ".config", "gti")
+	cfgDir := filepath.Join(dir, ".config", "jig")
 	if err := os.MkdirAll(cfgDir, 0o750); err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +166,7 @@ log:
 
 func TestLoad_MalformedYAML(t *testing.T) {
 	dir := t.TempDir()
-	cfgDir := filepath.Join(dir, ".config", "gti")
+	cfgDir := filepath.Join(dir, ".config", "jig")
 	if err := os.MkdirAll(cfgDir, 0o750); err != nil {
 		t.Fatal(err)
 	}
@@ -182,7 +182,7 @@ func TestLoad_MalformedYAML(t *testing.T) {
 
 func TestLoad_EnvOverridesFile(t *testing.T) {
 	dir := t.TempDir()
-	cfgDir := filepath.Join(dir, ".config", "gti")
+	cfgDir := filepath.Join(dir, ".config", "jig")
 	if err := os.MkdirAll(cfgDir, 0o750); err != nil {
 		t.Fatal(err)
 	}
@@ -194,7 +194,7 @@ diff:
 		t.Fatal(err)
 	}
 
-	t.Setenv("GTI_DIFF_RENDERER", "delta")
+	t.Setenv("JIG_DIFF_RENDERER", "delta")
 	cfg, err := isolatedLoad(t, dir)
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
@@ -206,9 +206,9 @@ diff:
 
 func TestLoad_EnvOverridesDefault(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("GTI_LOG_COMMIT_LIMIT", "100")
-	t.Setenv("GTI_REBASE_DEFAULT_BASE", "main")
-	t.Setenv("GTI_UI_THEME", "light")
+	t.Setenv("JIG_LOG_COMMIT_LIMIT", "100")
+	t.Setenv("JIG_REBASE_DEFAULT_BASE", "main")
+	t.Setenv("JIG_UI_THEME", "light")
 
 	cfg, err := isolatedLoad(t, dir)
 	if err != nil {
@@ -227,11 +227,11 @@ func TestLoad_EnvOverridesDefault(t *testing.T) {
 
 func TestLoad_InvalidNumericEnvVar(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("GTI_LOG_COMMIT_LIMIT", "abc")
+	t.Setenv("JIG_LOG_COMMIT_LIMIT", "abc")
 
 	_, err := isolatedLoad(t, dir)
 	if err == nil {
-		t.Fatal("expected error for invalid GTI_LOG_COMMIT_LIMIT, got nil")
+		t.Fatal("expected error for invalid JIG_LOG_COMMIT_LIMIT, got nil")
 	}
 }
 
@@ -264,7 +264,7 @@ func TestConfigPaths_NonEmpty(t *testing.T) {
 
 func TestLoad_ShowDiffPanelFromFile(t *testing.T) {
 	dir := t.TempDir()
-	cfgDir := filepath.Join(dir, ".config", "gti")
+	cfgDir := filepath.Join(dir, ".config", "jig")
 	if err := os.MkdirAll(cfgDir, 0o750); err != nil {
 		t.Fatal(err)
 	}
@@ -287,7 +287,7 @@ ui:
 
 func TestLoad_ShowDiffPanelEnvOverridesFile(t *testing.T) {
 	dir := t.TempDir()
-	cfgDir := filepath.Join(dir, ".config", "gti")
+	cfgDir := filepath.Join(dir, ".config", "jig")
 	if err := os.MkdirAll(cfgDir, 0o750); err != nil {
 		t.Fatal(err)
 	}
@@ -299,7 +299,7 @@ ui:
 		t.Fatal(err)
 	}
 
-	t.Setenv("GTI_SHOW_DIFF_PANEL", "false")
+	t.Setenv("JIG_SHOW_DIFF_PANEL", "false")
 	cfg, err := isolatedLoad(t, dir)
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
@@ -311,7 +311,7 @@ ui:
 
 func TestLoad_ShowDiffPanelEnvOverridesDefault(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("GTI_SHOW_DIFF_PANEL", "false")
+	t.Setenv("JIG_SHOW_DIFF_PANEL", "false")
 
 	cfg, err := isolatedLoad(t, dir)
 	if err != nil {
@@ -324,11 +324,11 @@ func TestLoad_ShowDiffPanelEnvOverridesDefault(t *testing.T) {
 
 func TestLoad_ShowDiffPanelInvalidEnv(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("GTI_SHOW_DIFF_PANEL", "invalid")
+	t.Setenv("JIG_SHOW_DIFF_PANEL", "invalid")
 
 	_, err := isolatedLoad(t, dir)
 	if err == nil {
-		t.Fatal("expected error for invalid GTI_SHOW_DIFF_PANEL, got nil")
+		t.Fatal("expected error for invalid JIG_SHOW_DIFF_PANEL, got nil")
 	}
 }
 
@@ -401,7 +401,7 @@ func TestLoad_PanelRatioDefault(t *testing.T) {
 
 func TestLoad_PanelRatioFromFile(t *testing.T) {
 	dir := t.TempDir()
-	cfgDir := filepath.Join(dir, ".config", "gti")
+	cfgDir := filepath.Join(dir, ".config", "jig")
 	if err := os.MkdirAll(cfgDir, 0o750); err != nil {
 		t.Fatal(err)
 	}
@@ -424,7 +424,7 @@ ui:
 
 func TestLoad_PanelRatioFileOmitted(t *testing.T) {
 	dir := t.TempDir()
-	cfgDir := filepath.Join(dir, ".config", "gti")
+	cfgDir := filepath.Join(dir, ".config", "jig")
 	if err := os.MkdirAll(cfgDir, 0o750); err != nil {
 		t.Fatal(err)
 	}
@@ -447,7 +447,7 @@ ui:
 
 func TestLoad_PanelRatioEnvOverridesFile(t *testing.T) {
 	dir := t.TempDir()
-	cfgDir := filepath.Join(dir, ".config", "gti")
+	cfgDir := filepath.Join(dir, ".config", "jig")
 	if err := os.MkdirAll(cfgDir, 0o750); err != nil {
 		t.Fatal(err)
 	}
@@ -459,7 +459,7 @@ ui:
 		t.Fatal(err)
 	}
 
-	t.Setenv("GTI_PANEL_RATIO", "30")
+	t.Setenv("JIG_PANEL_RATIO", "30")
 	cfg, err := isolatedLoad(t, dir)
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
@@ -471,7 +471,7 @@ ui:
 
 func TestLoad_PanelRatioEnvOverridesDefault(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("GTI_PANEL_RATIO", "25")
+	t.Setenv("JIG_PANEL_RATIO", "25")
 	cfg, err := isolatedLoad(t, dir)
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
@@ -483,7 +483,7 @@ func TestLoad_PanelRatioEnvOverridesDefault(t *testing.T) {
 
 func TestLoad_PanelRatioBoundaryMin(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("GTI_PANEL_RATIO", "20")
+	t.Setenv("JIG_PANEL_RATIO", "20")
 	cfg, err := isolatedLoad(t, dir)
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
@@ -495,7 +495,7 @@ func TestLoad_PanelRatioBoundaryMin(t *testing.T) {
 
 func TestLoad_PanelRatioBoundaryMax(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("GTI_PANEL_RATIO", "80")
+	t.Setenv("JIG_PANEL_RATIO", "80")
 	cfg, err := isolatedLoad(t, dir)
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
@@ -507,28 +507,28 @@ func TestLoad_PanelRatioBoundaryMax(t *testing.T) {
 
 func TestLoad_PanelRatioBelowMin(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("GTI_PANEL_RATIO", "10")
+	t.Setenv("JIG_PANEL_RATIO", "10")
 	_, err := isolatedLoad(t, dir)
 	if err == nil {
-		t.Fatal("expected error for GTI_PANEL_RATIO=10 (below min 20), got nil")
+		t.Fatal("expected error for JIG_PANEL_RATIO=10 (below min 20), got nil")
 	}
 }
 
 func TestLoad_PanelRatioAboveMax(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("GTI_PANEL_RATIO", "90")
+	t.Setenv("JIG_PANEL_RATIO", "90")
 	_, err := isolatedLoad(t, dir)
 	if err == nil {
-		t.Fatal("expected error for GTI_PANEL_RATIO=90 (above max 80), got nil")
+		t.Fatal("expected error for JIG_PANEL_RATIO=90 (above max 80), got nil")
 	}
 }
 
 func TestLoad_PanelRatioInvalidEnv(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("GTI_PANEL_RATIO", "abc")
+	t.Setenv("JIG_PANEL_RATIO", "abc")
 	_, err := isolatedLoad(t, dir)
 	if err == nil {
-		t.Fatal("expected error for invalid GTI_PANEL_RATIO, got nil")
+		t.Fatal("expected error for invalid JIG_PANEL_RATIO, got nil")
 	}
 }
 
@@ -552,7 +552,7 @@ func TestLoad_SoftWrapDefault(t *testing.T) {
 
 func TestLoad_SoftWrapFromFile(t *testing.T) {
 	dir := t.TempDir()
-	cfgDir := filepath.Join(dir, ".config", "gti")
+	cfgDir := filepath.Join(dir, ".config", "jig")
 	if err := os.MkdirAll(cfgDir, 0o750); err != nil {
 		t.Fatal(err)
 	}
@@ -575,7 +575,7 @@ ui:
 
 func TestLoad_SoftWrapFileOmitted(t *testing.T) {
 	dir := t.TempDir()
-	cfgDir := filepath.Join(dir, ".config", "gti")
+	cfgDir := filepath.Join(dir, ".config", "jig")
 	if err := os.MkdirAll(cfgDir, 0o750); err != nil {
 		t.Fatal(err)
 	}
@@ -598,7 +598,7 @@ ui:
 
 func TestLoad_SoftWrapEnvOverridesFile(t *testing.T) {
 	dir := t.TempDir()
-	cfgDir := filepath.Join(dir, ".config", "gti")
+	cfgDir := filepath.Join(dir, ".config", "jig")
 	if err := os.MkdirAll(cfgDir, 0o750); err != nil {
 		t.Fatal(err)
 	}
@@ -610,7 +610,7 @@ ui:
 		t.Fatal(err)
 	}
 
-	t.Setenv("GTI_SOFT_WRAP", "true")
+	t.Setenv("JIG_SOFT_WRAP", "true")
 	cfg, err := isolatedLoad(t, dir)
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
@@ -622,7 +622,7 @@ ui:
 
 func TestLoad_SoftWrapEnvOverridesDefault(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("GTI_SOFT_WRAP", "true")
+	t.Setenv("JIG_SOFT_WRAP", "true")
 	cfg, err := isolatedLoad(t, dir)
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
@@ -634,10 +634,10 @@ func TestLoad_SoftWrapEnvOverridesDefault(t *testing.T) {
 
 func TestLoad_SoftWrapInvalidEnv(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("GTI_SOFT_WRAP", "invalid")
+	t.Setenv("JIG_SOFT_WRAP", "invalid")
 	_, err := isolatedLoad(t, dir)
 	if err == nil {
-		t.Fatal("expected error for invalid GTI_SOFT_WRAP, got nil")
+		t.Fatal("expected error for invalid JIG_SOFT_WRAP, got nil")
 	}
 }
 
@@ -689,7 +689,7 @@ func TestSave_CreatesParentDirectories(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, ".config"))
 
 	// Ensure the directory does not exist
-	cfgDir := filepath.Join(dir, ".config", "gti")
+	cfgDir := filepath.Join(dir, ".config", "jig")
 	if _, err := os.Stat(cfgDir); err == nil {
 		t.Fatal("config dir should not exist before Save()")
 	}

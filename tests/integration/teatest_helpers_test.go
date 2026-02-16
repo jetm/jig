@@ -14,11 +14,11 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/jetm/gti/internal/app"
-	"github.com/jetm/gti/internal/commands"
-	"github.com/jetm/gti/internal/config"
-	"github.com/jetm/gti/internal/diff"
-	"github.com/jetm/gti/internal/git"
+	"github.com/jetm/jig/internal/app"
+	"github.com/jetm/jig/internal/commands"
+	"github.com/jetm/jig/internal/config"
+	"github.com/jetm/jig/internal/diff"
+	"github.com/jetm/jig/internal/git"
 )
 
 // cwdMu serializes os.Chdir calls during runner construction.
@@ -149,7 +149,7 @@ func sendTab(tm *testModel)         { tm.send(specialKey(tea.KeyTab)) }
 func sendKey(tm *testModel, c rune) { tm.send(keyPress(c)) }
 
 // --- tea.Model adapters ---
-// These duplicate the unexported adapters in cmd/gti/main.go.
+// These duplicate the unexported adapters in cmd/jig/main.go.
 
 type addTeaModelAdapter struct{ inner *commands.AddModel }
 

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jetm/gti/internal/tui"
+	"github.com/jetm/jig/internal/tui"
 )
 
 func newTestStatusBar() *StatusBar {

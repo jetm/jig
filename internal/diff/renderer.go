@@ -5,7 +5,7 @@ package diff
 import (
 	"os/exec"
 
-	"github.com/jetm/gti/internal/config"
+	"github.com/jetm/jig/internal/config"
 )
 
 // Renderer transforms raw unified diff text into styled terminal output.

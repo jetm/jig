@@ -6,7 +6,7 @@ import (
 	"os/exec"
 	"testing"
 
-	"github.com/jetm/gti/internal/testhelper"
+	"github.com/jetm/jig/internal/testhelper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -26,16 +26,16 @@ func TestReset_DirectMode_UnstagesFile(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, string(cached), "file1.txt", "file should be staged before reset")
 
-	// Invoke gti reset to unstage
-	cmd := exec.Command(gtiBinary, "reset", "file1.txt")
+	// Invoke jig reset to unstage
+	cmd := exec.Command(jigBinary, "reset", "file1.txt")
 	cmd.Dir = repoDir
 	out, err = cmd.CombinedOutput()
-	require.NoError(t, err, "gti reset direct mode should exit zero: %s", out)
+	require.NoError(t, err, "jig reset direct mode should exit zero: %s", out)
 
 	// Verify file is no longer staged
 	cachedAfter, err := exec.Command("git", "-C", repoDir, "diff", "--name-only", "--cached").CombinedOutput()
 	require.NoError(t, err)
-	assert.NotContains(t, string(cachedAfter), "file1.txt", "file should not be staged after gti reset")
+	assert.NotContains(t, string(cachedAfter), "file1.txt", "file should not be staged after jig reset")
 }
 
 func TestReset_TUI_UnstageFile(t *testing.T) {

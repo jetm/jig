@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/jetm/gti/internal/git"
-	"github.com/jetm/gti/internal/tui"
+	"github.com/jetm/jig/internal/git"
+	"github.com/jetm/jig/internal/tui"
 )
 
 func TestBuildTree_SameDirectoryGrouping(t *testing.T) {

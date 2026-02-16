@@ -16,7 +16,7 @@ git client — a sharp tool for exactly these operations:
 | `reset`              | `gr`    | git reset --soft/--mixed/--hard   |
 | `log`                | `gl`    | tig / git log (visual commit browser) |
 
-The binary is named `gti` (git-tui). Shell aliases wrap each subcommand.
+The binary is named `jig` (git-tui). Shell aliases wrap each subcommand.
 
 **Reference tools** (study these for functionality baseline):
 - **forgit** — [github.com/wfxr/forgit](https://github.com/wfxr/forgit)
@@ -31,7 +31,7 @@ The binary is named `gti` (git-tui). Shell aliases wrap each subcommand.
 
 `rebase-interactive` also registers as a `$GIT_SEQUENCE_EDITOR` replacement:
 ```
-git config --global sequence.editor "gti rebase-interactive"
+git config --global sequence.editor "jig rebase-interactive"
 ```
 When invoked this way, git passes the rebase todo file path as the sole argument and
 the command edits it in place — exactly like MitMaro's git-interactive-rebase-tool.
@@ -40,7 +40,7 @@ the command edits it in place — exactly like MitMaro's git-interactive-rebase-
 
 ## Terminal requirements
 
-**gti targets modern terminals exclusively.** No fallbacks for legacy terminals.
+**jig targets modern terminals exclusively.** No fallbacks for legacy terminals.
 
 | Requirement           | Minimum                                                    |
 |-----------------------|------------------------------------------------------------|
@@ -174,7 +174,7 @@ colors are permitted anywhere in the codebase. If lipgloss needs a color not in 
 palette, use the nearest token — never invent a new hex value.
 
 **Lipgloss v2 is pure** — it no longer performs I/O. Bubbletea v2 manages terminal
-detection and handles truecolor output natively. Since gti requires truecolor,
+detection and handles truecolor output natively. Since jig requires truecolor,
 downsampling is not a concern. Do not use `lipgloss/v2/compat` (which re-introduces
 I/O) — the bubbletea program handles it.
 
@@ -297,13 +297,13 @@ style, _ := styles.Get("one-dark") // alecthomas/chroma/v2/styles
 ```
 This ensures syntax highlighting in the diff viewport matches the terminal theme exactly.
 
-**Delta:** if delta is the active renderer, set these in `~/.config/gti/config.toml` or
+**Delta:** if delta is the active renderer, set these in `~/.config/jig/config.toml` or
 document them in README as recommended delta config:
 ```toml
 [delta]
 syntax-theme = "OneHalfDark"   # closest delta built-in to One Dark
 ```
-The user's own delta config takes precedence; `gti` only passes `--color-only --width N`
+The user's own delta config takes precedence; `jig` only passes `--color-only --width N`
 and never overrides delta's theme.
 
 ---
@@ -657,7 +657,7 @@ The `AppModel` owns a **model stack** for command-to-command transitions (e.g.
 startup.
 
 ```go
-// cmd/gti/main.go constructs AppModel and runs a single tea.Program.
+// cmd/jig/main.go constructs AppModel and runs a single tea.Program.
 
 // internal/app/app.go
 type AppModel struct {
@@ -845,7 +845,7 @@ func ResolveEditor(ctx context.Context, r Runner) string
 ## Repository layout
 
 ```
-cmd/gti/main.go
+cmd/jig/main.go
 
 internal/
   app/
@@ -940,7 +940,7 @@ tests/
     workflow_test.go       # cross-command workflow tests (AppModel stack)
 
 shell/
-  gti.plugin.fish
+  jig.plugin.fish
 
 Makefile
 .golangci.yml
@@ -964,7 +964,7 @@ github.com/sahilm/fuzzy            Fuzzy filtering for file lists
 alecthomas/chroma/v2               Native diff syntax highlighting
 bluekeyes/go-gitdiff               Unified diff parser (used by hunk.go and chroma renderer)
 spf13/cobra                        CLI subcommands
-spf13/viper                        Config: env vars + ~/.config/gti/config.toml
+spf13/viper                        Config: env vars + ~/.config/jig/config.toml
 ```
 
 **Import conventions:**
@@ -986,7 +986,7 @@ Do **not** use the legacy `github.com/charmbracelet/*` import paths — those ar
 
 ### `add` (alias `ga`) — interactive file staging ([reference: forgit add](https://github.com/wfxr/forgit))
 
-Accepts optional path arguments to scope the file list: `gti add src/` shows only
+Accepts optional path arguments to scope the file list: `jig add src/` shows only
 files under `src/`. Without arguments, shows all changed files in the repo.
 
 Left panel: files from `git status --short`, grouped as unstaged then untracked.
@@ -1220,7 +1220,7 @@ var ErrNothingSelected = errors.New("no lines selected for staging")
 
 **`$EDITOR` editing flow (the `e` key in HunkView):**
 
-`git add -p` lets the user hand-edit a hunk before staging. `gti hunk-add` replicates
+`git add -p` lets the user hand-edit a hunk before staging. `jig hunk-add` replicates
 this with better error handling. The `e` key operates on the **current hunk** (determined
 by cursor position). When pressed:
 
@@ -1317,12 +1317,12 @@ Keybindings:
 
 ### `diff` (alias `gd`) — diffnav-style viewer ([reference: diffnav](https://github.com/dlvhdr/diffnav))
 
-Accepts optional path arguments: `gti diff src/` limits the file list to `src/`.
+Accepts optional path arguments: `jig diff src/` limits the file list to `src/`.
 
 Read-only. Inspired by diffnav: file tree on the left, full diff on the right.
-Accepts optional revision argument: `gti diff HEAD~3`, `gti diff main..feature`.
+Accepts optional revision argument: `jig diff HEAD~3`, `jig diff main..feature`.
 Default: `git diff` (unstaged changes only, matches vanilla git behavior).
-`gti diff --staged` shows `git diff --cached` (staged changes only).
+`jig diff --staged` shows `git diff --cached` (staged changes only).
 
 Left panel: list of changed files, each with `+N -N` stats and a color-coded status
 Nerd Font icon (=modified, =added, =deleted, 󰕓=renamed). Fuzzy-filterable with `/`.
@@ -1379,12 +1379,12 @@ func SplitMultiFileDiff(raw string) ([]StdinFileDiff, error) {}
 Each `FileDiff` implements `list.Item` for `ItemList` via `FilterValue()` (returns
 `Name`) and `Title()` (returns the formatted line with icon and stats).
 
-**Piped input:** `gti diff` also accepts piped input for reviewing external diffs:
+**Piped input:** `jig diff` also accepts piped input for reviewing external diffs:
 ```
-git diff main..feature | gti diff --stdin
-gh pr diff 123 | gti diff --stdin
+git diff main..feature | jig diff --stdin
+gh pr diff 123 | jig diff --stdin
 ```
-When `--stdin` is passed, gti reads the **entire unified diff from stdin into
+When `--stdin` is passed, jig reads the **entire unified diff from stdin into
 memory at startup**, then parses it into an **ordered** `[]StdinFileDiff` slice:
 
 ```go
@@ -1458,15 +1458,15 @@ Acts as a drop-in replacement for `$GIT_SEQUENCE_EDITOR`. Two usage paths:
 
 **Path A — standalone:**
 ```
-gti rebase-interactive [base]
+jig rebase-interactive [base]
 ```
 Reads commits from `git log --reverse --pretty=format:"pick %h %s" <base>..HEAD`,
 presents the todo list, executes via `GIT_SEQUENCE_EDITOR="cp <tempfile>" git rebase -i <base>`.
 
 **Path B — sequence editor (the right way):**
 ```
-git config --global sequence.editor "gti rebase-interactive"
-git rebase -i HEAD~5   # git calls `gti rebase-interactive <todo-file-path>`
+git config --global sequence.editor "jig rebase-interactive"
+git rebase -i HEAD~5   # git calls `jig rebase-interactive <todo-file-path>`
 ```
 When called with a file path argument, the command reads the existing todo file, presents
 the editor, and **writes the result back to that file path** on `<enter>`. Git then
@@ -1555,13 +1555,13 @@ causes git to pause the rebase at that point, returning control to the shell. `B
 
 **Shell-out (`!`):** opens the raw todo file in `$EDITOR` (using the same editor
 resolution chain as hunk-add). On editor exit, re-parse the file and update the
-TodoList view. This is the escape hatch for operations gti doesn’t support natively
+TodoList view. This is the escape hatch for operations jig doesn’t support natively
 (e.g. `exec` lines, `label`/`reset` for complex rebases).
 
 **Quit semantics (Path A vs Path B):**
 
 The rebase command's quit behavior differs by invocation mode because Path B runs as
-a subprocess of git (not as a stacked sub-command within gti):
+a subprocess of git (not as a stacked sub-command within jig):
 
 Path A (standalone): `q`/`<esc>` emits `PopModelMsg{MutatedGit: false}`. `<enter>`
 runs the rebase, then emits `PopModelMsg{MutatedGit: true}` on success.
@@ -1571,7 +1571,7 @@ AppModel stack. `q`/`<esc>` sets `model.aborted = true` and emits `tea.Quit`. `<
 writes the todo file and emits `tea.Quit`. After `tea.Program.Run()` returns, `main.go`
 checks `model.aborted`:
 ```go
-// cmd/gti/main.go — after p.Run() returns for sequence-editor mode:
+// cmd/jig/main.go — after p.Run() returns for sequence-editor mode:
 if rebaseModel, ok := finalModel.(*RebaseModel); ok && rebaseModel.Aborted() {
     os.Exit(1) // git sees non-zero exit, aborts the rebase
 }
@@ -1585,7 +1585,7 @@ as required by the constraints.
 Path A:
 ```go
 todo := git.WriteTodo(entries)
-f := os.CreateTemp("", "gti-rebase-todo-*")
+f := os.CreateTemp("", "jig-rebase-todo-*")
 f.WriteString(todo)
 runner.RunWithEnv(ctx,
     []string{"GIT_SEQUENCE_EDITOR=cp " + f.Name()},
@@ -1802,8 +1802,8 @@ making changes. After a successful `git reset`, the command emits
 Interactive commit log viewer with three detail levels. Replaces `git log` / tig
 for day-to-day commit browsing with integrated search and cross-command actions.
 
-**Default scope:** current branch (`git log HEAD`). Use `gti log --all` for all branches.
-Accepts optional revision arguments: `gti log main..feature`, `gti log HEAD~20`.
+**Default scope:** current branch (`git log HEAD`). Use `jig log --all` for all branches.
+Accepts optional revision arguments: `jig log main..feature`, `jig log HEAD~20`.
 
 **Three detail levels** (cycle with `<tab>`):
 
@@ -1903,8 +1903,8 @@ When `/` is pressed, a search input appears in the status bar. The search syntax
 | `@`        | Filter by author (`git log --author=<query>`)                |
 | `:`        | Grep commit messages only (`git log --grep=<query>`)         |
 
-Search respects the current branch scope: if `gti log` was launched without
-`--all`, search only queries the current branch. If `gti log --all` was used,
+Search respects the current branch scope: if `jig log` was launched without
+`--all`, search only queries the current branch. If `jig log --all` was used,
 search queries all branches. This prevents confusing results where search returns
 commits not visible in the main list.
 
@@ -1919,7 +1919,7 @@ Press `<esc>` to clear the search and return to the full commit list.
 
 **Cross-command integration:**
 
-The `F`, `R`, and `D` keys launch other gti commands as sub-programs. Implementation:
+The `F`, `R`, and `D` keys launch other jig commands as sub-programs. Implementation:
 
 ```go
 // F: fixup into selected commit
@@ -1945,7 +1945,7 @@ view at the same cursor position.
 
 ## Config
 
-`~/.config/gti/config.toml` — all keys also readable as `GT_*` env vars.
+`~/.config/jig/config.toml` — all keys also readable as `GT_*` env vars.
 
 | Env var            | Toml key         | Default                        |
 |--------------------|------------------|--------------------------------|
@@ -1961,23 +1961,23 @@ view at the same cursor position.
 ## Shell plugin contract — Fish
 
 ```fish
-# shell/gti.plugin.fish
-# Source from ~/.config/fish/conf.d/gti.fish or via fisher.
-# Set GTI_NO_ALIASES=1 before sourcing to disable alias functions.
+# shell/jig.plugin.fish
+# Source from ~/.config/fish/conf.d/jig.fish or via fisher.
+# Set JIG_NO_ALIASES=1 before sourcing to disable alias functions.
 
-if not set -q GTI_NO_ALIASES
-    function ga;   gti add $argv; end
-    function gha;  gti hunk-add $argv; end
-    function gc;   gti checkout $argv; end
-    function gd;   gti diff $argv; end
-    function gfix; gti fixup $argv; end
-    function gri;  gti rebase-interactive $argv; end
-    function gr;   gti reset $argv; end
-    function gl;   gti log $argv; end
+if not set -q JIG_NO_ALIASES
+    function ga;   jig add $argv; end
+    function gha;  jig hunk-add $argv; end
+    function gc;   jig checkout $argv; end
+    function gd;   jig diff $argv; end
+    function gfix; jig fixup $argv; end
+    function gri;  jig rebase-interactive $argv; end
+    function gr;   jig reset $argv; end
+    function gl;   jig log $argv; end
 end
 
 # GIT_SEQUENCE_EDITOR setup (run once):
-# git config --global sequence.editor "gti rebase-interactive"
+# git config --global sequence.editor "jig rebase-interactive"
 ```
 
 ---
@@ -1985,7 +1985,7 @@ end
 ## Makefile
 
 ```makefile
-BINARY    := gti
+BINARY    := jig
 BUILD_DIR := bin
 THRESHOLD := 90
 VERSION   := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
@@ -1994,7 +1994,7 @@ LDFLAGS   := -ldflags "-X main.version=$(VERSION)"
 .PHONY: build test test-integration lint fmt vet fix coverage install clean snapshot check-release
 
 build:
-	go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY) ./cmd/gti
+	go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY) ./cmd/jig
 
 test:
 	go test -race -coverprofile=coverage.out -covermode=atomic ./...
@@ -2096,7 +2096,7 @@ repos:
         types: [go]
       - id: go-build
         name: go build
-        entry: go build ./cmd/gti
+        entry: go build ./cmd/jig
         language: system
         pass_filenames: false
         types: [go]
@@ -2797,13 +2797,13 @@ TDD sequence for every command:
   no longer contains the file AND the file content matches the index version.
 
 `diff`:
-- `gti diff` → args `["diff"]`. Verify the file list in `View()` matches the output
+- `jig diff` → args `["diff"]`. Verify the file list in `View()` matches the output
   of `git diff --name-only`.
-- `gti diff --staged` → args `["diff", "--cached"]`. Verify file list matches
+- `jig diff --staged` → args `["diff", "--cached"]`. Verify file list matches
   `git diff --cached --name-only`.
-- `gti diff HEAD~3` → args `["diff", "HEAD~3"]`.
-- `gti diff main..feature` → args `["diff", "main..feature"]`.
-- `gti diff --stdin` with piped input → verify file list matches diff headers in the
+- `jig diff HEAD~3` → args `["diff", "HEAD~3"]`.
+- `jig diff main..feature` → args `["diff", "main..feature"]`.
+- `jig diff --stdin` with piped input → verify file list matches diff headers in the
   piped content; right panel renders the correct file's diff when cursor moves.
   Verify no `Runner` calls are made (stdin mode is fully offline).
 - Integration: modify 2 files; launch diff; verify both appear in file list; navigate
@@ -2873,9 +2873,9 @@ TDD sequence for every command:
   assert the deleted files no longer exist on disk.
 
 `log`:
-- `gti log` → args `["log", "--oneline", "--color=always", "-30"]`.
-- `gti log --all` → args include `"--all"`.
-- `gti log main..feature` → args include `"main..feature"`.
+- `jig log` → args `["log", "--oneline", "--color=always", "-30"]`.
+- `jig log --all` → args include `"--all"`.
+- `jig log main..feature` → args include `"main..feature"`.
 - `<tab>` to stat level → verify right panel fetches `git diff-tree --stat <hash>`
   with the hash matching the commit under cursor. Verify status bar shows "[ stat]".
   Verify left panel commit list is unchanged (same items, same cursor position).
@@ -3098,7 +3098,7 @@ simultaneously with the implementation file it tests. No exceptions.
 ### Phase 0 — Skeleton
 
 RED first:
-1. `go mod init github.com/jetm/gti` — then set `go 1.26` in `go.mod`.
+1. `go mod init github.com/jetm/jig` — then set `go 1.26` in `go.mod`.
    Note: `go mod init` (1.26) defaults to `go 1.25.0` (one version back); manually
    edit the directive to `go 1.26` immediately after init.
 2. Write `internal/testhelper/fakerunner_test.go` + `gitrepo_test.go` asserting the
@@ -3120,13 +3120,13 @@ GREEN:
 7. Implement `internal/git/editor.go`: `ResolveEditor`.
 8. Implement `internal/app/app.go`: `AppModel` with stack, `Push`/`Pop`/`Active`,
    `PushModelMsg`/`PopModelMsg`/`RefreshMsg` handling.
-9. `cmd/gti/main.go`: cobra root + 8 subcommand stubs that print "not implemented".
+9. `cmd/jig/main.go`: cobra root + 8 subcommand stubs that print "not implemented".
    `main.go` creates `Runner`, `Config`, `Renderer`, and `AppModel`.
 10. `Makefile` + `.golangci.yml` + `.pre-commit-config.yaml`.
     Run `pre-commit install` to activate the hooks.
 11. `LICENSE` — MIT license, copyright `Javier`, current year.
 
-**Acceptance:** `make build` OK. `gti add` prints "not implemented". `LICENSE` exists.
+**Acceptance:** `make build` OK. `jig add` prints "not implemented". `LICENSE` exists.
 `AppModel` stack transitions work. Preconditions and editor resolution tested.
 `make test` ≥90%.
 
@@ -3179,7 +3179,7 @@ GREEN:
 4. Implement `internal/commands/diff.go`.
 5. Wire into cobra.
 
-**Acceptance:** `gti diff` and `gti diff HEAD~3` work in a real repo. File list populates.
+**Acceptance:** `jig diff` and `jig diff HEAD~3` work in a real repo. File list populates.
 Right panel updates on cursor move. Fuzzy filter works. `make test` ≥90%.
 
 ---
@@ -3200,7 +3200,7 @@ GREEN:
 REFACTOR + Integration:
 8. Add `add_integration_test.go` + `checkout_integration_test.go` (tag `integration`).
 
-**Acceptance:** `gti add` stages files. `gti checkout` restores files (with `<D>`
+**Acceptance:** `jig add` stages files. `jig checkout` restores files (with `<D>`
 confirm). `make test` ≥90%.
 
 ---
@@ -3340,7 +3340,7 @@ GREEN:
 3. Implement `internal/config/config.go`.
 4. Implement `tests/integration/workflow_test.go` — the tests themselves are the
    deliverable (they exercise the full AppModel stack with real git repos).
-5. `shell/gti.plugin.fish`.
+5. `shell/jig.plugin.fish`.
 6. `--version` via ldflags.
 7. `.goreleaser.yml` with builds, archives, signs, changelog.
 8. Validate config: `goreleaser check`. Test locally: `goreleaser release --snapshot --clean`.
@@ -3436,31 +3436,31 @@ and CI is green.
 
 **Structure (in this order):**
 
-1. **Title + one-line description** — `# gti` followed by a single sentence:
+1. **Title + one-line description** — `# jig` followed by a single sentence:
    "A focused TUI for the git workflows that matter."
 
 2. **Screenshot / demo** — a single terminal screenshot or asciinema link showing
-   `gti diff` in action (two-column layout, syntax-highlighted diff). No animated GIF
+   `jig diff` in action (two-column layout, syntax-highlighted diff). No animated GIF
    walls — one image that communicates the tool's visual identity.
 
 3. **Install** — three methods:
    - **Binary** (GitHub Releases): `curl -sL … | tar xz` one-liner for linux/amd64,
      or "download from Releases". Checksums are signed with cosign.
-   - **Go**: `go install github.com/jetm/gti/cmd/gti@latest`
-   - **AUR**: `yay -S gti-bin` (planned)
+   - **Go**: `go install github.com/jetm/jig/cmd/jig@latest`
+   - **AUR**: `yay -S jig-bin` (planned)
    - Note minimum Go version: 1.26.
    - **Requirements note** (after install methods): truecolor terminal + Nerd Font.
-     One sentence: "gti requires a truecolor terminal and a [Nerd Font](https://www.nerdfonts.com/)."
+     One sentence: "jig requires a truecolor terminal and a [Nerd Font](https://www.nerdfonts.com/)."
      Link to the Terminal requirements section of this CLAUDE.md if useful, or just
      list the tested terminals inline.
 
 4. **Quick start** — 4–5 lines showing the most common flow:
    ```
-   gti add          # stage files interactively
-   gti hunk-add     # stage individual hunks
-   gti diff         # browse diffs
-   gti fixup        # amend into a past commit
-   gti reset        # undo commits interactively
+   jig add          # stage files interactively
+   jig hunk-add     # stage individual hunks
+   jig diff         # browse diffs
+   jig fixup        # amend into a past commit
+   jig reset        # undo commits interactively
    ```
 
 5. **Commands** — one subsection per command (`## add`, `## hunk-add`, etc.), each with:
@@ -3469,11 +3469,11 @@ and CI is green.
    - A keybinding summary table (abbreviated from this CLAUDE.md — not the full spec).
    - No wireframes in the README — the screenshot covers visual layout.
 
-6. **Shell integration** — how to source `gti.plugin.fish` via `conf.d` or
-   fisher, and `GTI_NO_ALIASES=1` to opt out.
+6. **Shell integration** — how to source `jig.plugin.fish` via `conf.d` or
+   fisher, and `JIG_NO_ALIASES=1` to opt out.
 
 7. **Configuration** — the config table from this CLAUDE.md (`GT_THEME`, etc.) and
-   the config file path `~/.config/gti/config.toml`.
+   the config file path `~/.config/jig/config.toml`.
 
 8. **Diff rendering** — one paragraph explaining the delta → chroma → plain chain
    and how to configure delta.
@@ -3481,7 +3481,7 @@ and CI is green.
 9. **License** — "MIT" with a link to the `LICENSE` file.
 
 **Tone:** direct, scannable, no marketing fluff. Write for someone who already uses
-git daily and wants to know what `gti` does and how to install it in under 60 seconds.
+git daily and wants to know what `jig` does and how to install it in under 60 seconds.
 Use the minimum number of words. No badges wall — at most: CI status, Go version,
 license.
 
@@ -3499,7 +3499,7 @@ license.
 
 **Version injection:** `main.version` is set via ldflags at build time:
 ```go
-// cmd/gti/main.go
+// cmd/jig/main.go
 var (
     version = "dev"
     commit  = "none"
@@ -3507,7 +3507,7 @@ var (
 )
 ```
 The Makefile `VERSION` variable reads from `git describe --tags --always --dirty`.
-`gti --version` prints `gti version <version> (commit: <hash>, built: <date>)`.
+`jig --version` prints `jig version <version> (commit: <hash>, built: <date>)`.
 
 **Branching model:** trunk-based development on `main`. No long-lived feature branches.
 Tags trigger releases.
@@ -3576,7 +3576,7 @@ jobs:
 # yaml-language-server: $schema=https://goreleaser.com/static/schema.json
 version: 2
 
-project_name: gti
+project_name: jig
 
 before:
   hooks:
@@ -3585,9 +3585,9 @@ before:
     - go vet ./...
 
 builds:
-  - id: gti
-    main: ./cmd/gti
-    binary: gti
+  - id: jig
+    main: ./cmd/jig
+    binary: jig
     env:
       - CGO_ENABLED=0
     goos:
@@ -3608,7 +3608,7 @@ archives:
     files:
       - LICENSE
       - README.md
-      - shell/gti.plugin.fish
+      - shell/jig.plugin.fish
     format_overrides:
       - goos: darwin
         formats: [zip]
@@ -3643,14 +3643,14 @@ changelog:
 release:
   github:
     owner: jetm
-    name: gti
+    name: jig
   draft: false
   prerelease: auto
   name_template: "v{{ .Version }}"
   footer: |
     ## Install
     ```
-    go install github.com/jetm/gti/cmd/gti@v{{ .Version }}
+    go install github.com/jetm/jig/cmd/jig@v{{ .Version }}
     ```
     Or download a binary from the assets below.
 ```
@@ -3673,14 +3673,14 @@ has been daily-driven and the install base justifies the packaging overhead.
 
 **Post-release checklist:**
 - [ ] GitHub Release created with tarballs and signed checksums
-- [ ] `gti --version` on downloaded binary shows correct version and commit hash
+- [ ] `jig --version` on downloaded binary shows correct version and commit hash
 - [ ] `cosign verify-blob` succeeds on checksums.txt
 - [ ] README.md renders correctly on the GitHub repo page
 - [ ] Blog post drafted (if milestone release)
 
 **Post-v0.1.0 roadmap:**
 - [ ] Add `nfpms` section to goreleaser for `.deb` and Arch Linux packages
-- [ ] Add `aurs` section to goreleaser for automated AUR publishing (`gti-bin`)
+- [ ] Add `aurs` section to goreleaser for automated AUR publishing (`jig-bin`)
 - [ ] Integrate [git-cliff](https://github.com/orhun/git-cliff) for cumulative
       `CHANGELOG.md` in the repo (goreleaser can consume it via `changelog.use: git-cliff`)
 - [ ] Add SBOM generation via goreleaser `sboms` section

@@ -11,8 +11,8 @@ import (
 
 	tree "github.com/mariusor/bubbles-tree"
 
-	"github.com/jetm/gti/internal/git"
-	"github.com/jetm/gti/internal/tui"
+	"github.com/jetm/jig/internal/git"
+	"github.com/jetm/jig/internal/tui"
 )
 
 // NodeChecked is a custom state bit for file selection (checkbox) in add/checkout/reset views.

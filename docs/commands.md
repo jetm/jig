@@ -15,7 +15,7 @@
 
 # Command Specifications
 
-Detailed command specifications for gti. Each command includes keybindings, UI layout, state transitions, edge cases, and git commands used.
+Detailed command specifications for jig. Each command includes keybindings, UI layout, state transitions, edge cases, and git commands used.
 
 All 8 commands share a single `tea.Program` managed by an `app.Model` root model. Commands are pushed/popped via `PushModelMsg`/`PopModelMsg`. Commands emit `PopModelMsg`, never `tea.Quit` directly.
 
@@ -23,7 +23,7 @@ All 8 commands share a single `tea.Program` managed by an `app.Model` root model
 
 ## `add` (alias `ga`) — interactive file staging
 
-Accepts optional path arguments to scope the file list: `gti add src/` shows only files under `src/`. Without arguments, shows all changed files in the repo.
+Accepts optional path arguments to scope the file list: `jig add src/` shows only files under `src/`. Without arguments, shows all changed files in the repo.
 
 Left panel: files from `git status --short`, grouped as unstaged then untracked. Each entry shows filename + `+N -N` stat from `git diff --stat`.
 Right panel: `git diff <file>` (unstaged) or `git diff --cached <file>` (staged), rendered via `diff.Chain(cfg)`.
@@ -203,7 +203,7 @@ Keybindings:
 
 Read-only. File tree on the left, full diff on the right.
 
-Accepts optional revision argument: `gti diff HEAD~3`, `gti diff main..feature`. Default: `git diff` (unstaged changes). `gti diff --staged` shows `git diff --cached`.
+Accepts optional revision argument: `jig diff HEAD~3`, `jig diff main..feature`. Default: `git diff` (unstaged changes). `jig diff --staged` shows `git diff --cached`.
 
 Left panel: list of changed files with `+N -N` stats and color-coded Nerd Font icons (=modified, =added, =deleted, 󰕓=renamed). Fuzzy-filterable with `/`.
 Right panel: full diff of selected file via `diff.Chain(cfg)`.
@@ -248,8 +248,8 @@ func SplitMultiFileDiff(raw string) ([]StdinFileDiff, error) {}
 ### Piped input (`--stdin`)
 
 ```
-git diff main..feature | gti diff --stdin
-gh pr diff 123 | gti diff --stdin
+git diff main..feature | jig diff --stdin
+gh pr diff 123 | jig diff --stdin
 ```
 
 Reads entire unified diff from stdin into `[]StdinFileDiff` (ordered slice, not map — map iteration order is non-deterministic in Go). A `map[string]int` index maps filenames to slice positions for O(1) lookup. Stdin is consumed once and never re-read. `--stdin` mode is read-only.
@@ -298,10 +298,10 @@ No `/` filter — commit list is short (default 30 entries).
 
 Drop-in replacement for `$GIT_SEQUENCE_EDITOR`. Two usage paths:
 
-**Path A — standalone:** `gti rebase-interactive [base]`
+**Path A — standalone:** `jig rebase-interactive [base]`
 Reads commits from `git log --reverse`, presents todo list, executes via `GIT_SEQUENCE_EDITOR="cp <tempfile>" git rebase -i <base>`.
 
-**Path B — sequence editor:** `git config --global sequence.editor "gti rebase-interactive"`
+**Path B — sequence editor:** `git config --global sequence.editor "jig rebase-interactive"`
 When called with a file path argument, reads existing todo file, presents editor, writes result back on `<enter>`.
 
 **Mode detection:** inspects first argument via `os.Stat()`. Existing file → Path B; otherwise → Path A.
@@ -435,7 +435,7 @@ Visual interface for `git reset` with mode selection.
 | soft    | `s`  | `git reset --soft <hash>`    | Keep staged + working tree                    |
 | hard    | `H`  | `git reset --hard <hash>`    | Discard everything (destructive — uppercase) |
 
-Left panel: recent commits from `git log --oneline` (depth: `GTI_LOG_COMMIT_LIMIT`).
+Left panel: recent commits from `git log --oneline` (depth: `JIG_LOG_COMMIT_LIMIT`).
 Right panel: `git diff <selected_hash>..HEAD` — accumulated changes between target and HEAD.
 
 ```
@@ -478,7 +478,7 @@ Keybindings:
 
 Interactive commit log viewer with three detail levels. Replaces `git log` / tig.
 
-**Default scope:** current branch (`git log HEAD`). `gti log --all` for all branches. Accepts revision arguments: `gti log main..feature`.
+**Default scope:** current branch (`git log HEAD`). `jig log --all` for all branches. Accepts revision arguments: `jig log main..feature`.
 
 ### Three detail levels (cycle with `<tab>`)
 
@@ -516,7 +516,7 @@ Keybindings:
 
 ### Infinite scroll / lazy loading
 
-Loads `GTI_LOG_COMMIT_LIMIT` commits initially (default: 50). When cursor reaches last loaded commit, next batch fetched via `git log --skip=<loaded> -<N>` as `tea.Cmd`. `End` loads up to 500 additional commits (capped).
+Loads `JIG_LOG_COMMIT_LIMIT` commits initially (default: 50). When cursor reaches last loaded commit, next batch fetched via `git log --skip=<loaded> -<N>` as `tea.Cmd`. `End` loads up to 500 additional commits (capped).
 
 ### Search (`/`)
 

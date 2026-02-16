@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/jetm/gti/internal/diff"
+	"github.com/jetm/jig/internal/diff"
 )
 
 func TestPlainRenderer_SampleDiff(t *testing.T) {

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jetm/gti/internal/testhelper"
+	"github.com/jetm/jig/internal/testhelper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -27,12 +27,12 @@ func TestCheckout_DirectMode_RestoresFile(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, string(diffOut), "file1.txt", "file should be modified before checkout")
 
-	// Invoke gti checkout with 'y' to confirm
-	cmd := exec.Command(gtiBinary, "checkout", "file1.txt")
+	// Invoke jig checkout with 'y' to confirm
+	cmd := exec.Command(jigBinary, "checkout", "file1.txt")
 	cmd.Dir = repoDir
 	cmd.Stdin = strings.NewReader("y\n")
 	out, err := cmd.CombinedOutput()
-	require.NoError(t, err, "gti checkout direct mode should exit zero: %s", out)
+	require.NoError(t, err, "jig checkout direct mode should exit zero: %s", out)
 
 	// Verify the file no longer appears in git diff
 	diffAfter, err := exec.Command("git", "-C", repoDir, "diff", "--name-only").CombinedOutput()

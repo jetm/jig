@@ -4,6 +4,7 @@ package commands
 import (
 	"context"
 	"fmt"
+	"regexp"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -15,6 +16,8 @@ import (
 	"github.com/jetm/jig/internal/tui"
 	"github.com/jetm/jig/internal/tui/components"
 )
+
+var ansiEscape = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
 
 // DiffModel is the command model for the diff TUI.
 // It follows the child component pattern: Update returns tea.Cmd, View returns string.
@@ -41,7 +44,8 @@ type DiffModel struct {
 }
 
 // NewDiffModel creates a DiffModel by running git diff and parsing the output.
-// filterPaths optionally restricts the file list to specific paths.
+// When rawInput is non-empty, it is used as the diff content instead of running
+// git diff (pager mode). filterPaths optionally restricts the file list to specific paths.
 func NewDiffModel(
 	ctx context.Context,
 	runner git.Runner,
@@ -49,18 +53,25 @@ func NewDiffModel(
 	renderer diff.Renderer,
 	revision string,
 	staged bool,
+	rawInput string,
 	filterPaths ...[]string,
 ) *DiffModel {
 	var paths []string
 	if len(filterPaths) > 0 {
 		paths = ExpandGlobs(filterPaths[0])
 	}
-	args := git.DiffArgs(revision, staged)
-	if len(paths) > 0 {
-		args = append(args, "--")
-		args = append(args, paths...)
+
+	var rawDiff string
+	if rawInput != "" {
+		rawDiff = ansiEscape.ReplaceAllString(rawInput, "")
+	} else {
+		args := git.DiffArgs(revision, staged)
+		if len(paths) > 0 {
+			args = append(args, "--")
+			args = append(args, paths...)
+		}
+		rawDiff, _ = runner.Run(ctx, args...)
 	}
-	rawDiff, _ := runner.Run(ctx, args...)
 	branchName, _ := git.BranchName(ctx, runner)
 
 	files := git.ParseFileDiffs(rawDiff)
@@ -112,7 +123,11 @@ func NewDiffModel(
 
 	m.updateHints()
 	m.statusBar.SetBranch(branchName)
-	m.statusBar.SetMode("diff")
+	if rawInput != "" {
+		m.statusBar.SetMode("diff (pager)")
+	} else {
+		m.statusBar.SetMode("diff")
+	}
 
 	// Render first file if available and diff panel is visible
 	if len(files) > 0 && m.showDiff {

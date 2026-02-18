@@ -287,7 +287,18 @@ func newDiffTestModel(tb testing.TB, repoDir string, revision string, staged boo
 	tb.Helper()
 	runner := newRunnerInDir(tb, repoDir)
 	cfg := defaultConfig()
-	m := commands.NewDiffModel(context.Background(), runner, cfg, plainRenderer(), revision, staged)
+	m := commands.NewDiffModel(context.Background(), runner, cfg, plainRenderer(), revision, staged, "")
+	appModel := app.New(&diffTeaModelAdapter{inner: m}, runner, cfg)
+	return newTestModel(tb, appModel)
+}
+
+// newDiffPagerTestModel creates an in-process diff TUI model using pre-computed
+// diff content (pager mode), simulating what happens when git pipes to jig diff.
+func newDiffPagerTestModel(tb testing.TB, repoDir string, rawDiff string) *testModel {
+	tb.Helper()
+	runner := newRunnerInDir(tb, repoDir)
+	cfg := defaultConfig()
+	m := commands.NewDiffModel(context.Background(), runner, cfg, plainRenderer(), "", false, rawDiff)
 	appModel := app.New(&diffTeaModelAdapter{inner: m}, runner, cfg)
 	return newTestModel(tb, appModel)
 }

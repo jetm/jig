@@ -61,6 +61,61 @@ func TestDiff_TUI_ShowsModifiedFiles(t *testing.T) {
 	tm.quit(t)
 }
 
+func TestDiff_PagerMode_ShowsPipedDiff(t *testing.T) {
+	repoDir := testhelper.NewTempRepo(t)
+
+	// Simulate git piping a diff to jig diff (pager mode)
+	rawDiff := "diff --git a/piped.go b/piped.go\n" +
+		"index 1234567..abcdefg 100644\n" +
+		"--- a/piped.go\n" +
+		"+++ b/piped.go\n" +
+		"@@ -1,3 +1,4 @@\n" +
+		" package main\n" +
+		"+// added via pager\n" +
+		" func main() {}\n"
+
+	tm := newDiffPagerTestModel(t, repoDir, rawDiff)
+
+	tm.waitFor(t, containsOutput("piped.go"))
+	tm.waitFor(t, containsOutput("diff (pager)"))
+
+	tm.quit(t)
+}
+
+func TestDiff_PagerMode_EmptyFileWithMnemonicPrefix(t *testing.T) {
+	repoDir := testhelper.NewTempRepo(t)
+
+	// Empty file addition: no ---/+++ lines, only header with mnemonic prefix
+	rawDiff := "diff --git c/empty.txt i/empty.txt\n" +
+		"new file mode 100644\n" +
+		"index 0000000..e69de29\n"
+
+	tm := newDiffPagerTestModel(t, repoDir, rawDiff)
+
+	tm.waitFor(t, containsOutput("empty.txt"))
+
+	tm.quit(t)
+}
+
+func TestDiff_PagerMode_ColoredInput(t *testing.T) {
+	repoDir := testhelper.NewTempRepo(t)
+
+	// Simulate git's colored pager output with ANSI escape codes
+	rawDiff := "\x1b[1mdiff --git c/colored.go i/colored.go\x1b[m\n" +
+		"\x1b[1mindex 1234567..abcdefg 100644\x1b[m\n" +
+		"\x1b[1m--- c/colored.go\x1b[m\n" +
+		"\x1b[1m+++ i/colored.go\x1b[m\n" +
+		"\x1b[36m@@ -1 +1 @@\x1b[m\n" +
+		"\x1b[31m-old\x1b[m\n" +
+		"\x1b[32m+new\x1b[m\n"
+
+	tm := newDiffPagerTestModel(t, repoDir, rawDiff)
+
+	tm.waitFor(t, containsOutput("colored.go"))
+
+	tm.quit(t)
+}
+
 func TestDiff_TUI_StagedFlag_ShowsStagedFiles(t *testing.T) {
 	repoDir := testhelper.NewTempRepo(t)
 	testhelper.WriteFile(t, repoDir, "staged.txt", "original\n")

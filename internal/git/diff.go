@@ -54,17 +54,35 @@ func ParseFileDiffs(raw string) []FileDiff {
 	return diffs
 }
 
-// splitOnMarker splits raw into chunks, each starting after the marker.
+// splitOnMarker splits raw into chunks on lines starting with the marker.
 // The marker prefix is stripped from each chunk.
 func splitOnMarker(raw, marker string) []string {
-	parts := strings.Split(raw, marker)
-	// First element is everything before the first marker (usually empty).
 	var chunks []string
-	for _, p := range parts {
-		if p == "" {
+	rest := raw
+	for {
+		// Find marker at start of string or at start of a line
+		if strings.HasPrefix(rest, marker) {
+			rest = rest[len(marker):]
+			chunks = append(chunks, "")
 			continue
 		}
-		chunks = append(chunks, p)
+		idx := strings.Index(rest, "\n"+marker)
+		if idx < 0 {
+			break
+		}
+		// idx is position of \n before the marker
+		if len(chunks) == 0 {
+			// Preamble before first marker: skip it
+			rest = rest[idx+1:]
+		} else {
+			// Content between markers: assign to current chunk, advance
+			chunks[len(chunks)-1] = rest[:idx+1]
+			rest = rest[idx+1:]
+		}
+	}
+	// Remaining content belongs to last chunk
+	if len(chunks) > 0 {
+		chunks[len(chunks)-1] = rest
 	}
 	return chunks
 }
@@ -145,20 +163,28 @@ func stripDiffPrefix(path string) string {
 	return path
 }
 
-// extractPathsFromHeader parses paths from "diff --git a/path1 b/path2" header.
-// This is the fallback for diff blocks without ---/+++ lines (e.g., binary files).
+// extractPathsFromHeader parses paths from the "diff --git X/path1 Y/path2" header.
+// This is the fallback for diff blocks without ---/+++ lines (e.g., empty or binary files).
+// Handles standard (a/b), mnemonic (c/i/w/o), and noprefix formats.
 func extractPathsFromHeader(block string) (string, string) {
 	header := strings.SplitN(block, "\n", 2)[0]
 	rest := strings.TrimPrefix(header, "diff --git ")
 
-	idx := strings.Index(rest, " b/")
-	if idx < 0 {
+	// Find the separator between old and new paths: " X/" where X is a single letter
+	// different from the first path's prefix. Both paths use single-letter prefixes
+	// (a/b for standard, c/i for mnemonic, w/o for others).
+	if len(rest) < 4 || rest[1] != '/' {
 		return "", ""
 	}
+	oldPrefix := rest[0]
 
-	oldPath := strings.TrimPrefix(rest[:idx], "a/")
-	newPath := strings.TrimPrefix(rest[idx+1:], "b/")
-	return oldPath, newPath
+	// Search for " Y/" where Y != oldPrefix
+	for i := 2; i < len(rest)-2; i++ {
+		if rest[i] == ' ' && rest[i+2] == '/' && rest[i+1] != oldPrefix {
+			return rest[2:i], rest[i+3:]
+		}
+	}
+	return "", ""
 }
 
 // extractRenameField extracts the value from a "rename from X" or "rename to X" line.

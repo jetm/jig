@@ -264,6 +264,53 @@ func TestParseFileDiffs(t *testing.T) {
 				{oldPath: "old.go", newPath: "new.go", status: Renamed},
 			},
 		},
+		{
+			name: "empty new file with mnemonic prefix (no ---/+++ lines)",
+			input: "diff --git c/foo i/foo\n" +
+				"new file mode 100644\n" +
+				"index 0000000..e69de29\n",
+			wantLen: 1,
+			wantDiff: []struct {
+				oldPath string
+				newPath string
+				status  FileStatus
+			}{
+				{oldPath: "foo", newPath: "foo", status: Added},
+			},
+		},
+		{
+			name: "empty new file in subdirectory with mnemonic prefix",
+			input: "diff --git c/pkg/util/empty.go i/pkg/util/empty.go\n" +
+				"new file mode 100644\n" +
+				"index 0000000..e69de29\n",
+			wantLen: 1,
+			wantDiff: []struct {
+				oldPath string
+				newPath string
+				status  FileStatus
+			}{
+				{oldPath: "pkg/util/empty.go", newPath: "pkg/util/empty.go", status: Added},
+			},
+		},
+		{
+			name: "diff --git inside hunk body does not split",
+			input: "diff --git a/test.go b/test.go\n" +
+				"index 1234567..abcdefg 100644\n" +
+				"--- a/test.go\n" +
+				"+++ b/test.go\n" +
+				"@@ -1,3 +1,4 @@\n" +
+				" line1\n" +
+				"+const s = \"diff --git a/foo b/foo\"\n" +
+				" line2\n",
+			wantLen: 1,
+			wantDiff: []struct {
+				oldPath string
+				newPath string
+				status  FileStatus
+			}{
+				{oldPath: "test.go", newPath: "test.go", status: Modified},
+			},
+		},
 	}
 
 	for _, tc := range tests {

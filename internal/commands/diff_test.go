@@ -50,7 +50,7 @@ func newTestModel(t *testing.T, revision string, staged bool, diffOutput string)
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
 
-	m := NewDiffModel(context.Background(), runner, cfg, renderer, revision, staged)
+	m := NewDiffModel(context.Background(), runner, cfg, renderer, revision, staged, "")
 
 	// Verify DiffArgs were used correctly
 	expectedArgs := git.DiffArgs(revision, staged)
@@ -90,7 +90,7 @@ func TestNewDiffModel_GitArgs(t *testing.T) {
 			}
 			cfg := config.NewDefault()
 			renderer := &diff.PlainRenderer{}
-			_ = NewDiffModel(context.Background(), runner, cfg, renderer, tc.revision, tc.staged)
+			_ = NewDiffModel(context.Background(), runner, cfg, renderer, tc.revision, tc.staged, "")
 
 			call := testhelper.NthCall(runner, 0)
 			if len(call.Args) != len(tc.wantArgs) {
@@ -197,7 +197,7 @@ func TestDiffModel_View_EmptyDiff(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewDiffModel(context.Background(), runner, cfg, renderer, "", false)
+	m := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, "")
 	m.width = 120
 	m.height = 40
 
@@ -330,7 +330,7 @@ func TestDiffModel_RenderSelectedDiff_RendererError(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &errorRenderer{}
-	m := NewDiffModel(context.Background(), runner, cfg, renderer, "", false)
+	m := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, "")
 	m.width = 120
 	m.height = 40
 
@@ -415,7 +415,7 @@ func TestDiffModel_CheckSelectionChange_NilSelected(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewDiffModel(context.Background(), runner, cfg, renderer, "", false)
+	m := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, "")
 	// Should not panic
 	m.checkSelectionChange()
 }
@@ -454,7 +454,7 @@ func TestDiffModel_TabNoopWhenDiffHidden(t *testing.T) {
 	cfg := config.NewDefault()
 	cfg.ShowDiffPanel = false
 	renderer := &diff.PlainRenderer{}
-	m := NewDiffModel(context.Background(), runner, cfg, renderer, "", false)
+	m := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, "")
 	m.width = 120
 	m.height = 40
 
@@ -476,7 +476,7 @@ func TestDiffModel_SinglePanelViewWhenDiffHidden(t *testing.T) {
 	cfg := config.NewDefault()
 	cfg.ShowDiffPanel = false
 	renderer := &diff.PlainRenderer{}
-	m := NewDiffModel(context.Background(), runner, cfg, renderer, "", false)
+	m := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, "")
 	m.width = 120
 	m.height = 40
 
@@ -605,7 +605,7 @@ func TestDiffModel_EKey_EmptyFiles(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewDiffModel(context.Background(), runner, cfg, renderer, "", false)
+	m := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, "")
 	m.width = 120
 	m.height = 40
 
@@ -639,7 +639,7 @@ func TestDiffModel_EditDiffMsg_ApplyError(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewDiffModel(context.Background(), runner, cfg, renderer, "", false)
+	m := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, "")
 	m.width = 120
 	m.height = 40
 
@@ -667,7 +667,7 @@ func TestDiffModel_EditDiffMsg_Success(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewDiffModel(context.Background(), runner, cfg, renderer, "", false)
+	m := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, "")
 	m.width = 120
 	m.height = 40
 
@@ -683,6 +683,106 @@ func TestDiffModel_EditDiffMsg_Success(t *testing.T) {
 	_ = cmd
 }
 
+func TestNewDiffModel_RawInput_ParsesFilesAndSkipsDiffCall(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{
+			"main", // branch name (only call expected)
+		},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, sampleDiff)
+
+	if len(m.files) != 1 {
+		t.Fatalf("expected 1 file from rawInput, got %d", len(m.files))
+	}
+	if m.files[0].DisplayPath() != "main.go" {
+		t.Errorf("file path = %q, want %q", m.files[0].DisplayPath(), "main.go")
+	}
+	// Only one call should have been made (branch name), not two (diff + branch)
+	if len(runner.Calls) != 1 {
+		t.Fatalf("expected 1 runner call (branch), got %d", len(runner.Calls))
+	}
+	call := testhelper.NthCall(runner, 0)
+	if call.Args[0] != "rev-parse" {
+		t.Errorf("expected branch name call, got args %v", call.Args)
+	}
+}
+
+func TestNewDiffModel_RawInput_StatusBarShowsPagerMode(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{"main"},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+
+	// Pager mode: rawInput non-empty
+	pagerModel := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, sampleDiff)
+	pagerModel.width = 120
+	pagerModel.height = 40
+	pagerView := pagerModel.View()
+	if !strings.Contains(pagerView, "diff (pager)") {
+		t.Error("pager mode status bar should contain 'diff (pager)'")
+	}
+
+	// Normal mode: rawInput empty
+	normalRunner := &testhelper.FakeRunner{
+		Outputs: []string{sampleDiff, "main"},
+	}
+	normalModel := NewDiffModel(context.Background(), normalRunner, cfg, renderer, "", false, "")
+	normalModel.width = 120
+	normalModel.height = 40
+	normalView := normalModel.View()
+	if strings.Contains(normalView, "diff (pager)") {
+		t.Error("normal mode status bar should not contain 'diff (pager)'")
+	}
+}
+
+func TestNewDiffModel_RawInput_StripsANSICodes(t *testing.T) {
+	t.Parallel()
+	// Simulate git pager output with ANSI color codes
+	coloredDiff := "\x1b[1mdiff --git c/foo i/foo\x1b[m\n" +
+		"\x1b[1mnew file mode 100644\x1b[m\n" +
+		"\x1b[1mindex 0000000..7898192\x1b[m\n" +
+		"\x1b[1m--- /dev/null\x1b[m\n" +
+		"\x1b[1m+++ i/foo\x1b[m\n" +
+		"\x1b[36m@@ -0,0 +1 @@\x1b[m\n" +
+		"\x1b[32m+\x1b[m\x1b[32ma\x1b[m\n"
+
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{"main"},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, coloredDiff)
+
+	if len(m.files) != 1 {
+		t.Fatalf("expected 1 file from colored rawInput, got %d", len(m.files))
+	}
+	if m.files[0].DisplayPath() != "foo" {
+		t.Errorf("file path = %q, want %q", m.files[0].DisplayPath(), "foo")
+	}
+}
+
+func TestNewDiffModel_RawInput_EmptyStringShowsNoFiles(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{
+			"",     // git diff (empty - normal mode with empty rawInput)
+			"main", // branch name
+		},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	// Empty rawInput falls through to runner.Run which returns empty diff
+	m := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, "")
+	if len(m.files) != 0 {
+		t.Errorf("expected 0 files from empty diff, got %d", len(m.files))
+	}
+}
+
 func TestNewDiffModel_WithFilterPaths(t *testing.T) {
 	t.Parallel()
 	runner := &testhelper.FakeRunner{
@@ -693,7 +793,7 @@ func TestNewDiffModel_WithFilterPaths(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, []string{"main.go"})
+	m := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, "", []string{"main.go"})
 	if len(m.files) != 1 {
 		t.Fatalf("expected 1 file, got %d", len(m.files))
 	}
@@ -711,7 +811,7 @@ func TestNewDiffModel_FilterPaths_NoMatch(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, []string{"nonexistent.go"})
+	m := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, "", []string{"nonexistent.go"})
 	if !m.noMatchFilter {
 		t.Error("noMatchFilter should be true when filter paths match no files")
 	}

@@ -63,6 +63,26 @@ func newDiffCmd() *cobra.Command {
 				revision = args[0]
 			}
 
+			// Detect pager mode: stdin is a pipe when git invokes jig as pager.diff
+			var rawInput string
+			var opts []tea.ProgramOption
+			stat, _ := os.Stdin.Stat()
+			if stat.Mode()&os.ModeCharDevice == 0 {
+				data, err := io.ReadAll(os.Stdin)
+				if err != nil {
+					return fmt.Errorf("reading stdin: %w", err)
+				}
+				rawInput = string(data)
+
+				ttyIn, ttyOut, err := tea.OpenTTY()
+				if err != nil {
+					return fmt.Errorf("opening terminal: %w", err)
+				}
+				defer func() { _ = ttyIn.Close() }()
+				defer func() { _ = ttyOut.Close() }()
+				opts = append(opts, tea.WithInput(ttyIn), tea.WithOutput(ttyOut))
+			}
+
 			ctx := context.Background()
 			runner, err := git.NewExecRunner(ctx)
 			if err != nil {
@@ -74,10 +94,10 @@ func newDiffCmd() *cobra.Command {
 				return fmt.Errorf("loading config: %w", err)
 			}
 			renderer := diff.Chain(cfg)
-			diffModel := commands.NewDiffModel(ctx, runner, cfg, renderer, revision, staged)
+			diffModel := commands.NewDiffModel(ctx, runner, cfg, renderer, revision, staged, rawInput)
 
 			appModel := app.New(newDiffTeaModel(diffModel), runner, cfg)
-			p := tea.NewProgram(appModel)
+			p := tea.NewProgram(appModel, opts...)
 			if _, err = p.Run(); err != nil {
 				return fmt.Errorf("running diff: %w", err)
 			}

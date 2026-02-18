@@ -568,7 +568,7 @@ func TestNewFakeDiffModel_WithFilterPaths(t *testing.T) {
 	runner := &testhelper.FakeRunner{Outputs: []string{"", "main"}}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewDiffModel(context.Background(), runner, cfg, renderer, "", false, []string{"foo.go"})
+	m := commands.NewDiffModel(context.Background(), runner, cfg, renderer, "", false, "", []string{"foo.go"})
 	if m == nil {
 		t.Fatal("NewDiffModel should not return nil")
 	}
@@ -629,7 +629,7 @@ func newFakeDiffModel(t *testing.T) *commands.DiffModel {
 	runner := &testhelper.FakeRunner{Outputs: []string{"", "main"}}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	return commands.NewDiffModel(context.Background(), runner, cfg, renderer, "", false)
+	return commands.NewDiffModel(context.Background(), runner, cfg, renderer, "", false, "")
 }
 
 func TestDiffTeaModel_InitReturnsNil(t *testing.T) {

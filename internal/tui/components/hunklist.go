@@ -364,7 +364,7 @@ func (hl *HunkList) renderHunkRow(rowIdx int, r row, style lipgloss.Style, lineN
 	body := ""
 	if hi < len(fileHunks) {
 		header = fileHunks[hi].Header
-		body = fileHunks[hi].Body
+		body = fileHunks[hi].Body()
 	}
 
 	lineNum := parseHunkLineNumber(header)

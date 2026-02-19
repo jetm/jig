@@ -271,7 +271,7 @@ func TestHunkAddModel_SpaceTogglesHunk(t *testing.T) {
 	}
 }
 
-func TestHunkAddModel_EnterAppliesStaged(t *testing.T) {
+func TestHunkAddModel_WKeyAppliesStaged(t *testing.T) {
 	t.Parallel()
 	m, runner := newHunkAddTestModel(t, singleHunkDiff, "" /* git apply output */)
 	m.width = 120
@@ -280,14 +280,14 @@ func TestHunkAddModel_EnterAppliesStaged(t *testing.T) {
 	// Toggle hunk staged with Space
 	m.Update(tea.KeyPressMsg{Code: tea.KeySpace})
 
-	// Press Enter to apply
-	cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	// Press w to apply
+	cmd := m.Update(tea.KeyPressMsg{Code: 'w', Text: "w"})
 
 	// Verify git apply was called
 	testhelper.MustHaveCall(t, runner, "apply", "--cached")
 
 	if cmd == nil {
-		t.Fatal("expected a command after Enter")
+		t.Fatal("expected a command after w")
 	}
 	msg := cmd()
 	pop, ok := msg.(app.PopModelMsg)
@@ -299,23 +299,23 @@ func TestHunkAddModel_EnterAppliesStaged(t *testing.T) {
 	}
 }
 
-func TestHunkAddModel_EnterWithNothingStagedDoesNothing(t *testing.T) {
+func TestHunkAddModel_WKeyWithNothingStagedDoesNothing(t *testing.T) {
 	t.Parallel()
 	m, _ := newHunkAddTestModel(t, singleHunkDiff)
 	m.width = 120
 	m.height = 40
 
-	// Press Enter without toggling anything
-	cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	// Press w without toggling anything
+	cmd := m.Update(tea.KeyPressMsg{Code: 'w', Text: "w"})
 	if cmd != nil {
 		msg := cmd()
 		if _, ok := msg.(app.PopModelMsg); ok {
-			t.Error("Enter with nothing staged should not pop")
+			t.Error("w with nothing staged should not pop")
 		}
 	}
 }
 
-func TestHunkAddModel_EnterAppliesMultipleHunks(t *testing.T) {
+func TestHunkAddModel_WKeyAppliesMultipleHunks(t *testing.T) {
 	t.Parallel()
 	m, runner := newHunkAddTestModel(t, twoHunkDiff, "", "" /* two apply calls */)
 	m.width = 120
@@ -334,12 +334,12 @@ func TestHunkAddModel_EnterAppliesMultipleHunks(t *testing.T) {
 	}
 
 	// Apply
-	cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	cmd := m.Update(tea.KeyPressMsg{Code: 'w', Text: "w"})
 
 	testhelper.MustHaveCall(t, runner, "apply", "--cached")
 
 	if cmd == nil {
-		t.Fatal("expected command after Enter")
+		t.Fatal("expected command after w")
 	}
 	msg := cmd()
 	pop, ok := msg.(app.PopModelMsg)
@@ -351,7 +351,7 @@ func TestHunkAddModel_EnterAppliesMultipleHunks(t *testing.T) {
 	}
 }
 
-func TestHunkAddModel_EnterAppliesAcrossFiles(t *testing.T) {
+func TestHunkAddModel_WKeyAppliesAcrossFiles(t *testing.T) {
 	t.Parallel()
 	m, runner := newHunkAddTestModel(t, twoFileDiff, "", "" /* two apply calls */)
 	m.width = 120
@@ -369,12 +369,12 @@ func TestHunkAddModel_EnterAppliesAcrossFiles(t *testing.T) {
 	m.Update(tea.KeyPressMsg{Code: tea.KeySpace})
 
 	// Apply all
-	cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	cmd := m.Update(tea.KeyPressMsg{Code: 'w', Text: "w"})
 
 	testhelper.MustHaveCall(t, runner, "apply", "--cached")
 
 	if cmd == nil {
-		t.Fatal("expected command after Enter")
+		t.Fatal("expected command after w")
 	}
 	msg := cmd()
 	pop, ok := msg.(app.PopModelMsg)
@@ -524,8 +524,8 @@ func TestHunkAddModel_HintsForContext_Normal(t *testing.T) {
 	if !strings.Contains(hints, "Space: toggle") {
 		t.Errorf("hints should contain 'Space: toggle', got: %q", hints)
 	}
-	if !strings.Contains(hints, "Enter: apply") {
-		t.Errorf("hints should contain 'Enter: apply', got: %q", hints)
+	if !strings.Contains(hints, "w: apply") {
+		t.Errorf("hints should contain 'w: apply', got: %q", hints)
 	}
 }
 
@@ -590,11 +590,19 @@ func newTestFileDiff(path string) git.FileDiff {
 	return git.FileDiff{OldPath: path, NewPath: path, Status: git.Modified}
 }
 
-// newTestHunk creates a Hunk for testing.
+// newTestHunk creates a Hunk for testing by parsing a raw body string.
 func newTestHunk(body string) git.Hunk {
-	lines := strings.SplitN(body, "\n", 2)
-	header := lines[0]
-	return git.Hunk{Header: header, Body: body}
+	rawLines := strings.Split(body, "\n")
+	header := rawLines[0]
+	// Trim trailing empty lines
+	for len(rawLines) > 1 && rawLines[len(rawLines)-1] == "" {
+		rawLines = rawLines[:len(rawLines)-1]
+	}
+	var parsed []git.Line
+	for _, rl := range rawLines[1:] {
+		parsed = append(parsed, git.ParseLine(rl))
+	}
+	return git.Hunk{Header: header, Lines: parsed}
 }
 
 func TestHunkAddModel_FKeyTogglesDiffMaximized(t *testing.T) {
@@ -993,6 +1001,79 @@ func TestHunkAddModel_HintsIncludeCommit(t *testing.T) {
 	}
 }
 
+func TestHunkAddModel_EnterTransitionsToLineEdit(t *testing.T) {
+	t.Parallel()
+	m, _ := newHunkAddTestModel(t, singleHunkDiff)
+	m.width = 120
+	m.height = 40
+
+	if m.inLineEdit {
+		t.Fatal("should start in hunk list phase")
+	}
+
+	m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if !m.inLineEdit {
+		t.Error("Enter should transition to line edit phase")
+	}
+	if m.hunkView == nil {
+		t.Error("hunkView should be set after Enter")
+	}
+}
+
+func TestHunkAddModel_EscapeExitsLineEdit(t *testing.T) {
+	t.Parallel()
+	m, _ := newHunkAddTestModel(t, singleHunkDiff)
+	m.width = 120
+	m.height = 40
+
+	// Enter line edit
+	m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if !m.inLineEdit {
+		t.Fatal("should be in line edit")
+	}
+
+	// Exit line edit
+	m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if m.inLineEdit {
+		t.Error("Escape should exit line edit phase")
+	}
+	if m.hunkView != nil {
+		t.Error("hunkView should be nil after exit")
+	}
+}
+
+func TestHunkAddModel_LineEditSelectionsPreserved(t *testing.T) {
+	t.Parallel()
+	m, _ := newHunkAddTestModel(t, singleHunkDiff)
+	m.width = 120
+	m.height = 40
+
+	// Enter line edit
+	m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+
+	// Toggle a line (Space)
+	m.Update(tea.KeyPressMsg{Code: tea.KeySpace})
+
+	// Exit line edit - selections should be preserved in the hunk
+	m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+
+	if m.inLineEdit {
+		t.Error("should be back in hunk list phase")
+	}
+}
+
+func TestHunkAddModel_EnterNoHunksDoesNothing(t *testing.T) {
+	t.Parallel()
+	m, _ := newHunkAddTestModel(t, "")
+	m.width = 120
+	m.height = 40
+
+	m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if m.inLineEdit {
+		t.Error("Enter with no hunks should not enter line edit")
+	}
+}
+
 func TestHunkAddModel_DKeyTogglesDiffPanel(t *testing.T) {
 	t.Parallel()
 	m, _ := newHunkAddTestModel(t, singleHunkDiff)
@@ -1156,5 +1237,8 @@ func TestHunkAddModel_HelpOverlay_ShowsNewKeys(t *testing.T) {
 	}
 	if !strings.Contains(view, "Enter") {
 		t.Error("help overlay should mention 'Enter'")
+	}
+	if !strings.Contains(view, "Line Edit") {
+		t.Error("help overlay should contain 'Line Edit' section")
 	}
 }

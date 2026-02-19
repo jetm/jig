@@ -283,19 +283,20 @@ func (m *AddModel) View() string {
 		contentHeight := m.height - 1
 		m.statusBar.SetWidth(m.width)
 
-		if !m.showDiff {
+		switch {
+		case !m.showDiff:
 			panelW := m.width - 1
 			m.fileList.SetWidth(panelW)
 			m.fileList.SetHeight(contentHeight)
 			leftPanel := tui.StyleFocusBorder.Width(panelW).Height(contentHeight).MaxHeight(contentHeight).Render(m.fileList.View())
 			background = leftPanel + "\n" + m.statusBar.View()
-		} else if m.diffMaximized {
+		case m.diffMaximized:
 			rightW := m.width - 1
 			m.diffView.SetWidth(rightW)
 			m.diffView.SetHeight(contentHeight)
 			rightPanel := tui.StyleFocusBorder.Width(rightW).Height(contentHeight).MaxHeight(contentHeight).Render(m.diffView.View())
 			background = rightPanel + "\n" + m.statusBar.View()
-		} else {
+		default:
 			leftW, rightW := tui.ColumnsFromConfig(m.width, m.panelRatio)
 
 			leftW--

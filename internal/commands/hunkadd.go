@@ -19,6 +19,7 @@ import (
 
 // HunkAddModel is the command model for the hunk-add TUI (interactive hunk-level staging).
 // It uses a HunkList component for checkbox-based hunk selection and batch staging.
+// Supports two phases: hunk list (default) and line-level editing (via Enter on a hunk).
 type HunkAddModel struct {
 	ctx      context.Context
 	runner   git.Runner
@@ -27,6 +28,10 @@ type HunkAddModel struct {
 
 	files         []git.FileDiff
 	hunkList      components.HunkList
+	hunkView      *components.HunkView
+	inLineEdit    bool
+	lineEditFile  int // file index of the hunk being line-edited
+	lineEditHunk  int // hunk index within file being line-edited
 	diffView      components.DiffView
 	statusBar     components.StatusBar
 	help          components.HelpOverlay
@@ -98,17 +103,26 @@ func NewHunkAddModel(
 				},
 			},
 			{
-				Name: "Actions",
+				Name: "Hunk Actions",
 				Bindings: []components.KeyBinding{
 					{Key: "Space", Desc: "toggle hunk staged"},
-					{Key: "Enter", Desc: "apply staged hunks"},
+					{Key: "Enter", Desc: "edit lines in hunk"},
+					{Key: "w", Desc: "apply staged hunks"},
 					{Key: "c", Desc: "stage and commit"},
 					{Key: "C", Desc: "stage and commit (title only)"},
 					{Key: "s", Desc: "split hunk"},
 					{Key: "e", Desc: "edit hunk in editor"},
-					{Key: "w", Desc: "toggle soft-wrap (diff panel)"},
 					{Key: "F", Desc: "maximize diff panel"},
 					{Key: "q/Esc", Desc: "quit"},
+				},
+			},
+			{
+				Name: "Line Edit",
+				Bindings: []components.KeyBinding{
+					{Key: "j/k", Desc: "move between lines"},
+					{Key: "Space", Desc: "toggle line selection"},
+					{Key: "u", Desc: "undo last toggle"},
+					{Key: "Esc", Desc: "back to hunk list"},
 				},
 			},
 		}),
@@ -164,6 +178,11 @@ func (m *HunkAddModel) Update(msg tea.Msg) tea.Cmd {
 		return sbCmd
 
 	case tea.KeyPressMsg:
+		// Line-edit phase: delegate to HunkView
+		if m.inLineEdit {
+			return m.updateLineEdit(msg, sbCmd)
+		}
+
 		if m.help.HandleKey(msg) {
 			return sbCmd
 		}
@@ -203,7 +222,7 @@ func (m *HunkAddModel) Update(msg tea.Msg) tea.Cmd {
 				return sbCmd
 			}
 			fi := m.hunkList.CurrentFileIdx()
-			rawDiff := m.patchHeader(m.files[fi]) + "\n" + hunk.Body
+			rawDiff := m.patchHeader(m.files[fi]) + "\n" + hunk.Body()
 			return git.EditDiff(m.ctx, m.runner, rawDiff)
 		}
 
@@ -242,13 +261,24 @@ func (m *HunkAddModel) Update(msg tea.Msg) tea.Cmd {
 		}
 
 		switch msg.Code {
-		case 'q', tea.KeyEscape:
+		case 'q':
+			return func() tea.Msg {
+				return app.PopModelMsg{MutatedGit: false}
+			}
+
+		case tea.KeyEscape:
 			return func() tea.Msg {
 				return app.PopModelMsg{MutatedGit: false}
 			}
 
 		case tea.KeyEnter:
-			return m.applyStaged()
+			m.enterLineEdit()
+			return sbCmd
+
+		case 'w':
+			if !m.focusRight {
+				return m.applyStaged()
+			}
 
 		case 's':
 			m.splitCurrentHunk()
@@ -287,18 +317,19 @@ func (m *HunkAddModel) View() string {
 		m.statusBar.SetWidth(m.width)
 		m.statusBar.SetHints(m.hintsForContext())
 
-		if !m.showDiff {
+		switch {
+		case !m.showDiff:
 			panelW := m.width - 1
 			leftContent := m.renderLeftPanel(panelW, contentHeight)
 			leftPanel := tui.StyleFocusBorder.Width(panelW).Height(contentHeight).MaxHeight(contentHeight).Render(leftContent)
 			background = leftPanel + "\n" + m.statusBar.View()
-		} else if m.diffMaximized {
+		case m.diffMaximized:
 			rightW := m.width - 1
 			m.diffView.SetWidth(rightW)
 			m.diffView.SetHeight(contentHeight)
 			rightPanel := tui.StyleFocusBorder.Width(rightW).Height(contentHeight).MaxHeight(contentHeight).Render(m.diffView.View())
 			background = rightPanel + "\n" + m.statusBar.View()
-		} else {
+		default:
 			leftW, rightW := tui.ColumnsFromConfig(m.width, m.panelRatio)
 
 			leftW--
@@ -324,8 +355,13 @@ func (m *HunkAddModel) View() string {
 	return m.help.View(background, m.width, m.height)
 }
 
-// renderLeftPanel renders the hunk list at full panel height.
+// renderLeftPanel renders the hunk list or hunk view at full panel height.
 func (m *HunkAddModel) renderLeftPanel(width, height int) string {
+	if m.inLineEdit && m.hunkView != nil {
+		m.hunkView.SetWidth(width)
+		m.hunkView.SetHeight(height)
+		return m.hunkView.View()
+	}
 	m.hunkList.SetWidth(width)
 	m.hunkList.SetHeight(height)
 	return m.hunkList.View()
@@ -333,13 +369,73 @@ func (m *HunkAddModel) renderLeftPanel(width, height int) string {
 
 // hintsForContext returns status bar hints based on current context.
 func (m *HunkAddModel) hintsForContext() string {
+	if m.inLineEdit {
+		return "j/k: navigate  Space: toggle  u: undo  Esc: back  ?: help"
+	}
 	if m.diffMaximized {
 		return "F: restore  ?: help  q: quit"
 	}
 	if m.focusRight {
 		return "h/l: scroll  Tab: panel  ?: help  q: quit"
 	}
-	return "Space: toggle  Enter: apply  c: commit  Tab: panel  ?: help  q: quit"
+	return "Space: toggle  Enter: lines  w: apply  c: commit  ?: help  q: quit"
+}
+
+// enterLineEdit transitions from hunk list to line-level editing for the current hunk.
+func (m *HunkAddModel) enterLineEdit() {
+	hunk, ok := m.hunkList.CurrentHunk()
+	if !ok {
+		return
+	}
+	hv := components.NewHunkView(hunk)
+	m.hunkView = &hv
+	m.inLineEdit = true
+	m.lineEditFile = m.hunkList.CurrentFileIdx()
+	m.lineEditHunk = m.hunkList.CurrentHunkIdx()
+	m.statusBar.SetHints(m.hintsForContext())
+}
+
+// exitLineEdit returns from line-level editing to the hunk list,
+// preserving line selections in the hunk.
+func (m *HunkAddModel) exitLineEdit() {
+	if m.hunkView == nil {
+		m.inLineEdit = false
+		return
+	}
+	// Write back the modified hunk with line selections to the hunk list.
+	modifiedHunk := m.hunkView.Hunk()
+	fileHunks := m.hunkList.FileHunks(m.lineEditFile)
+	if m.lineEditHunk < len(fileHunks) {
+		fileHunks[m.lineEditHunk] = modifiedHunk
+		m.hunkList.ReplaceHunks(m.lineEditFile, fileHunks)
+		// Restore cursor position to the same hunk.
+		m.hunkList.ScrollToFile(m.lineEditFile)
+	}
+	m.hunkView = nil
+	m.inLineEdit = false
+	m.statusBar.SetHints(m.hintsForContext())
+	m.renderCurrentHunk()
+}
+
+// updateLineEdit handles key messages during line-level editing phase.
+func (m *HunkAddModel) updateLineEdit(msg tea.KeyPressMsg, sbCmd tea.Cmd) tea.Cmd {
+	if m.help.HandleKey(msg) {
+		return sbCmd
+	}
+
+	switch msg.Code {
+	case tea.KeyEscape:
+		m.exitLineEdit()
+		return sbCmd
+	case 'q':
+		m.exitLineEdit()
+		return sbCmd
+	}
+
+	if m.hunkView != nil {
+		m.hunkView.Update(msg)
+	}
+	return sbCmd
 }
 
 // renderCurrentHunk updates the right-panel diff view with the hunk under the cursor.
@@ -350,7 +446,7 @@ func (m *HunkAddModel) renderCurrentHunk() {
 		return
 	}
 
-	raw := hunk.Body
+	raw := hunk.Body()
 	rendered, err := m.renderer.Render(raw)
 	if err != nil {
 		rendered = raw
@@ -383,7 +479,7 @@ func (m *HunkAddModel) applyStaged() tea.Cmd {
 			continue
 		}
 		header := m.patchHeader(m.files[sh.FileIdx])
-		err := git.StageHunk(m.ctx, m.runner, header, sh.Hunk.Body)
+		err := git.StageHunk(m.ctx, m.runner, header, sh.Hunk.Body())
 		if err != nil {
 			lastErr = err
 			continue
@@ -435,7 +531,7 @@ func (m *HunkAddModel) splitCurrentHunk() {
 // splitHunk tries to break a hunk into smaller pieces at context-line boundaries.
 // Returns the original slice (len==1) if it cannot be split further.
 func splitHunk(h git.Hunk) []git.Hunk {
-	lines := strings.Split(h.Body, "\n")
+	lines := strings.Split(h.Body(), "\n")
 	if len(lines) <= 2 {
 		return []git.Hunk{h}
 	}
@@ -484,10 +580,14 @@ func splitHunk(h git.Hunk) []git.Hunk {
 		subLines := []string{header}
 		subLines = append(subLines, lines[ctxBefore:ctxAfter]...)
 
-		body := strings.Join(subLines, "\n")
+		// Parse the sub-hunk lines into Line structs
+		var subParsedLines []git.Line
+		for _, sl := range subLines[1:] { // skip header
+			subParsedLines = append(subParsedLines, git.ParseLine(sl))
+		}
 		result = append(result, git.Hunk{
 			Header: header,
-			Body:   body,
+			Lines:  subParsedLines,
 		})
 	}
 
@@ -517,7 +617,7 @@ func (m *HunkAddModel) execCommit(titleOnly bool) tea.Cmd {
 			continue
 		}
 		header := m.patchHeader(m.files[sh.FileIdx])
-		if err := git.StageHunk(m.ctx, m.runner, header, sh.Hunk.Body); err != nil {
+		if err := git.StageHunk(m.ctx, m.runner, header, sh.Hunk.Body()); err != nil {
 			lastErr = err
 			continue
 		}

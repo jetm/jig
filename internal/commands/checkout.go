@@ -287,7 +287,8 @@ func (m *CheckoutModel) View() string {
 		contentHeight := m.height - 1
 		m.statusBar.SetWidth(m.width)
 
-		if !m.showDiff {
+		switch {
+		case !m.showDiff:
 			panelW := m.width - 1
 			m.fileList.SetWidth(panelW)
 			m.fileList.SetHeight(contentHeight)
@@ -303,7 +304,7 @@ func (m *CheckoutModel) View() string {
 			} else {
 				background = leftPanel + "\n" + m.statusBar.View()
 			}
-		} else if m.diffMaximized {
+		case m.diffMaximized:
 			rightW := m.width - 1
 			m.diffView.SetWidth(rightW)
 			m.diffView.SetHeight(contentHeight)
@@ -318,7 +319,7 @@ func (m *CheckoutModel) View() string {
 			} else {
 				background = rightPanel + "\n" + m.statusBar.View()
 			}
-		} else {
+		default:
 			leftW, rightW := tui.ColumnsFromConfig(m.width, m.panelRatio)
 
 			leftW--

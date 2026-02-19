@@ -11,7 +11,10 @@ import (
 
 // testHunk builds a git.Hunk with the given header.
 func testHunk(header string) git.Hunk {
-	return git.Hunk{Header: header, Body: header + "\n context\n+added\n"}
+	return git.Hunk{Header: header, Lines: []git.Line{
+		{Op: ' ', Content: "context"},
+		{Op: '+', Content: "added", Selected: true},
+	}}
 }
 
 // testFileDiffH builds a minimal git.FileDiff.
@@ -589,9 +592,9 @@ func TestComputeLineNumWidth(t *testing.T) {
 	t.Parallel()
 	files := []git.FileDiff{testFileDiffH("a.go"), testFileDiffH("b.go"), testFileDiffH("c.go")}
 	hunks := [][]git.Hunk{
-		{git.Hunk{Header: "@@ -3,5 +3,6 @@", Body: "@@ -3,5 +3,6 @@\n+x\n"}},
-		{git.Hunk{Header: "@@ -70,5 +72,6 @@", Body: "@@ -70,5 +72,6 @@\n+x\n"}},
-		{git.Hunk{Header: "@@ -150,5 +151,6 @@", Body: "@@ -150,5 +151,6 @@\n+x\n"}},
+		{git.Hunk{Header: "@@ -3,5 +3,6 @@", Lines: []git.Line{{Op: '+', Content: "x", Selected: true}}}},
+		{git.Hunk{Header: "@@ -70,5 +72,6 @@", Lines: []git.Line{{Op: '+', Content: "x", Selected: true}}}},
+		{git.Hunk{Header: "@@ -150,5 +151,6 @@", Lines: []git.Line{{Op: '+', Content: "x", Selected: true}}}},
 	}
 	hl := NewHunkList(files, hunks)
 	width := hl.computeLineNumWidth()
@@ -637,7 +640,12 @@ func TestHunkList_View_HunkRowFormat(t *testing.T) {
 	files := []git.FileDiff{testFileDiffH("main.go")}
 	h := git.Hunk{
 		Header: "@@ -72,6 +72,10 @@ func main()",
-		Body:   "@@ -72,6 +72,10 @@ func main()\n context\n+line1\n+line2\n-removed\n",
+		Lines: []git.Line{
+			{Op: ' ', Content: "context"},
+			{Op: '+', Content: "line1", Selected: true},
+			{Op: '+', Content: "line2", Selected: true},
+			{Op: '-', Content: "removed", Selected: true},
+		},
 	}
 	hunks := [][]git.Hunk{{h}}
 	hl := NewHunkList(files, hunks)
@@ -660,8 +668,8 @@ func TestHunkList_View_RightAlignedLineNumbers(t *testing.T) {
 	t.Parallel()
 	files := []git.FileDiff{testFileDiffH("a.go")}
 	hunks := [][]git.Hunk{{
-		git.Hunk{Header: "@@ -3,5 +3,6 @@", Body: "@@ -3,5 +3,6 @@\n+x\n"},
-		git.Hunk{Header: "@@ -150,5 +151,6 @@", Body: "@@ -150,5 +151,6 @@\n+x\n"},
+		git.Hunk{Header: "@@ -3,5 +3,6 @@", Lines: []git.Line{{Op: '+', Content: "x", Selected: true}}},
+		git.Hunk{Header: "@@ -150,5 +151,6 @@", Lines: []git.Line{{Op: '+', Content: "x", Selected: true}}},
 	}}
 	hl := NewHunkList(files, hunks)
 	hl.SetWidth(0) // no width constraint for easier assertion

@@ -45,23 +45,30 @@ type StagedHunk struct {
 // HunkList renders a flat two-zone list: file header rows (non-selectable) followed
 // by hunk rows (selectable, with checkboxes). Navigation with j/k skips file headers.
 type HunkList struct {
-	files  []git.FileDiff
-	hunks  [][]git.Hunk // per-file hunk slices
-	rows   []row
-	staged map[int]bool // keyed by row index
-	cursor int
-	offset int
-	width  int
-	height int
+	files          []git.FileDiff
+	hunks          [][]git.Hunk // per-file hunk slices
+	rows           []row
+	staged         map[int]bool // keyed by row index
+	selectionLabel string       // label for selection state (default: "staged")
+	cursor         int
+	offset         int
+	width          int
+	height         int
+}
+
+// SetSelectionLabel sets the label used for the selection state indicator.
+func (hl *HunkList) SetSelectionLabel(label string) {
+	hl.selectionLabel = label
 }
 
 // NewHunkList creates a HunkList from a slice of file diffs and their parsed hunks.
 // len(hunks) must equal len(files); each hunks[i] contains the hunks for files[i].
 func NewHunkList(files []git.FileDiff, hunks [][]git.Hunk) HunkList {
 	hl := HunkList{
-		files:  files,
-		hunks:  hunks,
-		staged: make(map[int]bool),
+		files:          files,
+		hunks:          hunks,
+		staged:         make(map[int]bool),
+		selectionLabel: "staged",
 	}
 	hl.buildRows()
 	// Position cursor on first hunk row, if any.
@@ -339,7 +346,7 @@ func (hl *HunkList) renderFileHeader(fi int, style lipgloss.Style) string {
 			}
 		}
 	}
-	text := fmt.Sprintf("  %s (%d/%d staged)", name, staged, total)
+	text := fmt.Sprintf("  %s (%d/%d %s)", name, staged, total, hl.selectionLabel)
 	if hl.width > 0 {
 		return style.Width(hl.width).MaxWidth(hl.width).Render(text)
 	}

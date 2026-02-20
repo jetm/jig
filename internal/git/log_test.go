@@ -120,7 +120,7 @@ func TestRecentCommits_ReturnsErrorOnFailure(t *testing.T) {
 
 func TestCommitDiff_UsesShowCommand(t *testing.T) {
 	runner := &testhelper.FakeRunner{Outputs: []string{"diff output"}}
-	out, err := git.CommitDiff(context.Background(), runner, "abc1234")
+	out, err := git.CommitDiff(context.Background(), runner, "abc1234", -1)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -135,7 +135,7 @@ func TestCommitDiff_ReturnsErrorOnFailure(t *testing.T) {
 		Outputs: []string{""},
 		Errors:  []error{&git.ExecError{Args: []string{"show"}, ExitCode: 128, Stderr: "bad object"}},
 	}
-	_, err := git.CommitDiff(context.Background(), runner, "badhash")
+	_, err := git.CommitDiff(context.Background(), runner, "badhash", -1)
 	if err == nil {
 		t.Error("expected error, got nil")
 	}

@@ -32,6 +32,7 @@ type AddModel struct {
 	width         int
 	height        int
 	panelRatio    int
+	contextLines  int
 	focusRight    bool
 	showDiff      bool
 	diffMaximized bool
@@ -99,8 +100,9 @@ func NewAddModel(
 				},
 			},
 		}),
-		branch:     branchName,
-		panelRatio: cfg.PanelRatio,
+		branch:       branchName,
+		panelRatio:   cfg.PanelRatio,
+		contextLines: cfg.DiffContext,
 	}
 
 	m.showDiff = cfg.ShowDiffPanel
@@ -195,6 +197,22 @@ func (m *AddModel) Update(msg tea.Msg) tea.Cmd {
 				return sbCmd
 			}
 			return git.EditDiff(m.ctx, m.runner, rawDiff)
+		}
+
+		if msg.String() == "{" {
+			if m.contextLines > 0 {
+				m.contextLines--
+				m.renderSelectedDiff()
+			}
+			return sbCmd
+		}
+
+		if msg.String() == "}" {
+			if m.contextLines < 20 {
+				m.contextLines++
+				m.renderSelectedDiff()
+			}
+			return sbCmd
 		}
 
 		if msg.String() == "[" {
@@ -367,10 +385,11 @@ func (m *AddModel) renderSelectedDiff() {
 	sf := m.findFile(path)
 	var raw string
 	var err error
+	contextArg := fmt.Sprintf("-U%d", m.contextLines)
 	if sf != nil && sf.Status == git.Added && !m.isTracked(path) {
-		raw, err = m.runner.RunAllowExitCode(m.ctx, 1, "diff", "--no-index", "--", "/dev/null", path)
+		raw, err = m.runner.RunAllowExitCode(m.ctx, 1, "diff", contextArg, "--no-index", "--", "/dev/null", path)
 	} else {
-		raw, err = m.runner.Run(m.ctx, "diff", "--", path)
+		raw, err = m.runner.Run(m.ctx, "diff", contextArg, "--", path)
 	}
 	if err != nil || raw == "" {
 		m.diffView.SetContent("(no diff available)")

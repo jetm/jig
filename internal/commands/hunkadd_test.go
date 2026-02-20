@@ -552,7 +552,7 @@ func TestHunkAddModel_HintsForContext_Maximized(t *testing.T) {
 func TestSplitHunk_SingleChange(t *testing.T) {
 	t.Parallel()
 	h := newTestHunk("@@ -1,3 +1,4 @@\n package main\n+// added\n func foo() {}\n")
-	result := splitHunk(h)
+	result := splitHunk(h, 3)
 	if len(result) != 1 {
 		t.Errorf("splitHunk of single-change hunk should return 1 hunk, got %d", len(result))
 	}
@@ -570,7 +570,7 @@ func TestSplitHunk_TwoChanges(t *testing.T) {
 		"+// change2\n" +
 		" func b() {}\n"
 	h := newTestHunk(body)
-	result := splitHunk(h)
+	result := splitHunk(h, 3)
 	if len(result) < 1 {
 		t.Error("splitHunk should return at least 1 hunk")
 	}
@@ -579,7 +579,7 @@ func TestSplitHunk_TwoChanges(t *testing.T) {
 func TestSplitHunk_TooShort(t *testing.T) {
 	t.Parallel()
 	h := newTestHunk("@@ -1 +1 @@\n+x\n")
-	result := splitHunk(h)
+	result := splitHunk(h, 3)
 	if len(result) != 1 {
 		t.Errorf("splitHunk of very short hunk should return 1 hunk, got %d", len(result))
 	}
@@ -797,7 +797,7 @@ func TestNewHunkAddModel_WithFilterPaths(t *testing.T) {
 	if len(m.files) != 1 {
 		t.Fatalf("expected 1 file, got %d", len(m.files))
 	}
-	testhelper.MustHaveCall(t, runner, "diff", "--", "foo.go")
+	testhelper.MustHaveCall(t, runner, "diff", "-U3", "--", "foo.go")
 }
 
 func TestNewHunkAddModel_FilterPaths_NoMatch(t *testing.T) {
@@ -1240,5 +1240,52 @@ func TestHunkAddModel_HelpOverlay_ShowsNewKeys(t *testing.T) {
 	}
 	if !strings.Contains(view, "Line Edit") {
 		t.Error("help overlay should contain 'Line Edit' section")
+	}
+}
+
+func TestHunkAddModel_BraceKeysAdjustContextLines(t *testing.T) {
+	t.Parallel()
+	m, _ := newHunkAddTestModel(t, singleHunkDiff)
+	m.width = 120
+	m.height = 40
+
+	initial := m.contextLines
+
+	// Need extra outputs for refreshHunks calls
+	m.runner.(*testhelper.FakeRunner).Outputs = append(
+		m.runner.(*testhelper.FakeRunner).Outputs,
+		singleHunkDiff, // after }
+		singleHunkDiff, // after {
+	)
+
+	m.Update(tea.KeyPressMsg{Code: '}', ShiftedCode: '}', Mod: tea.ModShift, Text: "}"})
+	if m.contextLines != initial+1 {
+		t.Errorf("} should increment contextLines: got %d want %d", m.contextLines, initial+1)
+	}
+
+	m.Update(tea.KeyPressMsg{Code: '{', ShiftedCode: '{', Mod: tea.ModShift, Text: "{"})
+	if m.contextLines != initial {
+		t.Errorf("{ should decrement contextLines: got %d want %d", m.contextLines, initial)
+	}
+}
+
+func TestHunkAddModel_BraceKeysBounds(t *testing.T) {
+	t.Parallel()
+	m, _ := newHunkAddTestModel(t, singleHunkDiff)
+	m.width = 120
+	m.height = 40
+
+	// Test minimum
+	m.contextLines = 0
+	m.Update(tea.KeyPressMsg{Code: '{', ShiftedCode: '{', Mod: tea.ModShift, Text: "{"})
+	if m.contextLines != 0 {
+		t.Errorf("contextLines should not go below 0, got %d", m.contextLines)
+	}
+
+	// Test maximum
+	m.contextLines = 20
+	m.Update(tea.KeyPressMsg{Code: '}', ShiftedCode: '}', Mod: tea.ModShift, Text: "}"})
+	if m.contextLines != 20 {
+		t.Errorf("contextLines should not go above 20, got %d", m.contextLines)
 	}
 }

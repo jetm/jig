@@ -42,6 +42,7 @@ type HunkAddModel struct {
 	focusRight    bool
 	showDiff      bool
 	diffMaximized bool
+	contextLines  int
 	filterPaths   []string
 	noMatchFilter bool
 	// prevFileIdx/prevHunkIdx track cursor position to detect changes and update diff.
@@ -63,7 +64,7 @@ func NewHunkAddModel(
 		paths = ExpandGlobs(filterPaths[0])
 	}
 	// Only modified tracked files have patchable hunks.
-	diffArgs := []string{"diff"}
+	diffArgs := []string{"diff", fmt.Sprintf("-U%d", cfg.DiffContext)}
 	if len(paths) > 0 {
 		diffArgs = append(diffArgs, "--")
 		diffArgs = append(diffArgs, paths...)
@@ -88,6 +89,7 @@ func NewHunkAddModel(
 		cfg:           cfg,
 		files:         files,
 		hunkList:      components.NewHunkList(files, hunks),
+		contextLines:  cfg.DiffContext,
 		filterPaths:   paths,
 		noMatchFilter: noMatch,
 		diffView:      components.NewDiffView(80, 20),
@@ -224,6 +226,22 @@ func (m *HunkAddModel) Update(msg tea.Msg) tea.Cmd {
 			fi := m.hunkList.CurrentFileIdx()
 			rawDiff := m.patchHeader(m.files[fi]) + "\n" + hunk.Body()
 			return git.EditDiff(m.ctx, m.runner, rawDiff)
+		}
+
+		if msg.String() == "{" {
+			if m.contextLines > 0 {
+				m.contextLines--
+				m.refreshHunks()
+			}
+			return sbCmd
+		}
+
+		if msg.String() == "}" {
+			if m.contextLines < 20 {
+				m.contextLines++
+				m.refreshHunks()
+			}
+			return sbCmd
 		}
 
 		if msg.String() == "[" {
@@ -506,7 +524,7 @@ func (m *HunkAddModel) splitCurrentHunk() {
 		return
 	}
 
-	sub := splitHunk(hunk)
+	sub := splitHunk(hunk, m.contextLines)
 	if len(sub) <= 1 {
 		_ = m.statusBar.SetMessage("Cannot split hunk further", components.Info)
 		return
@@ -529,8 +547,9 @@ func (m *HunkAddModel) splitCurrentHunk() {
 }
 
 // splitHunk tries to break a hunk into smaller pieces at context-line boundaries.
+// contextLines controls the surrounding context padding for each sub-hunk.
 // Returns the original slice (len==1) if it cannot be split further.
-func splitHunk(h git.Hunk) []git.Hunk {
+func splitHunk(h git.Hunk, contextLines int) []git.Hunk {
 	lines := strings.Split(h.Body(), "\n")
 	if len(lines) <= 2 {
 		return []git.Hunk{h}
@@ -569,13 +588,13 @@ func splitHunk(h git.Hunk) []git.Hunk {
 		return []git.Hunk{h}
 	}
 
-	// Build sub-hunks: each keeps surrounding context (up to 3 lines) around its changes.
+	// Build sub-hunks: each keeps surrounding context (up to contextLines) around its changes.
 	var result []git.Hunk
 	header := lines[0]
 
 	for _, seg := range segments {
-		ctxBefore := max(1, seg.start-3)
-		ctxAfter := min(len(lines), seg.end+3)
+		ctxBefore := max(1, seg.start-contextLines)
+		ctxAfter := min(len(lines), seg.end+contextLines)
 
 		subLines := []string{header}
 		subLines = append(subLines, lines[ctxBefore:ctxAfter]...)
@@ -644,7 +663,7 @@ func (m *HunkAddModel) execCommit(titleOnly bool) tea.Cmd {
 // refreshHunks re-queries git state and rebuilds the hunk list.
 // Called after a commit completes to reflect the new index state.
 func (m *HunkAddModel) refreshHunks() {
-	diffArgs := []string{"diff"}
+	diffArgs := []string{"diff", fmt.Sprintf("-U%d", m.contextLines)}
 	if len(m.filterPaths) > 0 {
 		diffArgs = append(diffArgs, "--")
 		diffArgs = append(diffArgs, m.filterPaths...)

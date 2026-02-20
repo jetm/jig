@@ -1,6 +1,7 @@
 package git
 
 import (
+	"fmt"
 	"strings"
 )
 
@@ -201,9 +202,13 @@ func extractRenameField(block, prefix string) string {
 	return strings.TrimSpace(block[start : start+end])
 }
 
-// DiffArgs constructs the git diff argument list from revision and staged flag.
-func DiffArgs(revision string, staged bool) []string {
+// DiffArgs constructs the git diff argument list from revision, staged flag,
+// and context lines. When contextLines is negative it is ignored (git default).
+func DiffArgs(revision string, staged bool, contextLines int) []string {
 	args := []string{"diff"}
+	if contextLines >= 0 {
+		args = append(args, fmt.Sprintf("-U%d", contextLines))
+	}
 	if staged {
 		args = append(args, "--cached")
 	}

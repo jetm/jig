@@ -15,15 +15,16 @@ import (
 	"github.com/jetm/jig/internal/tui/components"
 )
 
-// ResetModel is the command model for the reset TUI (interactive unstaging).
-// It follows the child component pattern: Update returns tea.Cmd, View returns string.
-type ResetModel struct {
-	ctx           context.Context
-	runner        git.Runner
-	renderer      diff.Renderer
-	cfg           config.Config
-	files         []git.StatusFile
-	fileList      components.FileList
+// HunkResetModel is the command model for the hunk-reset TUI (interactive hunk-level unstaging).
+// It uses a HunkList component for checkbox-based hunk selection and batch unstaging.
+type HunkResetModel struct {
+	ctx      context.Context
+	runner   git.Runner
+	renderer diff.Renderer
+	cfg      config.Config
+
+	files         []git.FileDiff
+	hunkList      components.HunkList
 	diffView      components.DiffView
 	statusBar     components.StatusBar
 	help          components.HelpOverlay
@@ -31,44 +32,58 @@ type ResetModel struct {
 	width         int
 	height        int
 	panelRatio    int
-	contextLines  int
 	focusRight    bool
 	showDiff      bool
 	diffMaximized bool
 	filterPaths   []string
 	noMatchFilter bool
+	// prevFileIdx/prevHunkIdx track cursor position to detect changes and update diff.
+	prevFileIdx int
+	prevHunkIdx int
 }
 
-// NewResetModel creates a ResetModel by listing staged files.
+// NewHunkResetModel creates a HunkResetModel by listing files with staged changes.
 // filterPaths optionally restricts the file list to specific paths.
-func NewResetModel(
+func NewHunkResetModel(
 	ctx context.Context,
 	runner git.Runner,
 	cfg config.Config,
 	renderer diff.Renderer,
 	filterPaths ...[]string,
-) *ResetModel {
+) *HunkResetModel {
 	var paths []string
 	if len(filterPaths) > 0 {
 		paths = ExpandGlobs(filterPaths[0])
 	}
-	files, _ := git.ListStagedFilesFiltered(ctx, runner, paths)
+	// Staged changes: git diff --cached
+	diffArgs := []string{"diff", "--cached"}
+	if len(paths) > 0 {
+		diffArgs = append(diffArgs, "--")
+		diffArgs = append(diffArgs, paths...)
+	}
+	rawDiff, _ := runner.Run(ctx, diffArgs...)
 	branchName, _ := git.BranchName(ctx, runner)
 
-	entries := make([]components.FileEntry, len(files))
+	files := git.ParseFileDiffs(rawDiff)
+
+	// Parse hunks per file for HunkList.
+	hunks := make([][]git.Hunk, len(files))
 	for i, f := range files {
-		entries[i] = components.FileEntry{Path: f.Path, Status: f.Status}
+		hunks[i] = git.ParseHunks(f.RawDiff)
 	}
 
 	noMatch := len(filterPaths) > 0 && len(filterPaths[0]) > 0 && len(files) == 0
 
-	m := &ResetModel{
+	hl := components.NewHunkList(files, hunks)
+	hl.SetSelectionLabel("selected")
+
+	m := &HunkResetModel{
 		ctx:           ctx,
 		runner:        runner,
 		renderer:      renderer,
 		cfg:           cfg,
 		files:         files,
-		fileList:      components.NewFileList(entries, true),
+		hunkList:      hl,
 		filterPaths:   paths,
 		noMatchFilter: noMatch,
 		diffView:      components.NewDiffView(80, 20),
@@ -77,62 +92,46 @@ func NewResetModel(
 			{
 				Name: "Navigation",
 				Bindings: []components.KeyBinding{
-					{Key: "j/k", Desc: "move up/down"},
-					{Key: "o", Desc: "expand/collapse"},
+					{Key: "j/k", Desc: "move between hunks"},
 					{Key: "Tab", Desc: "switch panel"},
 					{Key: "D", Desc: "toggle diff"},
-					{Key: "Space", Desc: "toggle selection"},
-					{Key: "a", Desc: "select all"},
-					{Key: "d", Desc: "deselect all"},
 					{Key: "?", Desc: "toggle help"},
 				},
 			},
 			{
 				Name: "Actions",
 				Bindings: []components.KeyBinding{
-					{Key: "Enter", Desc: "unstage selected files"},
+					{Key: "Space", Desc: "toggle hunk selected"},
+					{Key: "Enter", Desc: "unstage selected hunks"},
 					{Key: "w", Desc: "toggle soft-wrap (diff panel)"},
 					{Key: "F", Desc: "maximize diff panel"},
-					{Key: "q/Esc", Desc: "quit without unstaging"},
+					{Key: "q/Esc", Desc: "quit"},
 				},
 			},
 		}),
-		branch:       branchName,
-		panelRatio:   cfg.PanelRatio,
-		contextLines: cfg.DiffContext,
+		branch:     branchName,
+		panelRatio: cfg.PanelRatio,
 	}
 
 	m.showDiff = cfg.ShowDiffPanel
 	m.diffView.SetSoftWrap(cfg.SoftWrap)
 
-	m.updateHints()
+	m.statusBar.SetHints(m.hintsForContext())
 	m.statusBar.SetBranch(branchName)
-	m.statusBar.SetMode("reset")
+	m.statusBar.SetMode("hunk-reset")
 
-	if len(files) > 0 && m.showDiff {
-		m.renderSelectedDiff()
+	if len(files) > 0 {
+		m.renderCurrentHunk()
 	}
 
 	return m
 }
 
-// Update handles messages.
-func (m *ResetModel) Update(msg tea.Msg) tea.Cmd {
+// Update handles messages and returns commands.
+func (m *HunkResetModel) Update(msg tea.Msg) tea.Cmd {
 	sbCmd := m.statusBar.Update(msg)
 
 	switch msg := msg.(type) {
-	case git.EditDiffMsg:
-		if msg.Err != nil {
-			_ = m.statusBar.SetMessage(fmt.Sprintf("Edit failed: %v", msg.Err), components.Error)
-			return sbCmd
-		}
-		if err := git.ApplyEditedDiff(m.ctx, m.runner, msg.OriginalDiff, msg.EditedPath); err != nil {
-			_ = m.statusBar.SetMessage(fmt.Sprintf("Apply failed: %v", err), components.Error)
-			return sbCmd
-		}
-		m.renderSelectedDiff()
-		return sbCmd
-
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -147,7 +146,7 @@ func (m *ResetModel) Update(msg tea.Msg) tea.Cmd {
 		if msg.Code == tea.KeyTab {
 			if m.showDiff && !m.diffMaximized {
 				m.focusRight = !m.focusRight
-				m.updateHints()
+				m.statusBar.SetHints(m.hintsForContext())
 			}
 			return sbCmd
 		}
@@ -155,7 +154,7 @@ func (m *ResetModel) Update(msg tea.Msg) tea.Cmd {
 		if msg.String() == "D" {
 			m.showDiff = !m.showDiff
 			if m.showDiff && len(m.files) > 0 {
-				m.renderSelectedDiff()
+				m.renderCurrentHunk()
 			}
 			return sbCmd
 		}
@@ -163,42 +162,13 @@ func (m *ResetModel) Update(msg tea.Msg) tea.Cmd {
 		if msg.String() == "F" {
 			if m.showDiff {
 				m.diffMaximized = !m.diffMaximized
-				m.updateHints()
+				m.statusBar.SetHints(m.hintsForContext())
 			}
 			return sbCmd
 		}
 
 		if msg.String() == "w" && m.focusRight {
 			m.diffView.SetSoftWrap(!m.diffView.SoftWrap())
-			return sbCmd
-		}
-
-		if msg.String() == "e" {
-			path := m.fileList.SelectedPath()
-			if path == "" {
-				return sbCmd
-			}
-			rawDiff, err := m.runner.Run(m.ctx, "diff", "--cached", "--", path)
-			if err != nil || rawDiff == "" {
-				_ = m.statusBar.SetMessage("No diff to edit", components.Info)
-				return sbCmd
-			}
-			return git.EditDiff(m.ctx, m.runner, rawDiff)
-		}
-
-		if msg.String() == "{" {
-			if m.contextLines > 0 {
-				m.contextLines--
-				m.renderSelectedDiff()
-			}
-			return sbCmd
-		}
-
-		if msg.String() == "}" {
-			if m.contextLines < 20 {
-				m.contextLines++
-				m.renderSelectedDiff()
-			}
 			return sbCmd
 		}
 
@@ -235,19 +205,7 @@ func (m *ResetModel) Update(msg tea.Msg) tea.Cmd {
 			}
 
 		case tea.KeyEnter:
-			return m.unstageSelected()
-
-		case ' ':
-			m.fileList.ToggleChecked()
-			return sbCmd
-
-		case 'a':
-			m.fileList.SetAllChecked(true)
-			return sbCmd
-
-		case 'd':
-			m.fileList.SetAllChecked(false)
-			return sbCmd
+			return m.applySelected()
 		}
 
 		if m.focusRight {
@@ -255,9 +213,10 @@ func (m *ResetModel) Update(msg tea.Msg) tea.Cmd {
 			return tea.Batch(sbCmd, dvCmd)
 		}
 
-		treeCmd := m.fileList.Update(msg)
-		m.renderSelectedDiff()
-		return tea.Batch(sbCmd, treeCmd)
+		// Forward navigation (j/k/Space) to the hunk list.
+		m.hunkList.Update(msg)
+		m.syncDiffPreview()
+		return sbCmd
 	}
 
 	return sbCmd
@@ -265,7 +224,7 @@ func (m *ResetModel) Update(msg tea.Msg) tea.Cmd {
 
 // View renders the two-panel layout with the help overlay composited on top
 // when visible.
-func (m *ResetModel) View() string {
+func (m *HunkResetModel) View() string {
 	if tui.IsTerminalTooSmall(m.width, m.height) {
 		return "Terminal too small. Please resize to at least 60x10."
 	}
@@ -275,32 +234,29 @@ func (m *ResetModel) View() string {
 	case m.noMatchFilter:
 		background = "No matching changes for the given paths."
 	case len(m.files) == 0:
-		background = "Nothing to unstage."
+		background = "No staged changes to unstage."
 	default:
 		contentHeight := m.height - 1
 		m.statusBar.SetWidth(m.width)
+		m.statusBar.SetHints(m.hintsForContext())
 
-		switch {
-		case !m.showDiff:
+		if !m.showDiff {
 			panelW := m.width - 1
-			m.fileList.SetWidth(panelW)
-			m.fileList.SetHeight(contentHeight)
-			leftPanel := tui.StyleFocusBorder.Width(panelW).Height(contentHeight).MaxHeight(contentHeight).Render(m.fileList.View())
+			leftContent := m.renderLeftPanel(panelW, contentHeight)
+			leftPanel := tui.StyleFocusBorder.Width(panelW).Height(contentHeight).MaxHeight(contentHeight).Render(leftContent)
 			background = leftPanel + "\n" + m.statusBar.View()
-		case m.diffMaximized:
+		} else if m.diffMaximized {
 			rightW := m.width - 1
 			m.diffView.SetWidth(rightW)
 			m.diffView.SetHeight(contentHeight)
 			rightPanel := tui.StyleFocusBorder.Width(rightW).Height(contentHeight).MaxHeight(contentHeight).Render(m.diffView.View())
 			background = rightPanel + "\n" + m.statusBar.View()
-		default:
+		} else {
 			leftW, rightW := tui.ColumnsFromConfig(m.width, m.panelRatio)
 
 			leftW--
 			rightW--
 
-			m.fileList.SetWidth(leftW)
-			m.fileList.SetHeight(contentHeight)
 			m.diffView.SetWidth(rightW)
 			m.diffView.SetHeight(contentHeight)
 
@@ -309,7 +265,8 @@ func (m *ResetModel) View() string {
 				leftBorder, rightBorder = tui.StyleDimBorder, tui.StyleFocusBorder
 			}
 
-			leftPanel := leftBorder.Width(leftW).Height(contentHeight).MaxHeight(contentHeight).Render(m.fileList.View())
+			leftContent := m.renderLeftPanel(leftW, contentHeight)
+			leftPanel := leftBorder.Width(leftW).Height(contentHeight).MaxHeight(contentHeight).Render(leftContent)
 			rightPanel := rightBorder.Width(rightW).Height(contentHeight).MaxHeight(contentHeight).Render(m.diffView.View())
 
 			panels := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
@@ -320,85 +277,101 @@ func (m *ResetModel) View() string {
 	return m.help.View(background, m.width, m.height)
 }
 
-// selectedPaths returns the paths of all checked files.
-// If none are checked, returns the focused file's path (single-file shortcut).
-func (m *ResetModel) selectedPaths() []string {
-	paths := m.fileList.CheckedPaths()
-	if len(paths) > 0 {
-		return paths
-	}
-	if path := m.fileList.SelectedPath(); path != "" {
-		return []string{path}
-	}
-	return nil
+// renderLeftPanel renders the hunk list at full panel height.
+func (m *HunkResetModel) renderLeftPanel(width, height int) string {
+	m.hunkList.SetWidth(width)
+	m.hunkList.SetHeight(height)
+	return m.hunkList.View()
 }
 
-// unstageSelected runs git reset HEAD for the selected files and returns a PopModelMsg.
-func (m *ResetModel) unstageSelected() tea.Cmd {
-	paths := m.selectedPaths()
-	if len(paths) == 0 {
-		return nil
+// hintsForContext returns status bar hints based on current context.
+func (m *HunkResetModel) hintsForContext() string {
+	if m.diffMaximized {
+		return "F: restore  ?: help  q: quit"
 	}
-	err := git.UnstageFiles(m.ctx, m.runner, paths)
-	mutated := err == nil
-	var msgCmd tea.Cmd
-	if err != nil {
-		msgCmd = m.statusBar.SetMessage(fmt.Sprintf("Unstage failed: %v", err), components.Error)
-		_ = msgCmd
+	if m.focusRight {
+		return "h/l: scroll  Tab: panel  ?: help  q: quit"
 	}
-	return func() tea.Msg {
-		return app.PopModelMsg{MutatedGit: mutated}
-	}
+	return "Space: toggle  Enter: unstage  Tab: panel  ?: help  q: quit"
 }
 
-// renderSelectedDiff renders the staged diff for the currently focused file.
-func (m *ResetModel) renderSelectedDiff() {
-	path := m.fileList.SelectedPath()
-	if path == "" {
+// renderCurrentHunk updates the right-panel diff view with the hunk under the cursor.
+func (m *HunkResetModel) renderCurrentHunk() {
+	hunk, ok := m.hunkList.CurrentHunk()
+	if !ok {
+		m.diffView.SetContent("(no hunks)")
 		return
 	}
 
-	// Run git diff --cached for this specific file
-	raw, err := m.runner.Run(m.ctx, "diff", fmt.Sprintf("-U%d", m.contextLines), "--cached", "--", path)
-	if err != nil || raw == "" {
-		m.diffView.SetContent("(no diff available)")
-		return
-	}
-
+	raw := hunk.Body()
 	rendered, err := m.renderer.Render(raw)
 	if err != nil {
 		rendered = raw
 	}
 	m.diffView.SetContent(rendered)
+	m.prevFileIdx = m.hunkList.CurrentFileIdx()
+	m.prevHunkIdx = m.hunkList.CurrentHunkIdx()
 }
 
-const (
-	resetHintsLeft     = "Tab: panel  Enter: unstage  D: diff  ?: help  q: quit"
-	resetHintsRight    = "w: wrap  F: maximize  Tab: panel  ?: help  q: quit"
-	resetHintsMaximize = "F: restore  ?: help  q: quit"
-)
-
-// updateHints sets the status bar hints based on the current focus and maximize state.
-func (m *ResetModel) updateHints() {
-	switch {
-	case m.diffMaximized:
-		m.statusBar.SetHints(resetHintsMaximize)
-	case m.focusRight:
-		m.statusBar.SetHints(resetHintsRight)
-	default:
-		m.statusBar.SetHints(resetHintsLeft)
+// syncDiffPreview updates the diff view if the cursor moved to a different hunk.
+func (m *HunkResetModel) syncDiffPreview() {
+	fi := m.hunkList.CurrentFileIdx()
+	hi := m.hunkList.CurrentHunkIdx()
+	if fi != m.prevFileIdx || hi != m.prevHunkIdx {
+		m.renderCurrentHunk()
 	}
 }
 
+// applySelected unstages all checked hunks via git apply --cached --reverse.
+func (m *HunkResetModel) applySelected() tea.Cmd {
+	staged := m.hunkList.StagedHunks()
+	if len(staged) == 0 {
+		return nil
+	}
+
+	var lastErr error
+	applied := 0
+	for _, sh := range staged {
+		if sh.FileIdx >= len(m.files) {
+			continue
+		}
+		patch := m.patchHeader(m.files[sh.FileIdx]) + "\n" + sh.Hunk.Body() + "\n"
+		err := git.UnstageHunk(m.ctx, m.runner, patch)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		applied++
+	}
+
+	if lastErr != nil {
+		_ = m.statusBar.SetMessage(fmt.Sprintf("Unstage failed: %v", lastErr), components.Error)
+		if applied == 0 {
+			return nil
+		}
+	}
+
+	return func() tea.Msg {
+		return app.PopModelMsg{MutatedGit: true}
+	}
+}
+
+// patchHeader builds a minimal unified diff header for git apply.
+func (m *HunkResetModel) patchHeader(fd git.FileDiff) string {
+	oldPath := "a/" + fd.OldPath
+	newPath := "b/" + fd.NewPath
+	return fmt.Sprintf("diff --git %s %s\n--- %s\n+++ %s", oldPath, newPath, oldPath, newPath)
+}
+
 // resize recalculates component dimensions after a terminal resize.
-func (m *ResetModel) resize() {
+func (m *HunkResetModel) resize() {
 	contentHeight := m.height - 1
 	m.statusBar.SetWidth(m.width)
 
 	if !m.showDiff {
 		panelW := m.width - 1
-		m.fileList.SetWidth(panelW)
-		m.fileList.SetHeight(contentHeight)
+		m.hunkList.SetWidth(panelW)
+		m.hunkList.SetHeight(contentHeight)
 		return
 	}
 
@@ -414,8 +387,8 @@ func (m *ResetModel) resize() {
 	leftW--
 	rightW--
 
-	m.fileList.SetWidth(leftW)
-	m.fileList.SetHeight(contentHeight)
+	m.hunkList.SetWidth(leftW)
+	m.hunkList.SetHeight(contentHeight)
 	m.diffView.SetWidth(rightW)
 	m.diffView.SetHeight(contentHeight)
 }

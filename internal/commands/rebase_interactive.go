@@ -83,6 +83,7 @@ type RebaseInteractiveModel struct {
 	width         int
 	height        int
 	panelRatio    int
+	contextLines  int
 	focusRight    bool
 	showDiff      bool
 	diffMaximized bool
@@ -162,9 +163,10 @@ func NewRebaseInteractiveModel(
 				},
 			},
 		}),
-		branch:      branchName,
-		selectedIdx: 0,
-		panelRatio:  cfg.PanelRatio,
+		branch:       branchName,
+		selectedIdx:  0,
+		panelRatio:   cfg.PanelRatio,
+		contextLines: cfg.DiffContext,
 	}
 
 	// Editor mode always starts with diff hidden; standalone reads from config.
@@ -278,6 +280,24 @@ func (m *RebaseInteractiveModel) Update(msg tea.Msg) tea.Cmd {
 		case "W":
 			if m.focusRight {
 				m.diffView.SetSoftWrap(!m.diffView.SoftWrap())
+			}
+			return sbCmd
+
+		case "{":
+			if m.contextLines > 0 {
+				m.contextLines--
+				if m.showDiff {
+					m.renderSelectedDiff()
+				}
+			}
+			return sbCmd
+
+		case "}":
+			if m.contextLines < 20 {
+				m.contextLines++
+				if m.showDiff {
+					m.renderSelectedDiff()
+				}
 			}
 			return sbCmd
 
@@ -499,7 +519,7 @@ func (m *RebaseInteractiveModel) renderSelectedDiff() {
 		return
 	}
 	hash := m.entries[m.selectedIdx].Hash
-	raw, err := git.CommitDiff(m.ctx, m.runner, hash)
+	raw, err := git.CommitDiff(m.ctx, m.runner, hash, m.contextLines)
 	if err != nil {
 		m.diffView.SetContent(fmt.Sprintf("(could not load diff: %v)", err))
 		return

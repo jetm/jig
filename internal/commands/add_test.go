@@ -383,7 +383,7 @@ func TestAddModel_UntrackedFileShowsDiff(t *testing.T) {
 		t.Error("View() should show diff content for untracked file")
 	}
 	// Verify the --no-index call was made
-	testhelper.MustHaveCall(t, runner, "diff", "--no-index", "--", "/dev/null", "newfile.go")
+	testhelper.MustHaveCall(t, runner, "diff", "-U3", "--no-index", "--", "/dev/null", "newfile.go")
 }
 
 func TestAddModel_StageError(t *testing.T) {
@@ -1225,4 +1225,63 @@ func TestAddModel_KeyJForwardsToList(t *testing.T) {
 	// j key forwards to list; no panic expected
 	cmd := m.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
 	_ = cmd
+}
+
+func TestAddModel_BraceKeysAdjustContextLines(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{
+			"M\tfoo.go\n", // diff --name-status
+			"",            // ls-files --others
+			"main",        // branch name
+			"",            // renderSelectedDiff (initial)
+			"",            // renderSelectedDiff (after })
+			"",            // renderSelectedDiff (after {)
+		},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m := NewAddModel(context.Background(), runner, cfg, renderer)
+	m.width = 120
+	m.height = 40
+
+	initial := m.contextLines
+	m.Update(tea.KeyPressMsg{Code: '}', ShiftedCode: '}', Mod: tea.ModShift, Text: "}"})
+	if m.contextLines != initial+1 {
+		t.Errorf("} should increment contextLines: got %d want %d", m.contextLines, initial+1)
+	}
+
+	m.Update(tea.KeyPressMsg{Code: '{', ShiftedCode: '{', Mod: tea.ModShift, Text: "{"})
+	if m.contextLines != initial {
+		t.Errorf("{ should decrement contextLines: got %d want %d", m.contextLines, initial)
+	}
+}
+
+func TestAddModel_BraceKeysBounds(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{
+			"M\tfoo.go\n",
+			"",
+			"main",
+			"",
+		},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m := NewAddModel(context.Background(), runner, cfg, renderer)
+	m.width = 120
+	m.height = 40
+
+	m.contextLines = 0
+	m.Update(tea.KeyPressMsg{Code: '{', ShiftedCode: '{', Mod: tea.ModShift, Text: "{"})
+	if m.contextLines != 0 {
+		t.Errorf("contextLines should not go below 0, got %d", m.contextLines)
+	}
+
+	m.contextLines = 20
+	m.Update(tea.KeyPressMsg{Code: '}', ShiftedCode: '}', Mod: tea.ModShift, Text: "}"})
+	if m.contextLines != 20 {
+		t.Errorf("contextLines should not go above 20, got %d", m.contextLines)
+	}
 }

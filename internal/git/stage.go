@@ -262,6 +262,26 @@ func UnstageFiles(ctx context.Context, r Runner, paths []string) error {
 	return nil
 }
 
+// UnstageHunk removes a single hunk from the index via `git apply --cached --reverse`.
+// patch is the full unified diff patch (header + hunk body) to reverse-apply.
+func UnstageHunk(ctx context.Context, r Runner, patch string) error {
+	_, err := r.RunWithStdin(ctx, patch, "apply", "--cached", "--reverse")
+	if err != nil {
+		return fmt.Errorf("git apply --cached --reverse: %w", err)
+	}
+	return nil
+}
+
+// DiscardHunk reverts a single hunk in the working tree via `git apply --reverse`.
+// patch is the full unified diff patch (header + hunk body) to reverse-apply.
+func DiscardHunk(ctx context.Context, r Runner, patch string) error {
+	_, err := r.RunWithStdin(ctx, patch, "apply", "--reverse")
+	if err != nil {
+		return fmt.Errorf("git apply --reverse: %w", err)
+	}
+	return nil
+}
+
 // DiscardFiles runs git checkout -- for the given file paths to restore them to HEAD.
 func DiscardFiles(ctx context.Context, r Runner, paths []string) error {
 	if len(paths) == 0 {

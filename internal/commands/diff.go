@@ -36,6 +36,10 @@ type DiffModel struct {
 	width         int
 	height        int
 	panelRatio    int
+	contextLines  int
+	revision      string
+	staged        bool
+	pagerMode     bool
 	focusRight    bool
 	showDiff      bool
 	diffMaximized bool
@@ -65,7 +69,7 @@ func NewDiffModel(
 	if rawInput != "" {
 		rawDiff = ansiEscape.ReplaceAllString(rawInput, "")
 	} else {
-		args := git.DiffArgs(revision, staged)
+		args := git.DiffArgs(revision, staged, cfg.DiffContext)
 		if len(paths) > 0 {
 			args = append(args, "--")
 			args = append(args, paths...)
@@ -112,10 +116,14 @@ func NewDiffModel(
 				},
 			},
 		}),
-		renderer:   renderer,
-		cfg:        cfg,
-		branch:     branchName,
-		panelRatio: cfg.PanelRatio,
+		renderer:     renderer,
+		cfg:          cfg,
+		branch:       branchName,
+		panelRatio:   cfg.PanelRatio,
+		contextLines: cfg.DiffContext,
+		revision:     revision,
+		staged:       staged,
+		pagerMode:    rawInput != "",
 	}
 
 	m.showDiff = cfg.ShowDiffPanel
@@ -202,6 +210,22 @@ func (m *DiffModel) Update(msg tea.Msg) tea.Cmd {
 				if f.DisplayPath() == m.selectedPath && f.RawDiff != "" {
 					return git.EditDiff(m.ctx, m.runner, f.RawDiff)
 				}
+			}
+			return sbCmd
+		}
+
+		if msg.String() == "{" && !m.pagerMode {
+			if m.contextLines > 0 {
+				m.contextLines--
+				m.refreshDiff()
+			}
+			return sbCmd
+		}
+
+		if msg.String() == "}" && !m.pagerMode {
+			if m.contextLines < 20 {
+				m.contextLines++
+				m.refreshDiff()
 			}
 			return sbCmd
 		}
@@ -312,6 +336,28 @@ func (m *DiffModel) View() string {
 	}
 
 	return m.help.View(background, m.width, m.height)
+}
+
+// refreshDiff re-runs git diff with the current contextLines and rebuilds the file list.
+func (m *DiffModel) refreshDiff() {
+	args := git.DiffArgs(m.revision, m.staged, m.contextLines)
+	if len(m.filterPaths) > 0 {
+		args = append(args, "--")
+		args = append(args, m.filterPaths...)
+	}
+	rawDiff, _ := m.runner.Run(m.ctx, args...)
+	m.files = git.ParseFileDiffs(rawDiff)
+
+	entries := make([]components.FileEntry, len(m.files))
+	for i, f := range m.files {
+		entries[i] = components.FileEntry{Path: f.DisplayPath(), Status: f.Status}
+	}
+	m.fileTree = components.NewFileTree(entries, false)
+	m.selectedPath = ""
+	if len(m.files) > 0 {
+		m.checkSelectionChange()
+	}
+	m.resize()
 }
 
 // checkSelectionChange detects if the selected file changed and re-renders the diff.

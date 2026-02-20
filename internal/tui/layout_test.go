@@ -152,3 +152,16 @@ func TestColumnsWide_DelegatesCorrectly(t *testing.T) {
 		}
 	}
 }
+
+func TestIsTerminalTooSmall(t *testing.T) {
+	t.Parallel()
+	if !tui.IsTerminalTooSmall(30, 5) {
+		t.Error("30x5 should be too small")
+	}
+	if tui.IsTerminalTooSmall(120, 40) {
+		t.Error("120x40 should not be too small")
+	}
+	if !tui.IsTerminalTooSmall(0, 0) {
+		t.Error("0x0 should be too small")
+	}
+}

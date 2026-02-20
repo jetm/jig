@@ -29,7 +29,7 @@ func TestRootCommand_ShowsHelp(t *testing.T) {
 	output := buf.String()
 	// Verify all 8 subcommands appear in help
 	for _, sub := range []string{
-		"add", "hunk-add", "checkout", "diff",
+		"add", "hunk-add", "hunk-reset", "hunk-checkout", "checkout", "diff",
 		"fixup", "rebase-interactive", "reset", "log",
 	} {
 		if !strings.Contains(output, sub) {
@@ -752,11 +752,12 @@ func TestCheckoutTeaModel_View(t *testing.T) {
 //   - output[1]: rev-parse --show-toplevel (IsRebaseInProgress->RepoRoot)
 //   - output[2]: git log (RecentCommits, empty)
 //   - output[3]: rev-parse --abbrev-ref HEAD (BranchName)
+//   - output[4]: diff --cached (FindFixupTarget staged diff)
 func newFakeFixupModel(t *testing.T) *commands.FixupModel {
 	t.Helper()
 	runner := &testhelper.FakeRunner{
-		Outputs: []string{"", "/fake/repo", "", "main"},
-		Errors:  []error{fmt.Errorf("staged"), nil, nil, nil},
+		Outputs: []string{"", "/fake/repo", "", "main", "" /* staged diff for blame */},
+		Errors:  []error{fmt.Errorf("staged"), nil, nil, nil, nil},
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
@@ -873,7 +874,8 @@ func TestRebaseInteractiveCmd_RegisteredWithArgs(t *testing.T) {
 func TestAllSubcommandsRegistered(t *testing.T) {
 	cmd := newRootCmd()
 	expected := map[string]bool{
-		"add": false, "hunk-add": false, "checkout": false, "diff": false,
+		"add": false, "hunk-add": false, "hunk-reset": false, "hunk-checkout": false,
+		"checkout": false, "diff": false,
 		"fixup": false, "rebase-interactive": false, "reset": false, "log": false,
 		"completion": false,
 	}
@@ -943,6 +945,94 @@ func TestCompletionCmd_PowershellOutput(t *testing.T) {
 	if buf.Len() == 0 {
 		t.Error("expected non-empty powershell completion output")
 	}
+}
+
+func TestHunkResetCmd_ConfigLoadError(t *testing.T) {
+	if err := runCmdWithInvalidConfig(t, "hunk-reset"); err == nil {
+		t.Fatal("expected error from config load failure, got nil")
+	}
+}
+
+func TestHunkCheckoutCmd_ConfigLoadError(t *testing.T) {
+	if err := runCmdWithInvalidConfig(t, "hunk-checkout"); err == nil {
+		t.Fatal("expected error from config load failure, got nil")
+	}
+}
+
+func TestHunkResetCmd_AcceptsArgs(t *testing.T) {
+	t.Parallel()
+	cmd := newRootCmd()
+	hunkResetCmd, _, err := cmd.Find([]string{"hunk-reset"})
+	require.NoError(t, err)
+	assert.Equal(t, "hunk-reset [paths...]", hunkResetCmd.Use)
+}
+
+func TestHunkCheckoutCmd_AcceptsArgs(t *testing.T) {
+	t.Parallel()
+	cmd := newRootCmd()
+	hunkCheckoutCmd, _, err := cmd.Find([]string{"hunk-checkout"})
+	require.NoError(t, err)
+	assert.Equal(t, "hunk-checkout [paths...]", hunkCheckoutCmd.Use)
+}
+
+// newFakeHunkResetModel creates a HunkResetModel with no real git calls.
+func newFakeHunkResetModel(t *testing.T) *commands.HunkResetModel {
+	t.Helper()
+	runner := &testhelper.FakeRunner{Outputs: []string{"", "main"}}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	return commands.NewHunkResetModel(context.Background(), runner, cfg, renderer)
+}
+
+func TestHunkResetTeaModel_InitReturnsNil(t *testing.T) {
+	m := newHunkResetTeaModel(newFakeHunkResetModel(t))
+	if cmd := m.Init(); cmd != nil {
+		t.Error("Init() should return nil")
+	}
+}
+
+func TestHunkResetTeaModel_Update(t *testing.T) {
+	m := newHunkResetTeaModel(newFakeHunkResetModel(t))
+	next, cmd := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	if next == nil {
+		t.Error("Update() should return non-nil model")
+	}
+	_ = cmd
+}
+
+func TestHunkResetTeaModel_View(t *testing.T) {
+	m := newHunkResetTeaModel(newFakeHunkResetModel(t))
+	_ = m.View() // just ensure no panic
+}
+
+// newFakeHunkCheckoutModel creates a HunkCheckoutModel with no real git calls.
+func newFakeHunkCheckoutModel(t *testing.T) *commands.HunkCheckoutModel {
+	t.Helper()
+	runner := &testhelper.FakeRunner{Outputs: []string{"", "main"}}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	return commands.NewHunkCheckoutModel(context.Background(), runner, cfg, renderer)
+}
+
+func TestHunkCheckoutTeaModel_InitReturnsNil(t *testing.T) {
+	m := newHunkCheckoutTeaModel(newFakeHunkCheckoutModel(t))
+	if cmd := m.Init(); cmd != nil {
+		t.Error("Init() should return nil")
+	}
+}
+
+func TestHunkCheckoutTeaModel_Update(t *testing.T) {
+	m := newHunkCheckoutTeaModel(newFakeHunkCheckoutModel(t))
+	next, cmd := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	if next == nil {
+		t.Error("Update() should return non-nil model")
+	}
+	_ = cmd
+}
+
+func TestHunkCheckoutTeaModel_View(t *testing.T) {
+	m := newHunkCheckoutTeaModel(newFakeHunkCheckoutModel(t))
+	_ = m.View() // just ensure no panic
 }
 
 func TestCompletionCmd_UnknownShellErrors(t *testing.T) {

@@ -192,3 +192,16 @@ func TestCompactItemListNavigates(t *testing.T) {
 		t.Errorf("after j, selection = %q, want beta", sel.(SimpleItem).Title())
 	}
 }
+
+func TestItemListSelect(t *testing.T) {
+	t.Parallel()
+	il := newTestList()
+	il.Select(1)
+	sel := il.SelectedItem()
+	if sel == nil {
+		t.Fatal("SelectedItem() returned nil after Select(1)")
+	}
+	if sel.(SimpleItem).Title() != "beta" {
+		t.Errorf("after Select(1), selection = %q, want beta", sel.(SimpleItem).Title())
+	}
+}

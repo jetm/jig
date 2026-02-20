@@ -39,8 +39,14 @@ func RecentCommitsFrom(ctx context.Context, r Runner, n int, ref string) ([]Comm
 }
 
 // CommitDiff returns the diff of a single commit (git show <hash>).
-func CommitDiff(ctx context.Context, r Runner, hash string) (string, error) {
-	out, err := r.Run(ctx, "show", hash)
+// When contextLines is negative the git default is used.
+func CommitDiff(ctx context.Context, r Runner, hash string, contextLines int) (string, error) {
+	args := []string{"show"}
+	if contextLines >= 0 {
+		args = append(args, fmt.Sprintf("-U%d", contextLines))
+	}
+	args = append(args, hash)
+	out, err := r.Run(ctx, args...)
 	if err != nil {
 		return "", fmt.Errorf("git show: %w", err)
 	}

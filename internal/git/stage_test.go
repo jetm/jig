@@ -424,6 +424,71 @@ func TestUnstageFiles_Error(t *testing.T) {
 	}
 }
 
+func TestUnstageHunk_Basic(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{Outputs: []string{""}}
+	patch := "diff --git a/foo.go b/foo.go\n--- a/foo.go\n+++ b/foo.go\n@@ -1,3 +1,4 @@\n context\n+added\n context\n"
+	err := UnstageHunk(context.Background(), runner, patch)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	testhelper.MustHaveCall(t, runner, "apply", "--cached", "--reverse")
+	testhelper.MustHaveStdin(t, runner, "@@ -1,3 +1,4 @@")
+}
+
+func TestUnstageHunk_Error(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{""},
+		Errors:  []error{errors.New("apply failed")},
+	}
+	err := UnstageHunk(context.Background(), runner, "patch")
+	if err == nil {
+		t.Fatal("expected error from apply failure")
+	}
+}
+
+func TestDiscardHunk_Basic(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{Outputs: []string{""}}
+	patch := "diff --git a/foo.go b/foo.go\n--- a/foo.go\n+++ b/foo.go\n@@ -1,3 +1,4 @@\n context\n+added\n context\n"
+	err := DiscardHunk(context.Background(), runner, patch)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	testhelper.MustHaveCall(t, runner, "apply", "--reverse")
+	testhelper.MustHaveStdin(t, runner, "@@ -1,3 +1,4 @@")
+}
+
+func TestDiscardHunk_Error(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{""},
+		Errors:  []error{errors.New("apply failed")},
+	}
+	err := DiscardHunk(context.Background(), runner, "patch")
+	if err == nil {
+		t.Fatal("expected error from apply failure")
+	}
+}
+
+func TestDiscardHunk_DoesNotUseCached(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{Outputs: []string{""}}
+	err := DiscardHunk(context.Background(), runner, "patch")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Verify --cached is NOT in the args (only --reverse should be present)
+	for _, c := range runner.Calls {
+		for _, arg := range c.Args {
+			if arg == "--cached" {
+				t.Error("DiscardHunk should not use --cached flag")
+			}
+		}
+	}
+}
+
 func TestParseNameStatusLine_MalformedLine(t *testing.T) {
 	t.Parallel()
 	// A line with no tab — should return Modified with path=entire line

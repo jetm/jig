@@ -175,3 +175,18 @@ func TestFakeRunner_EmptyOutputs(t *testing.T) {
 		t.Errorf("expected nil error, got %v", err)
 	}
 }
+
+func TestFakeRunner_RunAllowExitCode(t *testing.T) {
+	f := &testhelper.FakeRunner{
+		Outputs: []string{"output1"},
+		Errors:  []error{fmt.Errorf("exit code 1")},
+	}
+	out, err := f.RunAllowExitCode(context.Background(), 1, "status")
+	if out != "output1" {
+		t.Errorf("expected 'output1', got %q", out)
+	}
+	if err == nil {
+		t.Error("expected error, got nil")
+	}
+	testhelper.MustHaveCall(t, f, "status")
+}

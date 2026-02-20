@@ -856,3 +856,31 @@ func TestNewCheckoutModel_FilterPaths_NoMatch(t *testing.T) {
 		t.Errorf("View() should show no-match message, got: %q", view)
 	}
 }
+
+func TestCheckoutModel_BraceKeysAdjustContextLines(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{
+			"M\tfoo.go\n", // diff --name-status
+			"main",        // branch name
+			"",            // renderSelectedDiff (after })
+			"",            // renderSelectedDiff (after {)
+		},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m := NewCheckoutModel(context.Background(), runner, cfg, renderer)
+	m.width = 120
+	m.height = 40
+
+	initial := m.contextLines
+	m.Update(tea.KeyPressMsg{Code: '}', ShiftedCode: '}', Mod: tea.ModShift, Text: "}"})
+	if m.contextLines != initial+1 {
+		t.Errorf("} should increment contextLines: got %d want %d", m.contextLines, initial+1)
+	}
+
+	m.Update(tea.KeyPressMsg{Code: '{', ShiftedCode: '{', Mod: tea.ModShift, Text: "{"})
+	if m.contextLines != initial {
+		t.Errorf("{ should decrement contextLines: got %d want %d", m.contextLines, initial)
+	}
+}

@@ -42,6 +42,8 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newResetCmd())
 	root.AddCommand(newCheckoutCmd())
 	root.AddCommand(newHunkAddCmd())
+	root.AddCommand(newHunkResetCmd())
+	root.AddCommand(newHunkCheckoutCmd())
 	root.AddCommand(newFixupCmd())
 	root.AddCommand(newLogCmd())
 	root.AddCommand(newRebaseInteractiveCmd())
@@ -371,6 +373,114 @@ func (h *hunkAddTeaModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (h *hunkAddTeaModel) View() tea.View {
+	return tea.NewView(h.inner.View())
+}
+
+func newHunkResetCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "hunk-reset [paths...]",
+		Short: "Interactively unstage hunks",
+		Args:  cobra.ArbitraryArgs,
+		RunE: func(_ *cobra.Command, args []string) error {
+			ctx := context.Background()
+			runner, err := git.NewExecRunner(ctx)
+			if err != nil {
+				return fmt.Errorf("initializing git runner: %w", err)
+			}
+
+			cfg, err := config.Load()
+			if err != nil {
+				return fmt.Errorf("loading config: %w", err)
+			}
+			renderer := diff.Chain(cfg)
+			var hunkResetModel *commands.HunkResetModel
+			if len(args) > 0 {
+				hunkResetModel = commands.NewHunkResetModel(ctx, runner, cfg, renderer, args)
+			} else {
+				hunkResetModel = commands.NewHunkResetModel(ctx, runner, cfg, renderer)
+			}
+
+			appModel := app.New(newHunkResetTeaModel(hunkResetModel), runner, cfg)
+			p := tea.NewProgram(appModel)
+			if _, err = p.Run(); err != nil {
+				return fmt.Errorf("running hunk-reset: %w", err)
+			}
+			return nil
+		},
+	}
+}
+
+// hunkResetTeaModel wraps HunkResetModel (child component pattern) as a tea.Model for AppModel.
+type hunkResetTeaModel struct {
+	inner *commands.HunkResetModel
+}
+
+func newHunkResetTeaModel(m *commands.HunkResetModel) *hunkResetTeaModel {
+	return &hunkResetTeaModel{inner: m}
+}
+
+func (h *hunkResetTeaModel) Init() tea.Cmd { return nil }
+
+func (h *hunkResetTeaModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	cmd := h.inner.Update(msg)
+	return h, cmd
+}
+
+func (h *hunkResetTeaModel) View() tea.View {
+	return tea.NewView(h.inner.View())
+}
+
+func newHunkCheckoutCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "hunk-checkout [paths...]",
+		Short: "Interactively discard hunks",
+		Args:  cobra.ArbitraryArgs,
+		RunE: func(_ *cobra.Command, args []string) error {
+			ctx := context.Background()
+			runner, err := git.NewExecRunner(ctx)
+			if err != nil {
+				return fmt.Errorf("initializing git runner: %w", err)
+			}
+
+			cfg, err := config.Load()
+			if err != nil {
+				return fmt.Errorf("loading config: %w", err)
+			}
+			renderer := diff.Chain(cfg)
+			var hunkCheckoutModel *commands.HunkCheckoutModel
+			if len(args) > 0 {
+				hunkCheckoutModel = commands.NewHunkCheckoutModel(ctx, runner, cfg, renderer, args)
+			} else {
+				hunkCheckoutModel = commands.NewHunkCheckoutModel(ctx, runner, cfg, renderer)
+			}
+
+			appModel := app.New(newHunkCheckoutTeaModel(hunkCheckoutModel), runner, cfg)
+			p := tea.NewProgram(appModel)
+			if _, err = p.Run(); err != nil {
+				return fmt.Errorf("running hunk-checkout: %w", err)
+			}
+			return nil
+		},
+	}
+}
+
+// hunkCheckoutTeaModel wraps HunkCheckoutModel (child component pattern) as a tea.Model for AppModel.
+type hunkCheckoutTeaModel struct {
+	inner *commands.HunkCheckoutModel
+}
+
+func newHunkCheckoutTeaModel(m *commands.HunkCheckoutModel) *hunkCheckoutTeaModel {
+	return &hunkCheckoutTeaModel{inner: m}
+}
+
+func (h *hunkCheckoutTeaModel) Init() tea.Cmd { return nil }
+
+func (h *hunkCheckoutTeaModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	cmd := h.inner.Update(msg)
+	return h, cmd
+}
+
+func (h *hunkCheckoutTeaModel) View() tea.View {
 	return tea.NewView(h.inner.View())
 }
 

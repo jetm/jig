@@ -383,34 +383,60 @@ func TestDiffArgs(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name     string
-		revision string
-		staged   bool
-		want     []string
+		name         string
+		revision     string
+		staged       bool
+		contextLines int
+		want         []string
 	}{
 		{
-			name:     "working tree diff",
-			revision: "",
-			staged:   false,
-			want:     []string{"diff"},
+			name:         "working tree diff default context",
+			revision:     "",
+			staged:       false,
+			contextLines: -1,
+			want:         []string{"diff"},
 		},
 		{
-			name:     "staged diff",
-			revision: "",
-			staged:   true,
-			want:     []string{"diff", "--cached"},
+			name:         "staged diff default context",
+			revision:     "",
+			staged:       true,
+			contextLines: -1,
+			want:         []string{"diff", "--cached"},
 		},
 		{
-			name:     "revision diff",
-			revision: "HEAD~3",
-			staged:   false,
-			want:     []string{"diff", "HEAD~3"},
+			name:         "revision diff default context",
+			revision:     "HEAD~3",
+			staged:       false,
+			contextLines: -1,
+			want:         []string{"diff", "HEAD~3"},
 		},
 		{
-			name:     "staged with revision",
-			revision: "HEAD~3",
-			staged:   true,
-			want:     []string{"diff", "--cached", "HEAD~3"},
+			name:         "staged with revision default context",
+			revision:     "HEAD~3",
+			staged:       true,
+			contextLines: -1,
+			want:         []string{"diff", "--cached", "HEAD~3"},
+		},
+		{
+			name:         "explicit context lines",
+			revision:     "",
+			staged:       false,
+			contextLines: 5,
+			want:         []string{"diff", "-U5"},
+		},
+		{
+			name:         "zero context lines",
+			revision:     "",
+			staged:       false,
+			contextLines: 0,
+			want:         []string{"diff", "-U0"},
+		},
+		{
+			name:         "context lines with staged and revision",
+			revision:     "HEAD~3",
+			staged:       true,
+			contextLines: 10,
+			want:         []string{"diff", "-U10", "--cached", "HEAD~3"},
 		},
 	}
 
@@ -418,14 +444,14 @@ func TestDiffArgs(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := DiffArgs(tc.revision, tc.staged)
+			got := DiffArgs(tc.revision, tc.staged, tc.contextLines)
 
 			if len(got) != len(tc.want) {
-				t.Fatalf("DiffArgs(%q, %v) = %v, want %v", tc.revision, tc.staged, got, tc.want)
+				t.Fatalf("DiffArgs(%q, %v, %d) = %v, want %v", tc.revision, tc.staged, tc.contextLines, got, tc.want)
 			}
 			for i := range got {
 				if got[i] != tc.want[i] {
-					t.Errorf("DiffArgs(%q, %v)[%d] = %q, want %q", tc.revision, tc.staged, i, got[i], tc.want[i])
+					t.Errorf("DiffArgs(%q, %v, %d)[%d] = %q, want %q", tc.revision, tc.staged, tc.contextLines, i, got[i], tc.want[i])
 				}
 			}
 		})

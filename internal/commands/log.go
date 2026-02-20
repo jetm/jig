@@ -53,6 +53,7 @@ type LogModel struct {
 	width         int
 	height        int
 	panelRatio    int
+	contextLines  int
 	focusRight    bool
 	showDiff      bool
 	diffMaximized bool
@@ -103,9 +104,10 @@ func NewLogModel(
 				},
 			},
 		}),
-		branch:      branchName,
-		selectedIdx: 0,
-		panelRatio:  cfg.PanelRatio,
+		branch:       branchName,
+		selectedIdx:  0,
+		panelRatio:   cfg.PanelRatio,
+		contextLines: cfg.DiffContext,
 	}
 
 	m.showDiff = cfg.ShowDiffPanel
@@ -165,6 +167,22 @@ func (m *LogModel) Update(msg tea.Msg) tea.Cmd {
 
 		if msg.String() == "w" && m.focusRight {
 			m.diffView.SetSoftWrap(!m.diffView.SoftWrap())
+			return sbCmd
+		}
+
+		if msg.String() == "{" {
+			if m.contextLines > 0 {
+				m.contextLines--
+				m.renderSelectedDiff()
+			}
+			return sbCmd
+		}
+
+		if msg.String() == "}" {
+			if m.contextLines < 20 {
+				m.contextLines++
+				m.renderSelectedDiff()
+			}
 			return sbCmd
 		}
 
@@ -294,7 +312,7 @@ func (m *LogModel) renderSelectedDiff() {
 		return
 	}
 	hash := m.commits[m.selectedIdx].Hash
-	raw, err := git.CommitDiff(m.ctx, m.runner, hash)
+	raw, err := git.CommitDiff(m.ctx, m.runner, hash, m.contextLines)
 	if err != nil {
 		m.diffView.SetContent(fmt.Sprintf("(could not load diff: %v)", err))
 		return

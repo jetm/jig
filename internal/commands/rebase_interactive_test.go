@@ -871,3 +871,24 @@ func TestRebaseInteractiveModel_HintsIncludeWriteKey(t *testing.T) {
 	view := m.View()
 	assert.Contains(t, view, "w: write", "status bar should show w: write hint")
 }
+
+func TestRebaseInteractiveModel_BraceKeysAdjustContextLines(t *testing.T) {
+	t.Parallel()
+	logOutput := "abc1234\x1ffeat: first\n"
+	showDiff := "diff --git a/foo.go b/foo.go\n--- a/foo.go\n+++ b/foo.go\n@@ -1 +1 @@\n-old\n+new"
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{
+			logOutput, "main", // init
+			showDiff, // renderSelectedDiff on init
+			showDiff, // renderSelectedDiff after }
+			showDiff, // renderSelectedDiff after {
+		},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~1", "")
+	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	m.Update(tea.KeyPressMsg{Code: '}', ShiftedCode: '}', Mod: tea.ModShift, Text: "}"})
+	m.Update(tea.KeyPressMsg{Code: '{', ShiftedCode: '{', Mod: tea.ModShift, Text: "{"})
+}

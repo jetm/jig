@@ -53,7 +53,7 @@ func newTestModel(t *testing.T, revision string, staged bool, diffOutput string)
 	m := NewDiffModel(context.Background(), runner, cfg, renderer, revision, staged, "")
 
 	// Verify DiffArgs were used correctly
-	expectedArgs := git.DiffArgs(revision, staged)
+	expectedArgs := git.DiffArgs(revision, staged, cfg.DiffContext)
 	call := testhelper.NthCall(runner, 0)
 	if len(call.Args) != len(expectedArgs) {
 		t.Fatalf("expected git args %v, got %v", expectedArgs, call.Args)
@@ -76,10 +76,10 @@ func TestNewDiffModel_GitArgs(t *testing.T) {
 		staged   bool
 		wantArgs []string
 	}{
-		{"working tree", "", false, []string{"diff"}},
-		{"staged", "", true, []string{"diff", "--cached"}},
-		{"revision", "HEAD~3", false, []string{"diff", "HEAD~3"}},
-		{"staged+revision", "abc123", true, []string{"diff", "--cached", "abc123"}},
+		{"working tree", "", false, []string{"diff", "-U3"}},
+		{"staged", "", true, []string{"diff", "-U3", "--cached"}},
+		{"revision", "HEAD~3", false, []string{"diff", "-U3", "HEAD~3"}},
+		{"staged+revision", "abc123", true, []string{"diff", "-U3", "--cached", "abc123"}},
 	}
 
 	for _, tc := range tests {
@@ -798,7 +798,7 @@ func TestNewDiffModel_WithFilterPaths(t *testing.T) {
 		t.Fatalf("expected 1 file, got %d", len(m.files))
 	}
 	// Verify -- separator was used.
-	testhelper.MustHaveCall(t, runner, "diff", "--", "main.go")
+	testhelper.MustHaveCall(t, runner, "diff", "-U3", "--", "main.go")
 }
 
 func TestNewDiffModel_FilterPaths_NoMatch(t *testing.T) {
@@ -820,5 +820,85 @@ func TestNewDiffModel_FilterPaths_NoMatch(t *testing.T) {
 	view := m.View()
 	if !strings.Contains(view, "No matching") {
 		t.Errorf("View() should show no-match message, got: %q", view)
+	}
+}
+
+func TestDiffModel_BraceKeysAdjustContextLines(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{
+			sampleDiff, // git diff (initial)
+			"main",     // branch name
+			sampleDiff, // git diff (after } press)
+			sampleDiff, // git diff (after { press)
+		},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, "")
+	m.width = 120
+	m.height = 40
+
+	if m.contextLines != cfg.DiffContext {
+		t.Fatalf("contextLines should start at %d, got %d", cfg.DiffContext, m.contextLines)
+	}
+
+	m.Update(tea.KeyPressMsg{Code: '}', ShiftedCode: '}', Mod: tea.ModShift, Text: "}"})
+	if m.contextLines != cfg.DiffContext+1 {
+		t.Errorf("} should increment contextLines: got %d want %d", m.contextLines, cfg.DiffContext+1)
+	}
+
+	m.Update(tea.KeyPressMsg{Code: '{', ShiftedCode: '{', Mod: tea.ModShift, Text: "{"})
+	if m.contextLines != cfg.DiffContext {
+		t.Errorf("{ should decrement contextLines: got %d want %d", m.contextLines, cfg.DiffContext)
+	}
+}
+
+func TestDiffModel_BraceKeysDisabledInPagerMode(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{"main"},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, sampleDiff)
+	m.width = 120
+	m.height = 40
+
+	initial := m.contextLines
+	m.Update(tea.KeyPressMsg{Code: '}', ShiftedCode: '}', Mod: tea.ModShift, Text: "}"})
+	if m.contextLines != initial {
+		t.Error("} should be disabled in pager mode")
+	}
+	m.Update(tea.KeyPressMsg{Code: '{', ShiftedCode: '{', Mod: tea.ModShift, Text: "{"})
+	if m.contextLines != initial {
+		t.Error("{ should be disabled in pager mode")
+	}
+}
+
+func TestDiffModel_BraceKeysBounds(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{sampleDiff, "main"},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, "")
+	m.width = 120
+	m.height = 40
+
+	// Test minimum bound
+	m.contextLines = 0
+	m.Update(tea.KeyPressMsg{Code: '{', ShiftedCode: '{', Mod: tea.ModShift, Text: "{"})
+	if m.contextLines != 0 {
+		t.Errorf("contextLines should not go below 0, got %d", m.contextLines)
+	}
+
+	// Test maximum bound
+	m.contextLines = 20
+	runner.Outputs = append(runner.Outputs, sampleDiff) // for potential refresh
+	m.Update(tea.KeyPressMsg{Code: '}', ShiftedCode: '}', Mod: tea.ModShift, Text: "}"})
+	if m.contextLines != 20 {
+		t.Errorf("contextLines should not go above 20, got %d", m.contextLines)
 	}
 }

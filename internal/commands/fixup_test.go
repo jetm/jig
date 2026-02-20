@@ -586,3 +586,27 @@ func TestFixupModel_ResizeWhileMaximized(t *testing.T) {
 		t.Error("View() should not be empty after resize while maximized")
 	}
 }
+
+func TestFixupModel_BraceKeysAdjustContextLines(t *testing.T) {
+	logOutput := "abc1234\x1ffeat: something\x1fAlice\x1f2 hours ago\x1e"
+	showDiff := "diff --git a/foo.go b/foo.go\n--- a/foo.go\n+++ b/foo.go\n@@ -1 +1 @@\n-old\n+new"
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{
+			"", "/fake/repo", logOutput, "main", // init outputs
+			showDiff, // renderSelectedDiff on init
+			showDiff, // renderSelectedDiff after }
+			showDiff, // renderSelectedDiff after {
+		},
+		Errors: []error{fmt.Errorf("staged"), nil, nil, nil, nil, nil, nil},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m, err := commands.NewFixupModel(context.Background(), runner, cfg, renderer)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	m.Update(tea.KeyPressMsg{Code: '}', ShiftedCode: '}', Mod: tea.ModShift, Text: "}"})
+	m.Update(tea.KeyPressMsg{Code: '{', ShiftedCode: '{', Mod: tea.ModShift, Text: "{"})
+}

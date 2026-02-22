@@ -255,9 +255,9 @@ func (m *ResetModel) Update(msg tea.Msg) tea.Cmd {
 			return tea.Batch(sbCmd, dvCmd)
 		}
 
-		treeCmd := m.fileList.Update(msg)
+		listCmd := m.fileList.Update(msg)
 		m.renderSelectedDiff()
-		return tea.Batch(sbCmd, treeCmd)
+		return tea.Batch(sbCmd, listCmd)
 	}
 
 	return sbCmd

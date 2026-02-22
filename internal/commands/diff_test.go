@@ -285,7 +285,7 @@ func TestDiffModel_View_HelpVisible(t *testing.T) {
 	}
 }
 
-func TestDiffModel_FileTreeRendersFiles(t *testing.T) {
+func TestDiffModel_FileListRendersFiles(t *testing.T) {
 	t.Parallel()
 	m := newTestModel(t, "", false, sampleDiff)
 	m.width = 120

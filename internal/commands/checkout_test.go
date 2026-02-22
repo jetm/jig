@@ -349,7 +349,7 @@ func TestCheckoutModel_StatusBarShowsBranch(t *testing.T) {
 	}
 }
 
-func TestCheckoutModel_FileTreeRendersFiles(t *testing.T) {
+func TestCheckoutModel_FileListRendersFiles(t *testing.T) {
 	t.Parallel()
 	m := newTestCheckoutModel(t, "M\ttest.go\n")
 	m.width = 120

@@ -25,7 +25,7 @@ type DiffModel struct {
 	ctx           context.Context
 	runner        git.Runner
 	files         []git.FileDiff
-	fileTree      components.FileTree
+	fileList      components.FileList
 	diffView      components.DiffView
 	statusBar     components.StatusBar
 	help          components.HelpOverlay
@@ -91,7 +91,7 @@ func NewDiffModel(
 		ctx:           ctx,
 		runner:        runner,
 		files:         files,
-		fileTree:      components.NewFileTree(entries, false),
+		fileList:      components.NewFileList(entries, false),
 		filterPaths:   paths,
 		noMatchFilter: noMatch,
 		diffView:      components.NewDiffView(80, 20),
@@ -268,13 +268,13 @@ func (m *DiffModel) Update(msg tea.Msg) tea.Cmd {
 			return tea.Batch(sbCmd, dvCmd)
 		}
 
-		// Forward to file tree
-		treeCmd := m.fileTree.Update(msg)
+		// Forward to file list
+		listCmd := m.fileList.Update(msg)
 
 		// Check if selection changed
 		m.checkSelectionChange()
 
-		return tea.Batch(sbCmd, treeCmd)
+		return tea.Batch(sbCmd, listCmd)
 	}
 
 	return sbCmd
@@ -300,9 +300,9 @@ func (m *DiffModel) View() string {
 		switch {
 		case !m.showDiff:
 			panelW := m.width - 1
-			m.fileTree.SetWidth(panelW)
-			m.fileTree.SetHeight(contentHeight)
-			leftPanel := tui.StyleFocusBorder.Width(panelW).Height(contentHeight).MaxHeight(contentHeight).Render(m.fileTree.View())
+			m.fileList.SetWidth(panelW)
+			m.fileList.SetHeight(contentHeight)
+			leftPanel := tui.StyleFocusBorder.Width(panelW).Height(contentHeight).MaxHeight(contentHeight).Render(m.fileList.View())
 			background = leftPanel + "\n" + m.statusBar.View()
 		case m.diffMaximized:
 			rightW := m.width - 1
@@ -317,8 +317,8 @@ func (m *DiffModel) View() string {
 			leftW--
 			rightW--
 
-			m.fileTree.SetWidth(leftW)
-			m.fileTree.SetHeight(contentHeight)
+			m.fileList.SetWidth(leftW)
+			m.fileList.SetHeight(contentHeight)
 			m.diffView.SetWidth(rightW)
 			m.diffView.SetHeight(contentHeight)
 
@@ -327,7 +327,7 @@ func (m *DiffModel) View() string {
 				leftBorder, rightBorder = tui.StyleDimBorder, tui.StyleFocusBorder
 			}
 
-			leftPanel := leftBorder.Width(leftW).Height(contentHeight).MaxHeight(contentHeight).Render(m.fileTree.View())
+			leftPanel := leftBorder.Width(leftW).Height(contentHeight).MaxHeight(contentHeight).Render(m.fileList.View())
 			rightPanel := rightBorder.Width(rightW).Height(contentHeight).MaxHeight(contentHeight).Render(m.diffView.View())
 
 			panels := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
@@ -352,7 +352,7 @@ func (m *DiffModel) refreshDiff() {
 	for i, f := range m.files {
 		entries[i] = components.FileEntry{Path: f.DisplayPath(), Status: f.Status}
 	}
-	m.fileTree = components.NewFileTree(entries, false)
+	m.fileList = components.NewFileList(entries, false)
 	m.selectedPath = ""
 	if len(m.files) > 0 {
 		m.checkSelectionChange()
@@ -362,7 +362,7 @@ func (m *DiffModel) refreshDiff() {
 
 // checkSelectionChange detects if the selected file changed and re-renders the diff.
 func (m *DiffModel) checkSelectionChange() {
-	path := m.fileTree.SelectedPath()
+	path := m.fileList.SelectedPath()
 	if path == "" || path == m.selectedPath {
 		return
 	}
@@ -409,8 +409,8 @@ func (m *DiffModel) resize() {
 
 	if !m.showDiff {
 		panelW := m.width - 1
-		m.fileTree.SetWidth(panelW)
-		m.fileTree.SetHeight(contentHeight)
+		m.fileList.SetWidth(panelW)
+		m.fileList.SetHeight(contentHeight)
 		return
 	}
 
@@ -426,8 +426,8 @@ func (m *DiffModel) resize() {
 	leftW--
 	rightW--
 
-	m.fileTree.SetWidth(leftW)
-	m.fileTree.SetHeight(contentHeight)
+	m.fileList.SetWidth(leftW)
+	m.fileList.SetHeight(contentHeight)
 	m.diffView.SetWidth(rightW)
 	m.diffView.SetHeight(contentHeight)
 }

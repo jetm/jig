@@ -270,7 +270,8 @@ func (m *HunkCheckoutModel) View() string {
 			Foreground(tui.ColorYellow).
 			Bold(true)
 
-		if !m.showDiff {
+		switch {
+		case !m.showDiff:
 			panelW := m.width - 1
 			leftContent := m.renderLeftPanel(panelW, contentHeight)
 			leftPanel := tui.StyleFocusBorder.Width(panelW).Height(contentHeight).MaxHeight(contentHeight).Render(leftContent)
@@ -281,7 +282,7 @@ func (m *HunkCheckoutModel) View() string {
 			} else {
 				background = leftPanel + "\n" + m.statusBar.View()
 			}
-		} else if m.diffMaximized {
+		case m.diffMaximized:
 			rightW := m.width - 1
 			m.diffView.SetWidth(rightW)
 			m.diffView.SetHeight(contentHeight)
@@ -293,7 +294,7 @@ func (m *HunkCheckoutModel) View() string {
 			} else {
 				background = rightPanel + "\n" + m.statusBar.View()
 			}
-		} else {
+		default:
 			leftW, rightW := tui.ColumnsFromConfig(m.width, m.panelRatio)
 
 			leftW--

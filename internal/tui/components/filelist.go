@@ -10,9 +10,15 @@ import (
 	"github.com/jetm/jig/internal/tui"
 )
 
+// FileEntry represents a file with its path and git status, used as input to
+// NewFileList.
+type FileEntry struct {
+	Path   string
+	Status git.FileStatus
+}
+
 // FileList is a flat one-file-per-line list component with cursor navigation,
-// optional checkboxes, and viewport scrolling. It implements the same method
-// surface as FileTree so commands can swap constructors mechanically.
+// optional checkboxes, and viewport scrolling.
 type FileList struct {
 	entries      []FileEntry
 	checked      []bool

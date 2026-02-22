@@ -201,7 +201,7 @@ Keybindings:
 
 ## `diff` (alias `gd`) — diffnav-style viewer
 
-Read-only. File tree on the left, full diff on the right.
+Read-only. File list on the left, full diff on the right.
 
 Accepts optional revision argument: `jig diff HEAD~3`, `jig diff main..feature`. Default: `git diff` (unstaged changes). `jig diff --staged` shows `git diff --cached`.
 

@@ -320,7 +320,7 @@ func TestAddModel_StatusBarShowsBranch(t *testing.T) {
 	}
 }
 
-func TestAddModel_FileTreeRendersFiles(t *testing.T) {
+func TestAddModel_FileListRendersFiles(t *testing.T) {
 	t.Parallel()
 	m := newTestAddModel(t, "M\ttest.go\n", "")
 	m.width = 120

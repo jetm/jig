@@ -314,7 +314,7 @@ func TestResetModel_StatusBarShowsBranch(t *testing.T) {
 	}
 }
 
-func TestResetModel_FileTreeRendersFiles(t *testing.T) {
+func TestResetModel_FileListRendersFiles(t *testing.T) {
 	t.Parallel()
 	m := newTestResetModel(t, "M\ttest.go\n")
 	m.width = 120

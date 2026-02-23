@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/jetm/jig/internal/app"
@@ -33,7 +35,10 @@ func newHunkResetTestModel(t *testing.T, diffOutput string, extraOutputs ...stri
 	runner := &testhelper.FakeRunner{Outputs: outputs}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewHunkResetModel(context.Background(), runner, cfg, renderer)
+	m, err := NewHunkResetModel(context.Background(), runner, cfg, renderer)
+	if err != nil {
+		t.Fatalf("NewHunkResetModel unexpectedly returned error: %v", err)
+	}
 	return m, runner
 }
 
@@ -139,14 +144,20 @@ func TestHunkResetModel_ApplyError(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewHunkResetModel(context.Background(), runner, cfg, renderer)
+	m, err := NewHunkResetModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
 	m.Update(tea.KeyPressMsg{Code: tea.KeySpace})
 	cmd := m.applySelected()
-	if cmd != nil {
-		t.Error("applySelected on runner error should return nil when no hunks applied")
+	if cmd == nil {
+		t.Error("applySelected on runner error should return a status bar error cmd, not nil")
+	}
+	// Must not pop the model on error
+	msg := cmd()
+	if _, ok := msg.(app.PopModelMsg); ok {
+		t.Error("should not pop model on unstage error — model must stay visible with error in status bar")
 	}
 }
 
@@ -307,7 +318,8 @@ func TestHunkResetModel_NoMatchFilter(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewHunkResetModel(context.Background(), runner, cfg, renderer, []string{"nonexistent.go"})
+	m, err := NewHunkResetModel(context.Background(), runner, cfg, renderer, []string{"nonexistent.go"})
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 	view := m.View()
@@ -361,7 +373,8 @@ func TestHunkResetModel_DiffHiddenSinglePanel(t *testing.T) {
 	cfg := config.NewDefault()
 	cfg.ShowDiffPanel = false
 	renderer := &diff.PlainRenderer{}
-	m := NewHunkResetModel(context.Background(), runner, cfg, renderer)
+	m, err := NewHunkResetModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -379,7 +392,8 @@ func TestHunkResetModel_ResizeDiffHidden(t *testing.T) {
 	cfg := config.NewDefault()
 	cfg.ShowDiffPanel = false
 	renderer := &diff.PlainRenderer{}
-	m := NewHunkResetModel(context.Background(), runner, cfg, renderer)
+	m, err := NewHunkResetModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	view := m.View()
 	if view == "" {

@@ -67,8 +67,11 @@ func NewLogModel(
 	cfg config.Config,
 	renderer diff.Renderer,
 	ref string,
-) *LogModel {
-	commits, _ := git.RecentCommitsFrom(ctx, runner, defaultLogCommitLimit, ref)
+) (*LogModel, error) {
+	commits, err := git.RecentCommitsFrom(ctx, runner, defaultLogCommitLimit, ref)
+	if err != nil {
+		return nil, fmt.Errorf("loading commits: %w", err)
+	}
 	branchName, _ := git.BranchName(ctx, runner)
 
 	items := make([]list.Item, len(commits))
@@ -122,7 +125,7 @@ func NewLogModel(
 		m.renderSelectedDiff()
 	}
 
-	return m
+	return m, nil
 }
 
 // Update handles messages and returns commands.
@@ -193,7 +196,9 @@ func (m *LogModel) Update(msg tea.Msg) tea.Cmd {
 					m.panelRatio = 20
 				}
 				m.cfg.PanelRatio = m.panelRatio
-				_ = config.Save(m.cfg)
+				if err := config.Save(m.cfg); err != nil {
+					return m.statusBar.SetMessage(fmt.Sprintf("Config save failed: %v", err), components.Error)
+				}
 				m.resize()
 			}
 			return sbCmd
@@ -206,7 +211,9 @@ func (m *LogModel) Update(msg tea.Msg) tea.Cmd {
 					m.panelRatio = 80
 				}
 				m.cfg.PanelRatio = m.panelRatio
-				_ = config.Save(m.cfg)
+				if err := config.Save(m.cfg); err != nil {
+					return m.statusBar.SetMessage(fmt.Sprintf("Config save failed: %v", err), components.Error)
+				}
 				m.resize()
 			}
 			return sbCmd

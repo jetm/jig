@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/jetm/jig/internal/app"
@@ -33,7 +35,10 @@ func newHunkCheckoutTestModel(t *testing.T, diffOutput string, extraOutputs ...s
 	runner := &testhelper.FakeRunner{Outputs: outputs}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewHunkCheckoutModel(context.Background(), runner, cfg, renderer)
+	m, err := NewHunkCheckoutModel(context.Background(), runner, cfg, renderer)
+	if err != nil {
+		t.Fatalf("NewHunkCheckoutModel unexpectedly returned error: %v", err)
+	}
 	return m, runner
 }
 
@@ -187,14 +192,20 @@ func TestHunkCheckoutModel_ApplyError(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewHunkCheckoutModel(context.Background(), runner, cfg, renderer)
+	m, err := NewHunkCheckoutModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
 	m.Update(tea.KeyPressMsg{Code: tea.KeySpace})
 	cmd := m.applySelected()
-	if cmd != nil {
-		t.Error("applySelected on runner error should return nil when no hunks applied")
+	if cmd == nil {
+		t.Error("applySelected on runner error should return a status bar error cmd, not nil")
+	}
+	// Must not pop the model on error
+	msg := cmd()
+	if _, ok := msg.(app.PopModelMsg); ok {
+		t.Error("should not pop model on discard error — model must stay visible with error in status bar")
 	}
 }
 
@@ -351,7 +362,8 @@ func TestHunkCheckoutModel_NoMatchFilter(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewHunkCheckoutModel(context.Background(), runner, cfg, renderer, []string{"nonexistent.go"})
+	m, err := NewHunkCheckoutModel(context.Background(), runner, cfg, renderer, []string{"nonexistent.go"})
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 	view := m.View()
@@ -400,7 +412,8 @@ func TestHunkCheckoutModel_ResizeDiffHidden(t *testing.T) {
 	cfg := config.NewDefault()
 	cfg.ShowDiffPanel = false
 	renderer := &diff.PlainRenderer{}
-	m := NewHunkCheckoutModel(context.Background(), runner, cfg, renderer)
+	m, err := NewHunkCheckoutModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	view := m.View()
 	if view == "" {
@@ -416,7 +429,8 @@ func TestHunkCheckoutModel_DiffHiddenSinglePanel(t *testing.T) {
 	cfg := config.NewDefault()
 	cfg.ShowDiffPanel = false
 	renderer := &diff.PlainRenderer{}
-	m := NewHunkCheckoutModel(context.Background(), runner, cfg, renderer)
+	m, err := NewHunkCheckoutModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -434,7 +448,8 @@ func TestHunkCheckoutModel_ConfirmationViewDiffHidden(t *testing.T) {
 	cfg := config.NewDefault()
 	cfg.ShowDiffPanel = false
 	renderer := &diff.PlainRenderer{}
-	m := NewHunkCheckoutModel(context.Background(), runner, cfg, renderer)
+	m, err := NewHunkCheckoutModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 

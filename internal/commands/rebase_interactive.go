@@ -100,21 +100,26 @@ func NewRebaseInteractiveModel(
 	renderer diff.Renderer,
 	base string,
 	todoFilePath string,
-) *RebaseInteractiveModel {
+) (*RebaseInteractiveModel, error) {
 	var entries []git.RebaseTodoEntry
 
 	if todoFilePath != "" {
 		// Editor mode: parse the todo file
 		raw, err := os.ReadFile(todoFilePath)
-		if err == nil {
-			entries = git.ParseNativeTodo(string(raw))
+		if err != nil {
+			return nil, fmt.Errorf("reading todo file: %w", err)
 		}
+		entries = git.ParseNativeTodo(string(raw))
 	} else {
 		// Standalone mode: fetch commits via git log
 		if base == "" {
 			base = "HEAD~10"
 		}
-		entries, _ = git.CommitsForRebase(ctx, runner, base)
+		var err error
+		entries, err = git.CommitsForRebase(ctx, runner, base)
+		if err != nil {
+			return nil, fmt.Errorf("loading commits: %w", err)
+		}
 	}
 	branchName, _ := git.BranchName(ctx, runner)
 
@@ -182,7 +187,7 @@ func NewRebaseInteractiveModel(
 	m.statusBar.SetBranch(branchName)
 	m.statusBar.SetMode("rebase-interactive")
 
-	return m
+	return m, nil
 }
 
 // Update handles messages and returns commands.
@@ -308,7 +313,9 @@ func (m *RebaseInteractiveModel) Update(msg tea.Msg) tea.Cmd {
 					m.panelRatio = 20
 				}
 				m.cfg.PanelRatio = m.panelRatio
-				_ = config.Save(m.cfg)
+				if err := config.Save(m.cfg); err != nil {
+					return m.statusBar.SetMessage(fmt.Sprintf("Config save failed: %v", err), components.Error)
+				}
 				m.resize()
 			}
 			return sbCmd
@@ -320,7 +327,9 @@ func (m *RebaseInteractiveModel) Update(msg tea.Msg) tea.Cmd {
 					m.panelRatio = 80
 				}
 				m.cfg.PanelRatio = m.panelRatio
-				_ = config.Save(m.cfg)
+				if err := config.Save(m.cfg); err != nil {
+					return m.statusBar.SetMessage(fmt.Sprintf("Config save failed: %v", err), components.Error)
+				}
 				m.resize()
 			}
 			return sbCmd

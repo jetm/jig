@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/jetm/jig/internal/app"
@@ -27,7 +29,11 @@ func newTestResetModel(t *testing.T, nameStatus string) *ResetModel {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	return NewResetModel(context.Background(), runner, cfg, renderer)
+	m, err := NewResetModel(context.Background(), runner, cfg, renderer)
+	if err != nil {
+		t.Fatalf("NewResetModel unexpectedly returned error: %v", err)
+	}
+	return m
 }
 
 func TestNewResetModel_EmptyFiles(t *testing.T) {
@@ -183,7 +189,8 @@ func TestResetModel_EnterUnstagesSelected(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewResetModel(context.Background(), runner, cfg, renderer)
+	m, err := NewResetModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -217,7 +224,8 @@ func TestResetModel_EnterUnstagesFocusedWhenNoneSelected(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewResetModel(context.Background(), runner, cfg, renderer)
+	m, err := NewResetModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -314,7 +322,7 @@ func TestResetModel_StatusBarShowsBranch(t *testing.T) {
 	}
 }
 
-func TestResetModel_FileListRendersFiles(t *testing.T) {
+func TestResetModel_FileTreeRendersFiles(t *testing.T) {
 	t.Parallel()
 	m := newTestResetModel(t, "M\ttest.go\n")
 	m.width = 120
@@ -356,7 +364,8 @@ func TestResetModel_UnstageError(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewResetModel(context.Background(), runner, cfg, renderer)
+	m, err := NewResetModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -367,12 +376,8 @@ func TestResetModel_UnstageError(t *testing.T) {
 		t.Fatal("expected a command even on error")
 	}
 	msg := cmd()
-	pop, ok := msg.(app.PopModelMsg)
-	if !ok {
-		t.Fatalf("expected PopModelMsg, got %T", msg)
-	}
-	if pop.MutatedGit {
-		t.Error("MutatedGit should be false when unstaging fails")
+	if _, ok := msg.(app.PopModelMsg); ok {
+		t.Fatal("should not pop model on unstage error — model must stay visible with error in status bar")
 	}
 }
 
@@ -388,7 +393,8 @@ func TestResetModel_RenderSelectedDiff_WithDiff(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewResetModel(context.Background(), runner, cfg, renderer)
+	m, err := NewResetModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -410,7 +416,8 @@ func TestResetModel_RenderSelectedDiff_DiffError(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewResetModel(context.Background(), runner, cfg, renderer)
+	m, err := NewResetModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -489,7 +496,8 @@ func TestResetModel_TabNoopWhenDiffHidden(t *testing.T) {
 	cfg := config.NewDefault()
 	cfg.ShowDiffPanel = false
 	renderer := &diff.PlainRenderer{}
-	m := NewResetModel(context.Background(), runner, cfg, renderer)
+	m, err := NewResetModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -514,7 +522,8 @@ func TestResetModel_SinglePanelViewWhenDiffHidden(t *testing.T) {
 	cfg := config.NewDefault()
 	cfg.ShowDiffPanel = false
 	renderer := &diff.PlainRenderer{}
-	m := NewResetModel(context.Background(), runner, cfg, renderer)
+	m, err := NewResetModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -540,7 +549,8 @@ func TestResetModel_KeyJForwardsToList(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewResetModel(context.Background(), runner, cfg, renderer)
+	m, err := NewResetModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -640,7 +650,8 @@ func TestResetModel_EKey_NoDiff(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewResetModel(context.Background(), runner, cfg, renderer)
+	m, err := NewResetModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -685,7 +696,8 @@ func TestResetModel_EditDiffMsg_ApplyError(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewResetModel(context.Background(), runner, cfg, renderer)
+	m, err := NewResetModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -714,7 +726,8 @@ func TestResetModel_EditDiffMsg_Success(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewResetModel(context.Background(), runner, cfg, renderer)
+	m, err := NewResetModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -740,7 +753,8 @@ func TestNewResetModel_WithFilterPaths(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewResetModel(context.Background(), runner, cfg, renderer, []string{"foo.go"})
+	m, err := NewResetModel(context.Background(), runner, cfg, renderer, []string{"foo.go"})
+	require.NoError(t, err)
 	if len(m.files) != 1 {
 		t.Fatalf("expected 1 file, got %d", len(m.files))
 	}
@@ -757,7 +771,8 @@ func TestNewResetModel_FilterPaths_NoMatch(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewResetModel(context.Background(), runner, cfg, renderer, []string{"nonexistent.go"})
+	m, err := NewResetModel(context.Background(), runner, cfg, renderer, []string{"nonexistent.go"})
+	require.NoError(t, err)
 	if !m.noMatchFilter {
 		t.Error("noMatchFilter should be true when filter paths match no files")
 	}
@@ -781,7 +796,8 @@ func TestResetModel_BraceKeysAdjustContextLines(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewResetModel(context.Background(), runner, cfg, renderer)
+	m, err := NewResetModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -794,5 +810,23 @@ func TestResetModel_BraceKeysAdjustContextLines(t *testing.T) {
 	m.Update(tea.KeyPressMsg{Code: '{', ShiftedCode: '{', Mod: tea.ModShift, Text: "{"})
 	if m.contextLines != initial {
 		t.Errorf("{ should decrement contextLines: got %d want %d", m.contextLines, initial)
+	}
+}
+
+func TestResetModel_ResizeWhileDiffHidden(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{"M\tmain.go\n", "main"},
+	}
+	cfg := config.NewDefault()
+	cfg.ShowDiffPanel = false
+	renderer := &diff.PlainRenderer{}
+	m, err := NewResetModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	view := m.View()
+	if view == "" {
+		t.Error("View() should not be empty after resize with diff hidden")
 	}
 }

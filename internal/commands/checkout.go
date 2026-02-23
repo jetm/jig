@@ -48,12 +48,15 @@ func NewCheckoutModel(
 	cfg config.Config,
 	renderer diff.Renderer,
 	filterPaths ...[]string,
-) *CheckoutModel {
+) (*CheckoutModel, error) {
 	var paths []string
 	if len(filterPaths) > 0 {
 		paths = ExpandGlobs(filterPaths[0])
 	}
-	files, _ := git.ListModifiedFilesFiltered(ctx, runner, paths)
+	files, err := git.ListModifiedFilesFiltered(ctx, runner, paths)
+	if err != nil {
+		return nil, fmt.Errorf("listing modified files: %w", err)
+	}
 	branchName, _ := git.BranchName(ctx, runner)
 
 	entries := make([]components.FileEntry, len(files))
@@ -114,7 +117,7 @@ func NewCheckoutModel(
 		m.renderSelectedDiff()
 	}
 
-	return m
+	return m, nil
 }
 
 // Update handles messages.
@@ -215,7 +218,9 @@ func (m *CheckoutModel) Update(msg tea.Msg) tea.Cmd {
 					m.panelRatio = 20
 				}
 				m.cfg.PanelRatio = m.panelRatio
-				_ = config.Save(m.cfg)
+				if err := config.Save(m.cfg); err != nil {
+					return m.statusBar.SetMessage(fmt.Sprintf("Config save failed: %v", err), components.Error)
+				}
 				m.resize()
 			}
 			return sbCmd
@@ -228,7 +233,9 @@ func (m *CheckoutModel) Update(msg tea.Msg) tea.Cmd {
 					m.panelRatio = 80
 				}
 				m.cfg.PanelRatio = m.panelRatio
-				_ = config.Save(m.cfg)
+				if err := config.Save(m.cfg); err != nil {
+					return m.statusBar.SetMessage(fmt.Sprintf("Config save failed: %v", err), components.Error)
+				}
 				m.resize()
 			}
 			return sbCmd
@@ -266,9 +273,9 @@ func (m *CheckoutModel) Update(msg tea.Msg) tea.Cmd {
 			return tea.Batch(sbCmd, dvCmd)
 		}
 
-		listCmd := m.fileList.Update(msg)
+		treeCmd := m.fileList.Update(msg)
 		m.renderSelectedDiff()
-		return tea.Batch(sbCmd, listCmd)
+		return tea.Batch(sbCmd, treeCmd)
 	}
 
 	return sbCmd
@@ -386,20 +393,18 @@ func (m *CheckoutModel) selectedPaths() []string {
 	return nil
 }
 
-// discardSelected runs git checkout -- for the selected files.
+// discardSelected runs git checkout -- for the selected files and returns a PopModelMsg on success.
+// On failure, the model stays visible with the error in the status bar.
 func (m *CheckoutModel) discardSelected() tea.Cmd {
 	paths := m.selectedPaths()
 	if len(paths) == 0 {
 		return nil
 	}
-	err := git.DiscardFiles(m.ctx, m.runner, paths)
-	mutated := err == nil
-	if err != nil {
-		msgCmd := m.statusBar.SetMessage(fmt.Sprintf("Discard failed: %v", err), components.Error)
-		_ = msgCmd
+	if err := git.DiscardFiles(m.ctx, m.runner, paths); err != nil {
+		return m.statusBar.SetMessage(fmt.Sprintf("Discard failed: %v", err), components.Error)
 	}
 	return func() tea.Msg {
-		return app.PopModelMsg{MutatedGit: mutated}
+		return app.PopModelMsg{MutatedGit: true}
 	}
 }
 

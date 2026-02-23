@@ -96,7 +96,10 @@ func newDiffCmd() *cobra.Command {
 				return fmt.Errorf("loading config: %w", err)
 			}
 			renderer := diff.Chain(cfg)
-			diffModel := commands.NewDiffModel(ctx, runner, cfg, renderer, revision, staged, rawInput)
+			diffModel, err := commands.NewDiffModel(ctx, runner, cfg, renderer, revision, staged, rawInput)
+			if err != nil {
+				return fmt.Errorf("diff: %w", err)
+			}
 
 			appModel := app.New(newDiffTeaModel(diffModel), runner, cfg)
 			p := tea.NewProgram(appModel, opts...)
@@ -156,9 +159,12 @@ func newAddCmd() *cobra.Command {
 			renderer := diff.Chain(cfg)
 			var addModel *commands.AddModel
 			if len(args) > 0 {
-				addModel = commands.NewAddModel(ctx, runner, cfg, renderer, args)
+				addModel, err = commands.NewAddModel(ctx, runner, cfg, renderer, args)
 			} else {
-				addModel = commands.NewAddModel(ctx, runner, cfg, renderer)
+				addModel, err = commands.NewAddModel(ctx, runner, cfg, renderer)
+			}
+			if err != nil {
+				return fmt.Errorf("add: %w", err)
 			}
 
 			appModel := app.New(newAddTeaModel(addModel), runner, cfg)
@@ -242,9 +248,12 @@ func newCheckoutCmd() *cobra.Command {
 			renderer := diff.Chain(cfg)
 			var checkoutModel *commands.CheckoutModel
 			if len(args) > 0 {
-				checkoutModel = commands.NewCheckoutModel(ctx, runner, cfg, renderer, args)
+				checkoutModel, err = commands.NewCheckoutModel(ctx, runner, cfg, renderer, args)
 			} else {
-				checkoutModel = commands.NewCheckoutModel(ctx, runner, cfg, renderer)
+				checkoutModel, err = commands.NewCheckoutModel(ctx, runner, cfg, renderer)
+			}
+			if err != nil {
+				return fmt.Errorf("checkout: %w", err)
 			}
 
 			appModel := app.New(newCheckoutTeaModel(checkoutModel), runner, cfg)
@@ -341,9 +350,12 @@ func newHunkAddCmd() *cobra.Command {
 			renderer := diff.Chain(cfg)
 			var hunkAddModel *commands.HunkAddModel
 			if len(args) > 0 {
-				hunkAddModel = commands.NewHunkAddModel(ctx, runner, cfg, renderer, args)
+				hunkAddModel, err = commands.NewHunkAddModel(ctx, runner, cfg, renderer, args)
 			} else {
-				hunkAddModel = commands.NewHunkAddModel(ctx, runner, cfg, renderer)
+				hunkAddModel, err = commands.NewHunkAddModel(ctx, runner, cfg, renderer)
+			}
+			if err != nil {
+				return fmt.Errorf("hunk-add: %w", err)
 			}
 
 			appModel := app.New(newHunkAddTeaModel(hunkAddModel), runner, cfg)
@@ -395,9 +407,12 @@ func newHunkResetCmd() *cobra.Command {
 			renderer := diff.Chain(cfg)
 			var hunkResetModel *commands.HunkResetModel
 			if len(args) > 0 {
-				hunkResetModel = commands.NewHunkResetModel(ctx, runner, cfg, renderer, args)
+				hunkResetModel, err = commands.NewHunkResetModel(ctx, runner, cfg, renderer, args)
 			} else {
-				hunkResetModel = commands.NewHunkResetModel(ctx, runner, cfg, renderer)
+				hunkResetModel, err = commands.NewHunkResetModel(ctx, runner, cfg, renderer)
+			}
+			if err != nil {
+				return fmt.Errorf("hunk-reset: %w", err)
 			}
 
 			appModel := app.New(newHunkResetTeaModel(hunkResetModel), runner, cfg)
@@ -449,9 +464,12 @@ func newHunkCheckoutCmd() *cobra.Command {
 			renderer := diff.Chain(cfg)
 			var hunkCheckoutModel *commands.HunkCheckoutModel
 			if len(args) > 0 {
-				hunkCheckoutModel = commands.NewHunkCheckoutModel(ctx, runner, cfg, renderer, args)
+				hunkCheckoutModel, err = commands.NewHunkCheckoutModel(ctx, runner, cfg, renderer, args)
 			} else {
-				hunkCheckoutModel = commands.NewHunkCheckoutModel(ctx, runner, cfg, renderer)
+				hunkCheckoutModel, err = commands.NewHunkCheckoutModel(ctx, runner, cfg, renderer)
+			}
+			if err != nil {
+				return fmt.Errorf("hunk-checkout: %w", err)
 			}
 
 			appModel := app.New(newHunkCheckoutTeaModel(hunkCheckoutModel), runner, cfg)
@@ -558,7 +576,10 @@ func newLogCmd() *cobra.Command {
 				return fmt.Errorf("loading config: %w", err)
 			}
 			renderer := diff.Chain(cfg)
-			logModel := commands.NewLogModel(ctx, runner, cfg, renderer, ref)
+			logModel, err := commands.NewLogModel(ctx, runner, cfg, renderer, ref)
+			if err != nil {
+				return fmt.Errorf("log: %w", err)
+			}
 
 			appModel := app.New(newLogTeaModel(logModel), runner, cfg)
 			p := tea.NewProgram(appModel)
@@ -615,9 +636,12 @@ func newResetCmd() *cobra.Command {
 			renderer := diff.Chain(cfg)
 			var resetModel *commands.ResetModel
 			if len(args) > 0 {
-				resetModel = commands.NewResetModel(ctx, runner, cfg, renderer, args)
+				resetModel, err = commands.NewResetModel(ctx, runner, cfg, renderer, args)
 			} else {
-				resetModel = commands.NewResetModel(ctx, runner, cfg, renderer)
+				resetModel, err = commands.NewResetModel(ctx, runner, cfg, renderer)
+			}
+			if err != nil {
+				return fmt.Errorf("reset: %w", err)
 			}
 
 			appModel := app.New(newResetTeaModel(resetModel), runner, cfg)
@@ -697,7 +721,10 @@ func newRebaseInteractiveCmd() *cobra.Command {
 				return fmt.Errorf("loading config: %w", err)
 			}
 			renderer := diff.Chain(cfg)
-			rebaseModel := commands.NewRebaseInteractiveModel(ctx, runner, cfg, renderer, base, todoFilePath)
+			rebaseModel, err := commands.NewRebaseInteractiveModel(ctx, runner, cfg, renderer, base, todoFilePath)
+			if err != nil {
+				return fmt.Errorf("rebase-interactive: %w", err)
+			}
 
 			rebaseTeaModel := newRebaseInteractiveTeaModel(rebaseModel)
 			appModel := app.New(rebaseTeaModel, runner, cfg)

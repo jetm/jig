@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/jetm/jig/internal/commands"
@@ -28,7 +30,11 @@ func newFakeLogModel(t *testing.T, logOutput, branch, ref string) *commands.LogM
 	runner := &testhelper.FakeRunner{Outputs: outputs}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	return commands.NewLogModel(context.Background(), runner, cfg, renderer, ref)
+	m, err := commands.NewLogModel(context.Background(), runner, cfg, renderer, ref)
+	if err != nil {
+		t.Fatalf("NewLogModel unexpectedly returned error: %v", err)
+	}
+	return m
 }
 
 func TestNewLogModel_NoCommits(t *testing.T) {
@@ -152,7 +158,8 @@ func TestLogModel_RenderSelectedDiff_ErrorPath(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewLogModel(context.Background(), runner, cfg, renderer, "")
+	m, err := commands.NewLogModel(context.Background(), runner, cfg, renderer, "")
+	require.NoError(t, err)
 
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	view := m.View()
@@ -200,7 +207,8 @@ func TestLogModel_DKeyTogglesDiffPanel(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewLogModel(context.Background(), runner, cfg, renderer, "")
+	m, err := commands.NewLogModel(context.Background(), runner, cfg, renderer, "")
+	require.NoError(t, err)
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 
 	// showDiff starts true (from config default)
@@ -231,7 +239,8 @@ func TestLogModel_TabNoopWhenDiffHidden(t *testing.T) {
 	cfg := config.NewDefault()
 	cfg.ShowDiffPanel = false
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewLogModel(context.Background(), runner, cfg, renderer, "")
+	m, err := commands.NewLogModel(context.Background(), runner, cfg, renderer, "")
+	require.NoError(t, err)
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 
 	view1 := m.View()
@@ -254,7 +263,8 @@ func TestLogModel_SinglePanelViewWhenDiffHidden(t *testing.T) {
 	cfg := config.NewDefault()
 	cfg.ShowDiffPanel = false
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewLogModel(context.Background(), runner, cfg, renderer, "")
+	m, err := commands.NewLogModel(context.Background(), runner, cfg, renderer, "")
+	require.NoError(t, err)
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 
 	viewHidden := m.View()
@@ -278,7 +288,8 @@ func TestLogModel_Update_NavigationJ(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewLogModel(context.Background(), runner, cfg, renderer, "")
+	m, err := commands.NewLogModel(context.Background(), runner, cfg, renderer, "")
+	require.NoError(t, err)
 
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	// Press j to move down — selection should still render without panic
@@ -347,7 +358,8 @@ func TestLogModel_BracketLeftKeyChangesLayout(t *testing.T) {
 	cfg := config.NewDefault()
 	cfg.PanelRatio = 60 // above 20 so [ takes effect
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewLogModel(context.Background(), runner, cfg, renderer, "")
+	m, err := commands.NewLogModel(context.Background(), runner, cfg, renderer, "")
+	require.NoError(t, err)
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 
 	m.Update(tea.KeyPressMsg{Code: '[', Text: "["})
@@ -385,7 +397,8 @@ func TestLogModel_BraceKeysAdjustContextLines(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewLogModel(context.Background(), runner, cfg, renderer, "")
+	m, err := commands.NewLogModel(context.Background(), runner, cfg, renderer, "")
+	require.NoError(t, err)
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 
 	m.Update(tea.KeyPressMsg{Code: '}', ShiftedCode: '}', Mod: tea.ModShift, Text: "}"})

@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/jetm/jig/internal/app"
@@ -26,7 +28,11 @@ func newTestCheckoutModel(t *testing.T, nameStatus string) *CheckoutModel {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	return NewCheckoutModel(context.Background(), runner, cfg, renderer)
+	m, err := NewCheckoutModel(context.Background(), runner, cfg, renderer)
+	if err != nil {
+		t.Fatalf("NewCheckoutModel unexpectedly returned error: %v", err)
+	}
+	return m
 }
 
 func TestNewCheckoutModel_EmptyFiles(t *testing.T) {
@@ -167,7 +173,8 @@ func TestCheckoutModel_YDiscardsAndPops(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewCheckoutModel(context.Background(), runner, cfg, renderer)
+	m, err := NewCheckoutModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -349,7 +356,7 @@ func TestCheckoutModel_StatusBarShowsBranch(t *testing.T) {
 	}
 }
 
-func TestCheckoutModel_FileListRendersFiles(t *testing.T) {
+func TestCheckoutModel_FileTreeRendersFiles(t *testing.T) {
 	t.Parallel()
 	m := newTestCheckoutModel(t, "M\ttest.go\n")
 	m.width = 120
@@ -385,7 +392,8 @@ func TestCheckoutModel_MultiSelectDiscard(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewCheckoutModel(context.Background(), runner, cfg, renderer)
+	m, err := NewCheckoutModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -420,7 +428,8 @@ func TestCheckoutModel_DiscardError(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewCheckoutModel(context.Background(), runner, cfg, renderer)
+	m, err := NewCheckoutModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -430,12 +439,8 @@ func TestCheckoutModel_DiscardError(t *testing.T) {
 		t.Fatal("expected a command even on discard error")
 	}
 	msg := cmd()
-	pop, ok := msg.(app.PopModelMsg)
-	if !ok {
-		t.Fatalf("expected PopModelMsg, got %T", msg)
-	}
-	if pop.MutatedGit {
-		t.Error("MutatedGit should be false when discard fails")
+	if _, ok := msg.(app.PopModelMsg); ok {
+		t.Fatal("should not pop model on discard error — model must stay visible with error in status bar")
 	}
 }
 
@@ -451,7 +456,8 @@ func TestCheckoutModel_RenderSelectedDiff_WithDiff(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewCheckoutModel(context.Background(), runner, cfg, renderer)
+	m, err := NewCheckoutModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -473,7 +479,8 @@ func TestCheckoutModel_RenderSelectedDiff_DiffError(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewCheckoutModel(context.Background(), runner, cfg, renderer)
+	m, err := NewCheckoutModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -552,7 +559,8 @@ func TestCheckoutModel_TabNoopWhenDiffHidden(t *testing.T) {
 	cfg := config.NewDefault()
 	cfg.ShowDiffPanel = false
 	renderer := &diff.PlainRenderer{}
-	m := NewCheckoutModel(context.Background(), runner, cfg, renderer)
+	m, err := NewCheckoutModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -577,7 +585,8 @@ func TestCheckoutModel_SinglePanelViewWhenDiffHidden(t *testing.T) {
 	cfg := config.NewDefault()
 	cfg.ShowDiffPanel = false
 	renderer := &diff.PlainRenderer{}
-	m := NewCheckoutModel(context.Background(), runner, cfg, renderer)
+	m, err := NewCheckoutModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -603,7 +612,8 @@ func TestCheckoutModel_KeyJForwardsToList(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewCheckoutModel(context.Background(), runner, cfg, renderer)
+	m, err := NewCheckoutModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -715,7 +725,8 @@ func TestCheckoutModel_EKey_NoDiff(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewCheckoutModel(context.Background(), runner, cfg, renderer)
+	m, err := NewCheckoutModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -744,7 +755,8 @@ func TestCheckoutModel_EditDiffMsg_Error(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewCheckoutModel(context.Background(), runner, cfg, renderer)
+	m, err := NewCheckoutModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -771,7 +783,8 @@ func TestCheckoutModel_EditDiffMsg_ApplyError(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewCheckoutModel(context.Background(), runner, cfg, renderer)
+	m, err := NewCheckoutModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -802,7 +815,8 @@ func TestCheckoutModel_EditDiffMsg_Success(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewCheckoutModel(context.Background(), runner, cfg, renderer)
+	m, err := NewCheckoutModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -828,7 +842,8 @@ func TestNewCheckoutModel_WithFilterPaths(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewCheckoutModel(context.Background(), runner, cfg, renderer, []string{"foo.go"})
+	m, err := NewCheckoutModel(context.Background(), runner, cfg, renderer, []string{"foo.go"})
+	require.NoError(t, err)
 	if len(m.files) != 1 {
 		t.Fatalf("expected 1 file, got %d", len(m.files))
 	}
@@ -845,7 +860,8 @@ func TestNewCheckoutModel_FilterPaths_NoMatch(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewCheckoutModel(context.Background(), runner, cfg, renderer, []string{"nonexistent.go"})
+	m, err := NewCheckoutModel(context.Background(), runner, cfg, renderer, []string{"nonexistent.go"})
+	require.NoError(t, err)
 	if !m.noMatchFilter {
 		t.Error("noMatchFilter should be true when filter paths match no files")
 	}
@@ -869,7 +885,8 @@ func TestCheckoutModel_BraceKeysAdjustContextLines(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewCheckoutModel(context.Background(), runner, cfg, renderer)
+	m, err := NewCheckoutModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -882,5 +899,23 @@ func TestCheckoutModel_BraceKeysAdjustContextLines(t *testing.T) {
 	m.Update(tea.KeyPressMsg{Code: '{', ShiftedCode: '{', Mod: tea.ModShift, Text: "{"})
 	if m.contextLines != initial {
 		t.Errorf("{ should decrement contextLines: got %d want %d", m.contextLines, initial)
+	}
+}
+
+func TestCheckoutModel_ResizeWhileDiffHidden(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{"M\tmain.go\n", "main"},
+	}
+	cfg := config.NewDefault()
+	cfg.ShowDiffPanel = false
+	renderer := &diff.PlainRenderer{}
+	m, err := NewCheckoutModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	view := m.View()
+	if view == "" {
+		t.Error("View() should not be empty after resize with diff hidden")
 	}
 }

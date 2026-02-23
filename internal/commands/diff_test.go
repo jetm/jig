@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/jetm/jig/internal/app"
@@ -50,7 +52,10 @@ func newTestModel(t *testing.T, revision string, staged bool, diffOutput string)
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
 
-	m := NewDiffModel(context.Background(), runner, cfg, renderer, revision, staged, "")
+	m, err := NewDiffModel(context.Background(), runner, cfg, renderer, revision, staged, "")
+	if err != nil {
+		t.Fatalf("NewDiffModel unexpectedly returned error: %v", err)
+	}
 
 	// Verify DiffArgs were used correctly
 	expectedArgs := git.DiffArgs(revision, staged, cfg.DiffContext)
@@ -90,7 +95,8 @@ func TestNewDiffModel_GitArgs(t *testing.T) {
 			}
 			cfg := config.NewDefault()
 			renderer := &diff.PlainRenderer{}
-			_ = NewDiffModel(context.Background(), runner, cfg, renderer, tc.revision, tc.staged, "")
+			_, err := NewDiffModel(context.Background(), runner, cfg, renderer, tc.revision, tc.staged, "")
+			require.NoError(t, err)
 
 			call := testhelper.NthCall(runner, 0)
 			if len(call.Args) != len(tc.wantArgs) {
@@ -197,7 +203,8 @@ func TestDiffModel_View_EmptyDiff(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, "")
+	m, err := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, "")
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -285,7 +292,7 @@ func TestDiffModel_View_HelpVisible(t *testing.T) {
 	}
 }
 
-func TestDiffModel_FileListRendersFiles(t *testing.T) {
+func TestDiffModel_FileTreeRendersFiles(t *testing.T) {
 	t.Parallel()
 	m := newTestModel(t, "", false, sampleDiff)
 	m.width = 120
@@ -330,7 +337,8 @@ func TestDiffModel_RenderSelectedDiff_RendererError(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &errorRenderer{}
-	m := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, "")
+	m, err := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, "")
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -415,7 +423,8 @@ func TestDiffModel_CheckSelectionChange_NilSelected(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, "")
+	m, err := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, "")
+	require.NoError(t, err)
 	// Should not panic
 	m.checkSelectionChange()
 }
@@ -454,7 +463,8 @@ func TestDiffModel_TabNoopWhenDiffHidden(t *testing.T) {
 	cfg := config.NewDefault()
 	cfg.ShowDiffPanel = false
 	renderer := &diff.PlainRenderer{}
-	m := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, "")
+	m, err := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, "")
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -476,7 +486,8 @@ func TestDiffModel_SinglePanelViewWhenDiffHidden(t *testing.T) {
 	cfg := config.NewDefault()
 	cfg.ShowDiffPanel = false
 	renderer := &diff.PlainRenderer{}
-	m := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, "")
+	m, err := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, "")
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -605,7 +616,8 @@ func TestDiffModel_EKey_EmptyFiles(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, "")
+	m, err := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, "")
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -639,7 +651,8 @@ func TestDiffModel_EditDiffMsg_ApplyError(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, "")
+	m, err := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, "")
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -667,7 +680,8 @@ func TestDiffModel_EditDiffMsg_Success(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, "")
+	m, err := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, "")
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -692,7 +706,8 @@ func TestNewDiffModel_RawInput_ParsesFilesAndSkipsDiffCall(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, sampleDiff)
+	m, err := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, sampleDiff)
+	require.NoError(t, err)
 
 	if len(m.files) != 1 {
 		t.Fatalf("expected 1 file from rawInput, got %d", len(m.files))
@@ -719,7 +734,8 @@ func TestNewDiffModel_RawInput_StatusBarShowsPagerMode(t *testing.T) {
 	renderer := &diff.PlainRenderer{}
 
 	// Pager mode: rawInput non-empty
-	pagerModel := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, sampleDiff)
+	pagerModel, err := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, sampleDiff)
+	require.NoError(t, err)
 	pagerModel.width = 120
 	pagerModel.height = 40
 	pagerView := pagerModel.View()
@@ -731,7 +747,8 @@ func TestNewDiffModel_RawInput_StatusBarShowsPagerMode(t *testing.T) {
 	normalRunner := &testhelper.FakeRunner{
 		Outputs: []string{sampleDiff, "main"},
 	}
-	normalModel := NewDiffModel(context.Background(), normalRunner, cfg, renderer, "", false, "")
+	normalModel, normErr := NewDiffModel(context.Background(), normalRunner, cfg, renderer, "", false, "")
+	require.NoError(t, normErr)
 	normalModel.width = 120
 	normalModel.height = 40
 	normalView := normalModel.View()
@@ -756,7 +773,8 @@ func TestNewDiffModel_RawInput_StripsANSICodes(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, coloredDiff)
+	m, err := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, coloredDiff)
+	require.NoError(t, err)
 
 	if len(m.files) != 1 {
 		t.Fatalf("expected 1 file from colored rawInput, got %d", len(m.files))
@@ -777,7 +795,8 @@ func TestNewDiffModel_RawInput_EmptyStringShowsNoFiles(t *testing.T) {
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
 	// Empty rawInput falls through to runner.Run which returns empty diff
-	m := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, "")
+	m, err := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, "")
+	require.NoError(t, err)
 	if len(m.files) != 0 {
 		t.Errorf("expected 0 files from empty diff, got %d", len(m.files))
 	}
@@ -793,7 +812,8 @@ func TestNewDiffModel_WithFilterPaths(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, "", []string{"main.go"})
+	m, err := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, "", []string{"main.go"})
+	require.NoError(t, err)
 	if len(m.files) != 1 {
 		t.Fatalf("expected 1 file, got %d", len(m.files))
 	}
@@ -811,7 +831,8 @@ func TestNewDiffModel_FilterPaths_NoMatch(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, "", []string{"nonexistent.go"})
+	m, err := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, "", []string{"nonexistent.go"})
+	require.NoError(t, err)
 	if !m.noMatchFilter {
 		t.Error("noMatchFilter should be true when filter paths match no files")
 	}
@@ -835,7 +856,8 @@ func TestDiffModel_BraceKeysAdjustContextLines(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, "")
+	m, err := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, "")
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -861,7 +883,8 @@ func TestDiffModel_BraceKeysDisabledInPagerMode(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, sampleDiff)
+	m, err := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, sampleDiff)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -883,7 +906,8 @@ func TestDiffModel_BraceKeysBounds(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, "")
+	m, err := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, "")
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -900,5 +924,24 @@ func TestDiffModel_BraceKeysBounds(t *testing.T) {
 	m.Update(tea.KeyPressMsg{Code: '}', ShiftedCode: '}', Mod: tea.ModShift, Text: "}"})
 	if m.contextLines != 20 {
 		t.Errorf("contextLines should not go above 20, got %d", m.contextLines)
+	}
+}
+
+func TestDiffModel_ResizeWhileDiffHidden(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{sampleDiff, "main"},
+	}
+	cfg := config.NewDefault()
+	cfg.ShowDiffPanel = false
+	renderer := &diff.PlainRenderer{}
+	m, err := NewDiffModel(context.Background(), runner, cfg, renderer, "", false, "")
+	require.NoError(t, err)
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	// Resize while diff panel hidden exercises !showDiff branch in resize()
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	view := m.View()
+	if view == "" {
+		t.Error("View() should not be empty after resize with diff hidden")
 	}
 }

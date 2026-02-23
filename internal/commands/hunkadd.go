@@ -58,7 +58,7 @@ func NewHunkAddModel(
 	cfg config.Config,
 	renderer diff.Renderer,
 	filterPaths ...[]string,
-) *HunkAddModel {
+) (*HunkAddModel, error) {
 	var paths []string
 	if len(filterPaths) > 0 {
 		paths = ExpandGlobs(filterPaths[0])
@@ -69,7 +69,10 @@ func NewHunkAddModel(
 		diffArgs = append(diffArgs, "--")
 		diffArgs = append(diffArgs, paths...)
 	}
-	rawDiff, _ := runner.Run(ctx, diffArgs...)
+	rawDiff, err := runner.Run(ctx, diffArgs...)
+	if err != nil {
+		return nil, fmt.Errorf("running git diff: %w", err)
+	}
 	branchName, _ := git.BranchName(ctx, runner)
 
 	files := git.ParseFileDiffs(rawDiff)
@@ -143,7 +146,7 @@ func NewHunkAddModel(
 		m.renderCurrentHunk()
 	}
 
-	return m
+	return m, nil
 }
 
 // Update handles messages and returns commands.
@@ -251,7 +254,9 @@ func (m *HunkAddModel) Update(msg tea.Msg) tea.Cmd {
 					m.panelRatio = 20
 				}
 				m.cfg.PanelRatio = m.panelRatio
-				_ = config.Save(m.cfg)
+				if err := config.Save(m.cfg); err != nil {
+					return m.statusBar.SetMessage(fmt.Sprintf("Config save failed: %v", err), components.Error)
+				}
 				m.resize()
 			}
 			return sbCmd
@@ -264,7 +269,9 @@ func (m *HunkAddModel) Update(msg tea.Msg) tea.Cmd {
 					m.panelRatio = 80
 				}
 				m.cfg.PanelRatio = m.panelRatio
-				_ = config.Save(m.cfg)
+				if err := config.Save(m.cfg); err != nil {
+					return m.statusBar.SetMessage(fmt.Sprintf("Config save failed: %v", err), components.Error)
+				}
 				m.resize()
 			}
 			return sbCmd
@@ -506,10 +513,10 @@ func (m *HunkAddModel) applyStaged() tea.Cmd {
 	}
 
 	if lastErr != nil {
-		_ = m.statusBar.SetMessage(fmt.Sprintf("Stage failed: %v", lastErr), components.Error)
 		if applied == 0 {
-			return nil
+			return m.statusBar.SetMessage(fmt.Sprintf("Stage failed: %v", lastErr), components.Error)
 		}
+		_ = m.statusBar.SetMessage(fmt.Sprintf("Stage failed: %v", lastErr), components.Error)
 	}
 
 	return func() tea.Msg {

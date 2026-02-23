@@ -14,6 +14,8 @@ import (
 	"github.com/jetm/jig/internal/diff"
 	"github.com/jetm/jig/internal/git"
 	"github.com/jetm/jig/internal/testhelper"
+
+	"github.com/stretchr/testify/require"
 )
 
 // newTestAddModel builds an AddModel backed by a FakeRunner.
@@ -29,7 +31,11 @@ func newTestAddModel(t *testing.T, nameStatus, untracked string) *AddModel {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	return NewAddModel(context.Background(), runner, cfg, renderer)
+	m, err := NewAddModel(context.Background(), runner, cfg, renderer)
+	if err != nil {
+		t.Fatalf("NewAddModel unexpectedly returned error: %v", err)
+	}
+	return m
 }
 
 func TestNewAddModel_EmptyFiles(t *testing.T) {
@@ -188,7 +194,8 @@ func TestAddModel_EnterStagesSelected(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewAddModel(context.Background(), runner, cfg, renderer)
+	m, err := NewAddModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -223,7 +230,8 @@ func TestAddModel_EnterStagesFocusedWhenNoneSelected(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewAddModel(context.Background(), runner, cfg, renderer)
+	m, err := NewAddModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -320,7 +328,7 @@ func TestAddModel_StatusBarShowsBranch(t *testing.T) {
 	}
 }
 
-func TestAddModel_FileListRendersFiles(t *testing.T) {
+func TestAddModel_FileTreeRendersFiles(t *testing.T) {
 	t.Parallel()
 	m := newTestAddModel(t, "M\ttest.go\n", "")
 	m.width = 120
@@ -366,7 +374,8 @@ func TestAddModel_UntrackedFileShowsDiff(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewAddModel(context.Background(), runner, cfg, renderer)
+	m, err := NewAddModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -407,7 +416,8 @@ func TestAddModel_StageError(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewAddModel(context.Background(), runner, cfg, renderer)
+	m, err := NewAddModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -418,12 +428,8 @@ func TestAddModel_StageError(t *testing.T) {
 		t.Fatal("expected a command even on error")
 	}
 	msg := cmd()
-	pop, ok := msg.(app.PopModelMsg)
-	if !ok {
-		t.Fatalf("expected PopModelMsg, got %T", msg)
-	}
-	if pop.MutatedGit {
-		t.Error("MutatedGit should be false when staging fails")
+	if _, ok := msg.(app.PopModelMsg); ok {
+		t.Fatal("should not pop model on stage error — model must stay visible with error in status bar")
 	}
 }
 
@@ -440,7 +446,8 @@ func TestAddModel_RenderSelectedDiff_WithDiff(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewAddModel(context.Background(), runner, cfg, renderer)
+	m, err := NewAddModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -463,7 +470,8 @@ func TestAddModel_RenderSelectedDiff_DiffError(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewAddModel(context.Background(), runner, cfg, renderer)
+	m, err := NewAddModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -484,7 +492,8 @@ func TestAddModel_IsTracked_AddedStatus(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewAddModel(context.Background(), runner, cfg, renderer)
+	m, err := NewAddModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 
 	// isTracked checks Status != Added, so Added status returns false
 	if m.isTracked("foo.go") {
@@ -632,7 +641,8 @@ func TestAddModel_TabNoopWhenDiffHidden(t *testing.T) {
 	cfg := config.NewDefault()
 	cfg.ShowDiffPanel = false
 	renderer := &diff.PlainRenderer{}
-	m := NewAddModel(context.Background(), runner, cfg, renderer)
+	m, err := NewAddModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -658,7 +668,8 @@ func TestAddModel_SinglePanelViewWhenDiffHidden(t *testing.T) {
 	cfg := config.NewDefault()
 	cfg.ShowDiffPanel = false
 	renderer := &diff.PlainRenderer{}
-	m := NewAddModel(context.Background(), runner, cfg, renderer)
+	m, err := NewAddModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -705,7 +716,8 @@ func TestAddModel_FKeyNoopWhenDiffHidden(t *testing.T) {
 	cfg := config.NewDefault()
 	cfg.ShowDiffPanel = false
 	renderer := &diff.PlainRenderer{}
-	m := NewAddModel(context.Background(), runner, cfg, renderer)
+	m, err := NewAddModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -747,7 +759,8 @@ func TestAddModel_WKeyNoopWhenLeftFocused(t *testing.T) {
 		Outputs: []string{"M\tfoo.go\n", "", "main"},
 	}
 	renderer := &diff.PlainRenderer{}
-	m := NewAddModel(context.Background(), runner, cfg, renderer)
+	m, err := NewAddModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -784,7 +797,8 @@ func TestAddModel_InitialSoftWrapFromConfig(t *testing.T) {
 	cfg := config.NewDefault()
 	cfg.SoftWrap = true
 	renderer := &diff.PlainRenderer{}
-	m := NewAddModel(context.Background(), runner, cfg, renderer)
+	m, err := NewAddModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 
 	if !m.diffView.SoftWrap() {
 		t.Error("diffView should start with soft-wrap enabled when config.SoftWrap=true")
@@ -799,7 +813,8 @@ func TestAddModel_BracketRightIncreasesPanelRatio(t *testing.T) {
 	cfg := config.NewDefault()
 	cfg.PanelRatio = 40
 	renderer := &diff.PlainRenderer{}
-	m := NewAddModel(context.Background(), runner, cfg, renderer)
+	m, err := NewAddModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -817,7 +832,8 @@ func TestAddModel_BracketLeftDecreasesPanelRatio(t *testing.T) {
 	cfg := config.NewDefault()
 	cfg.PanelRatio = 40
 	renderer := &diff.PlainRenderer{}
-	m := NewAddModel(context.Background(), runner, cfg, renderer)
+	m, err := NewAddModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -835,7 +851,8 @@ func TestAddModel_BracketRightClampsAt80(t *testing.T) {
 	cfg := config.NewDefault()
 	cfg.PanelRatio = 80
 	renderer := &diff.PlainRenderer{}
-	m := NewAddModel(context.Background(), runner, cfg, renderer)
+	m, err := NewAddModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -853,7 +870,8 @@ func TestAddModel_BracketLeftClampsAt20(t *testing.T) {
 	cfg := config.NewDefault()
 	cfg.PanelRatio = 20
 	renderer := &diff.PlainRenderer{}
-	m := NewAddModel(context.Background(), runner, cfg, renderer)
+	m, err := NewAddModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -871,7 +889,8 @@ func TestAddModel_InitialPanelRatioFromConfig(t *testing.T) {
 	cfg := config.NewDefault()
 	cfg.PanelRatio = 60
 	renderer := &diff.PlainRenderer{}
-	m := NewAddModel(context.Background(), runner, cfg, renderer)
+	m, err := NewAddModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 
 	if m.panelRatio != 60 {
 		t.Errorf("panelRatio should be 60 from config, got %d", m.panelRatio)
@@ -909,7 +928,8 @@ func TestAddModel_EKeyCallsEditDiff(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewAddModel(context.Background(), runner, cfg, renderer)
+	m, err := NewAddModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -955,7 +975,8 @@ func TestAddModel_EditDiffMsg_Success(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewAddModel(context.Background(), runner, cfg, renderer)
+	m, err := NewAddModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -992,7 +1013,8 @@ func TestNewAddModel_WithFilterPaths(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewAddModel(context.Background(), runner, cfg, renderer, []string{"foo.go"})
+	m, err := NewAddModel(context.Background(), runner, cfg, renderer, []string{"foo.go"})
+	require.NoError(t, err)
 	if len(m.files) != 1 {
 		t.Fatalf("expected 1 file, got %d", len(m.files))
 	}
@@ -1015,7 +1037,8 @@ func TestNewAddModel_FilterPaths_NoMatch(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewAddModel(context.Background(), runner, cfg, renderer, []string{"nonexistent.go"})
+	m, err := NewAddModel(context.Background(), runner, cfg, renderer, []string{"nonexistent.go"})
+	require.NoError(t, err)
 	if len(m.files) != 0 {
 		t.Errorf("expected 0 files, got %d", len(m.files))
 	}
@@ -1044,7 +1067,8 @@ func TestAddModel_CKeyStagesAndReturnsExecCmd(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewAddModel(context.Background(), runner, cfg, renderer)
+	m, err := NewAddModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -1073,7 +1097,8 @@ func TestAddModel_ShiftCKeyStagesAndReturnsExecCmd(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewAddModel(context.Background(), runner, cfg, renderer)
+	m, err := NewAddModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -1099,7 +1124,8 @@ func TestAddModel_CKeyStageFailureReturnsNil(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewAddModel(context.Background(), runner, cfg, renderer)
+	m, err := NewAddModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -1126,7 +1152,8 @@ func TestAddModel_CommitDoneMsg_SuccessQuitsWithPop(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewAddModel(context.Background(), runner, cfg, renderer)
+	m, err := NewAddModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -1155,7 +1182,8 @@ func TestAddModel_CommitDoneMsg_ErrorShowsAborted(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewAddModel(context.Background(), runner, cfg, renderer)
+	m, err := NewAddModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -1218,7 +1246,8 @@ func TestAddModel_KeyJForwardsToList(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewAddModel(context.Background(), runner, cfg, renderer)
+	m, err := NewAddModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -1241,7 +1270,8 @@ func TestAddModel_BraceKeysAdjustContextLines(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewAddModel(context.Background(), runner, cfg, renderer)
+	m, err := NewAddModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -1269,7 +1299,8 @@ func TestAddModel_BraceKeysBounds(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewAddModel(context.Background(), runner, cfg, renderer)
+	m, err := NewAddModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -1283,5 +1314,23 @@ func TestAddModel_BraceKeysBounds(t *testing.T) {
 	m.Update(tea.KeyPressMsg{Code: '}', ShiftedCode: '}', Mod: tea.ModShift, Text: "}"})
 	if m.contextLines != 20 {
 		t.Errorf("contextLines should not go above 20, got %d", m.contextLines)
+	}
+}
+
+func TestAddModel_ResizeWhileDiffHidden(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{"M\tmain.go\n", "", "main"},
+	}
+	cfg := config.NewDefault()
+	cfg.ShowDiffPanel = false
+	renderer := &diff.PlainRenderer{}
+	m, err := NewAddModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	view := m.View()
+	if view == "" {
+		t.Error("View() should not be empty after resize with diff hidden")
 	}
 }

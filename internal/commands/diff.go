@@ -59,7 +59,7 @@ func NewDiffModel(
 	staged bool,
 	rawInput string,
 	filterPaths ...[]string,
-) *DiffModel {
+) (*DiffModel, error) {
 	var paths []string
 	if len(filterPaths) > 0 {
 		paths = ExpandGlobs(filterPaths[0])
@@ -74,7 +74,11 @@ func NewDiffModel(
 			args = append(args, "--")
 			args = append(args, paths...)
 		}
-		rawDiff, _ = runner.Run(ctx, args...)
+		var err error
+		rawDiff, err = runner.Run(ctx, args...)
+		if err != nil {
+			return nil, fmt.Errorf("running git diff: %w", err)
+		}
 	}
 	branchName, _ := git.BranchName(ctx, runner)
 
@@ -142,7 +146,7 @@ func NewDiffModel(
 		m.checkSelectionChange()
 	}
 
-	return m
+	return m, nil
 }
 
 // Update handles messages and returns commands.
@@ -237,7 +241,9 @@ func (m *DiffModel) Update(msg tea.Msg) tea.Cmd {
 					m.panelRatio = 20
 				}
 				m.cfg.PanelRatio = m.panelRatio
-				_ = config.Save(m.cfg)
+				if err := config.Save(m.cfg); err != nil {
+					return m.statusBar.SetMessage(fmt.Sprintf("Config save failed: %v", err), components.Error)
+				}
 				m.resize()
 			}
 			return sbCmd
@@ -250,7 +256,9 @@ func (m *DiffModel) Update(msg tea.Msg) tea.Cmd {
 					m.panelRatio = 80
 				}
 				m.cfg.PanelRatio = m.panelRatio
-				_ = config.Save(m.cfg)
+				if err := config.Save(m.cfg); err != nil {
+					return m.statusBar.SetMessage(fmt.Sprintf("Config save failed: %v", err), components.Error)
+				}
 				m.resize()
 			}
 			return sbCmd

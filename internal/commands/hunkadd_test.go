@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/jetm/jig/internal/app"
@@ -67,7 +69,10 @@ func newHunkAddTestModel(t *testing.T, diffOutput string, extraOutputs ...string
 	runner := &testhelper.FakeRunner{Outputs: outputs}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewHunkAddModel(context.Background(), runner, cfg, renderer)
+	m, err := NewHunkAddModel(context.Background(), runner, cfg, renderer)
+	if err != nil {
+		t.Fatalf("NewHunkAddModel unexpectedly returned error: %v", err)
+	}
 	return m, runner
 }
 
@@ -457,15 +462,21 @@ func TestHunkAddModel_ApplyStaged_ErrorPath(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewHunkAddModel(context.Background(), runner, cfg, renderer)
+	m, err := NewHunkAddModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
 	// Toggle and apply
 	m.Update(tea.KeyPressMsg{Code: tea.KeySpace})
 	cmd := m.applyStaged()
-	if cmd != nil {
-		t.Error("applyStaged on runner error should return nil when no hunks applied")
+	if cmd == nil {
+		t.Error("applyStaged on runner error should return a status bar error cmd, not nil")
+	}
+	// Must not pop the model on error
+	msg := cmd()
+	if _, ok := msg.(app.PopModelMsg); ok {
+		t.Error("should not pop model on stage error — model must stay visible with error in status bar")
 	}
 }
 
@@ -477,7 +488,8 @@ func TestHunkAddModel_ApplyStaged_PartialFailure(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewHunkAddModel(context.Background(), runner, cfg, renderer)
+	m, err := NewHunkAddModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -740,7 +752,8 @@ func TestHunkAddModel_EditDiffMsg_ApplyError(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewHunkAddModel(context.Background(), runner, cfg, renderer)
+	m, err := NewHunkAddModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -768,7 +781,8 @@ func TestHunkAddModel_EditDiffMsg_Success(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewHunkAddModel(context.Background(), runner, cfg, renderer)
+	m, err := NewHunkAddModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -793,7 +807,8 @@ func TestNewHunkAddModel_WithFilterPaths(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewHunkAddModel(context.Background(), runner, cfg, renderer, []string{"foo.go"})
+	m, err := NewHunkAddModel(context.Background(), runner, cfg, renderer, []string{"foo.go"})
+	require.NoError(t, err)
 	if len(m.files) != 1 {
 		t.Fatalf("expected 1 file, got %d", len(m.files))
 	}
@@ -810,7 +825,8 @@ func TestNewHunkAddModel_FilterPaths_NoMatch(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewHunkAddModel(context.Background(), runner, cfg, renderer, []string{"nonexistent.go"})
+	m, err := NewHunkAddModel(context.Background(), runner, cfg, renderer, []string{"nonexistent.go"})
+	require.NoError(t, err)
 	if !m.noMatchFilter {
 		t.Error("noMatchFilter should be true when filter paths match no files")
 	}
@@ -915,7 +931,8 @@ func TestHunkAddModel_CKeyStageFailureReturnsNil(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewHunkAddModel(context.Background(), runner, cfg, renderer)
+	m, err := NewHunkAddModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -941,7 +958,8 @@ func TestHunkAddModel_CommitDoneMsg_SuccessQuitsWithPop(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewHunkAddModel(context.Background(), runner, cfg, renderer)
+	m, err := NewHunkAddModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -967,7 +985,8 @@ func TestHunkAddModel_CommitDoneMsg_ErrorShowsAborted(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := NewHunkAddModel(context.Background(), runner, cfg, renderer)
+	m, err := NewHunkAddModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -1105,7 +1124,8 @@ func TestHunkAddModel_TabNoopWhenDiffHidden(t *testing.T) {
 	cfg := config.NewDefault()
 	cfg.ShowDiffPanel = false
 	renderer := &diff.PlainRenderer{}
-	m := NewHunkAddModel(context.Background(), runner, cfg, renderer)
+	m, err := NewHunkAddModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -1127,7 +1147,8 @@ func TestHunkAddModel_SinglePanelViewWhenDiffHidden(t *testing.T) {
 	cfg := config.NewDefault()
 	cfg.ShowDiffPanel = false
 	renderer := &diff.PlainRenderer{}
-	m := NewHunkAddModel(context.Background(), runner, cfg, renderer)
+	m, err := NewHunkAddModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
 	m.width = 120
 	m.height = 40
 
@@ -1287,5 +1308,23 @@ func TestHunkAddModel_BraceKeysBounds(t *testing.T) {
 	m.Update(tea.KeyPressMsg{Code: '}', ShiftedCode: '}', Mod: tea.ModShift, Text: "}"})
 	if m.contextLines != 20 {
 		t.Errorf("contextLines should not go above 20, got %d", m.contextLines)
+	}
+}
+
+func TestHunkAddModel_ResizeWhileDiffHidden(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{singleHunkDiff, "main"},
+	}
+	cfg := config.NewDefault()
+	cfg.ShowDiffPanel = false
+	renderer := &diff.PlainRenderer{}
+	m, err := NewHunkAddModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	view := m.View()
+	if view == "" {
+		t.Error("View() should not be empty after resize with diff hidden")
 	}
 }

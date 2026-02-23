@@ -194,6 +194,20 @@ func TestAddCmd_DirectMode_StageError(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestAddCmd_DirectMode_DiffCachedError(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{"", ""},
+		Errors:  []error{nil, fmt.Errorf("diff --cached failed")},
+	}
+	ctx := context.Background()
+	var buf bytes.Buffer
+	err := addDirect(ctx, runner, []string{"file1.go"}, &buf)
+	if err == nil {
+		t.Fatal("expected error when git diff --cached fails, got nil")
+	}
+}
+
 func TestRun_UnknownCommandError(t *testing.T) {
 	os.Args = []string{"jig", "unknowncommand"}
 	err := run()
@@ -523,7 +537,8 @@ func TestNewFakeAddModel_WithFilterPaths(t *testing.T) {
 	runner := &testhelper.FakeRunner{Outputs: []string{"", "", "main"}}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewAddModel(context.Background(), runner, cfg, renderer, []string{"foo.go"})
+	m, err := commands.NewAddModel(context.Background(), runner, cfg, renderer, []string{"foo.go"})
+	require.NoError(t, err)
 	if m == nil {
 		t.Fatal("NewAddModel with filter paths should not return nil")
 	}
@@ -557,7 +572,8 @@ func TestNewFakeHunkAddModel_WithFilterPaths(t *testing.T) {
 	runner := &testhelper.FakeRunner{Outputs: []string{"", "main"}}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewHunkAddModel(context.Background(), runner, cfg, renderer, []string{"foo.go"})
+	m, err := commands.NewHunkAddModel(context.Background(), runner, cfg, renderer, []string{"foo.go"})
+	require.NoError(t, err)
 	if m == nil {
 		t.Fatal("NewHunkAddModel should not return nil")
 	}
@@ -568,7 +584,8 @@ func TestNewFakeDiffModel_WithFilterPaths(t *testing.T) {
 	runner := &testhelper.FakeRunner{Outputs: []string{"", "main"}}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewDiffModel(context.Background(), runner, cfg, renderer, "", false, "", []string{"foo.go"})
+	m, err := commands.NewDiffModel(context.Background(), runner, cfg, renderer, "", false, "", []string{"foo.go"})
+	require.NoError(t, err)
 	if m == nil {
 		t.Fatal("NewDiffModel should not return nil")
 	}
@@ -599,7 +616,11 @@ func newFakeHunkAddModel(t *testing.T) *commands.HunkAddModel {
 	runner := &testhelper.FakeRunner{Outputs: []string{"", "main"}}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	return commands.NewHunkAddModel(context.Background(), runner, cfg, renderer)
+	m, err := commands.NewHunkAddModel(context.Background(), runner, cfg, renderer)
+	if err != nil {
+		t.Fatalf("NewHunkAddModel unexpectedly returned error: %v", err)
+	}
+	return m
 }
 
 func TestHunkAddTeaModel_InitReturnsNil(t *testing.T) {
@@ -629,7 +650,11 @@ func newFakeDiffModel(t *testing.T) *commands.DiffModel {
 	runner := &testhelper.FakeRunner{Outputs: []string{"", "main"}}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	return commands.NewDiffModel(context.Background(), runner, cfg, renderer, "", false, "")
+	m, err := commands.NewDiffModel(context.Background(), runner, cfg, renderer, "", false, "")
+	if err != nil {
+		t.Fatalf("NewDiffModel unexpectedly returned error: %v", err)
+	}
+	return m
 }
 
 func TestDiffTeaModel_InitReturnsNil(t *testing.T) {
@@ -660,7 +685,11 @@ func newFakeAddModel(t *testing.T) *commands.AddModel {
 	runner := &testhelper.FakeRunner{Outputs: []string{"", "", "main"}}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	return commands.NewAddModel(context.Background(), runner, cfg, renderer)
+	m, err := commands.NewAddModel(context.Background(), runner, cfg, renderer)
+	if err != nil {
+		t.Fatalf("NewAddModel unexpectedly returned error: %v", err)
+	}
+	return m
 }
 
 func TestAddTeaModel_InitReturnsNil(t *testing.T) {
@@ -691,7 +720,11 @@ func newFakeResetModel(t *testing.T) *commands.ResetModel {
 	runner := &testhelper.FakeRunner{Outputs: []string{"", "main"}}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	return commands.NewResetModel(context.Background(), runner, cfg, renderer)
+	m, err := commands.NewResetModel(context.Background(), runner, cfg, renderer)
+	if err != nil {
+		t.Fatalf("NewResetModel unexpectedly returned error: %v", err)
+	}
+	return m
 }
 
 func TestResetTeaModel_InitReturnsNil(t *testing.T) {
@@ -721,7 +754,11 @@ func newFakeCheckoutModel(t *testing.T) *commands.CheckoutModel {
 	runner := &testhelper.FakeRunner{Outputs: []string{"", "main"}}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	return commands.NewCheckoutModel(context.Background(), runner, cfg, renderer)
+	m, err := commands.NewCheckoutModel(context.Background(), runner, cfg, renderer)
+	if err != nil {
+		t.Fatalf("NewCheckoutModel unexpectedly returned error: %v", err)
+	}
+	return m
 }
 
 func TestCheckoutTeaModel_InitReturnsNil(t *testing.T) {
@@ -795,7 +832,11 @@ func newFakeLogModel(t *testing.T) *commands.LogModel {
 	runner := &testhelper.FakeRunner{Outputs: []string{"", "main"}}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	return commands.NewLogModel(context.Background(), runner, cfg, renderer, "")
+	m, err := commands.NewLogModel(context.Background(), runner, cfg, renderer, "")
+	if err != nil {
+		t.Fatalf("NewLogModel unexpectedly returned error: %v", err)
+	}
+	return m
 }
 
 func TestLogTeaModel_InitReturnsNil(t *testing.T) {
@@ -836,7 +877,11 @@ func newFakeRebaseInteractiveModel(t *testing.T) *commands.RebaseInteractiveMode
 	runner := &testhelper.FakeRunner{Outputs: []string{"", "main"}}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	return commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~5", "")
+	m, err := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~5", "")
+	if err != nil {
+		t.Fatalf("NewRebaseInteractiveModel unexpectedly returned error: %v", err)
+	}
+	return m
 }
 
 func TestRebaseInteractiveTeaModel_InitReturnsNil(t *testing.T) {
@@ -981,7 +1026,11 @@ func newFakeHunkResetModel(t *testing.T) *commands.HunkResetModel {
 	runner := &testhelper.FakeRunner{Outputs: []string{"", "main"}}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	return commands.NewHunkResetModel(context.Background(), runner, cfg, renderer)
+	m, err := commands.NewHunkResetModel(context.Background(), runner, cfg, renderer)
+	if err != nil {
+		t.Fatalf("NewHunkResetModel unexpectedly returned error: %v", err)
+	}
+	return m
 }
 
 func TestHunkResetTeaModel_InitReturnsNil(t *testing.T) {
@@ -1011,7 +1060,11 @@ func newFakeHunkCheckoutModel(t *testing.T) *commands.HunkCheckoutModel {
 	runner := &testhelper.FakeRunner{Outputs: []string{"", "main"}}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	return commands.NewHunkCheckoutModel(context.Background(), runner, cfg, renderer)
+	m, err := commands.NewHunkCheckoutModel(context.Background(), runner, cfg, renderer)
+	if err != nil {
+		t.Fatalf("NewHunkCheckoutModel unexpectedly returned error: %v", err)
+	}
+	return m
 }
 
 func TestHunkCheckoutTeaModel_InitReturnsNil(t *testing.T) {
@@ -1044,5 +1097,98 @@ func TestCompletionCmd_UnknownShellErrors(t *testing.T) {
 	err := root.Execute()
 	if err == nil {
 		t.Fatal("expected error for unknown shell, got nil")
+	}
+}
+
+func TestCheckoutCmd_DirectMode_NoPaths(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{}
+	ctx := context.Background()
+	var buf bytes.Buffer
+	in := strings.NewReader("")
+	err := checkoutDirect(ctx, runner, []string{}, in, &buf)
+	require.NoError(t, err)
+	assert.Contains(t, buf.String(), "No changes to discard")
+}
+
+func TestCheckoutCmd_DirectMode_DiffError(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{""},
+		Errors:  []error{fmt.Errorf("git error")},
+	}
+	ctx := context.Background()
+	var buf bytes.Buffer
+	in := strings.NewReader("")
+	err := checkoutDirect(ctx, runner, []string{"file1.go"}, in, &buf)
+	if err == nil {
+		t.Fatal("expected error when git diff fails, got nil")
+	}
+}
+
+func TestCheckoutCmd_DirectMode_DiscardError(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{"file1.go\n", ""},
+		Errors:  []error{nil, fmt.Errorf("checkout failed")},
+	}
+	ctx := context.Background()
+	var buf bytes.Buffer
+	in := strings.NewReader("y\n")
+	err := checkoutDirect(ctx, runner, []string{"file1.go"}, in, &buf)
+	if err == nil {
+		t.Fatal("expected error when git checkout fails, got nil")
+	}
+}
+
+func TestCheckoutCmd_DirectMode_EmptyInput(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{"file1.go\n"},
+	}
+	ctx := context.Background()
+	var buf bytes.Buffer
+	// Empty reader simulates EOF without newline (Scan returns false)
+	in := strings.NewReader("")
+	err := checkoutDirect(ctx, runner, []string{"file1.go"}, in, &buf)
+	require.NoError(t, err)
+	assert.Contains(t, buf.String(), "Aborted")
+}
+
+func TestResetCmd_DirectMode_NoPaths(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{}
+	ctx := context.Background()
+	var buf bytes.Buffer
+	err := resetDirect(ctx, runner, []string{}, &buf)
+	require.NoError(t, err)
+	assert.Contains(t, buf.String(), "Nothing to unstage")
+}
+
+func TestResetCmd_DirectMode_UnstageError(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{""},
+		Errors:  []error{fmt.Errorf("reset failed")},
+	}
+	ctx := context.Background()
+	var buf bytes.Buffer
+	err := resetDirect(ctx, runner, []string{"file1.go"}, &buf)
+	if err == nil {
+		t.Fatal("expected error when git reset fails, got nil")
+	}
+}
+
+func TestResetCmd_DirectMode_StatusError(t *testing.T) {
+	t.Parallel()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{"", ""},
+		Errors:  []error{nil, fmt.Errorf("status failed")},
+	}
+	ctx := context.Background()
+	var buf bytes.Buffer
+	err := resetDirect(ctx, runner, []string{"file1.go"}, &buf)
+	if err == nil {
+		t.Fatal("expected error when git status fails, got nil")
 	}
 }

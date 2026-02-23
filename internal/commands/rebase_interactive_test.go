@@ -34,7 +34,11 @@ func newFakeRebaseModel(t *testing.T, logOutput, branch, base string) *commands.
 	runner := &testhelper.FakeRunner{Outputs: outputs}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	return commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, base, "")
+	m, err := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, base, "")
+	if err != nil {
+		t.Fatalf("NewRebaseInteractiveModel unexpectedly returned error: %v", err)
+	}
+	return m
 }
 
 func TestNewRebaseInteractiveModel_NoCommits(t *testing.T) {
@@ -57,7 +61,8 @@ func TestNewRebaseInteractiveModel_DefaultBase(t *testing.T) {
 	runner := &testhelper.FakeRunner{Outputs: []string{"", "main"}}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "", "")
+	m, err := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "", "")
+	require.NoError(t, err)
 	if m == nil {
 		t.Fatal("NewRebaseInteractiveModel returned nil")
 	}
@@ -162,7 +167,8 @@ func TestRebaseInteractiveModel_Update_EnterWithCommits_Success(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~1", "")
+	m, err := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~1", "")
+	require.NoError(t, err)
 
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
@@ -183,7 +189,8 @@ func TestRebaseInteractiveModel_Update_EnterWithCommits_Failure(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~1", "")
+	m, err := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~1", "")
+	require.NoError(t, err)
 
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
@@ -199,7 +206,8 @@ func TestRebaseInteractiveModel_Update_SpaceCyclesAction(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~1", "")
+	m, err := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~1", "")
+	require.NoError(t, err)
 
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	view1 := m.View()
@@ -236,7 +244,8 @@ func TestRebaseInteractiveModel_Update_SetActionKeys(t *testing.T) {
 			}
 			cfg := config.NewDefault()
 			renderer := &diff.PlainRenderer{}
-			m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~1", "")
+			m, err := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~1", "")
+			require.NoError(t, err)
 
 			_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 			cmd := m.Update(tea.KeyPressMsg{Code: tc.key, Text: tc.text})
@@ -256,7 +265,8 @@ func TestRebaseInteractiveModel_Update_MoveUp(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~2", "")
+	m, err := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~2", "")
+	require.NoError(t, err)
 
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 
@@ -278,7 +288,8 @@ func TestRebaseInteractiveModel_Update_MoveDown(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~2", "")
+	m, err := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~2", "")
+	require.NoError(t, err)
 
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 
@@ -291,14 +302,15 @@ func TestRebaseInteractiveModel_Update_MoveDown(t *testing.T) {
 	}
 }
 
-func TestRebaseInteractiveModel_Update_MoveUp_AtTop(_ *testing.T) {
+func TestRebaseInteractiveModel_Update_MoveUp_AtTop(t *testing.T) {
 	logOutput := "abc1234\x1ffeat: first\nbbb5678\x1ffix: second\n"
 	runner := &testhelper.FakeRunner{
 		Outputs: []string{logOutput, "main", "diff for abc1234"},
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~2", "")
+	m, err := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~2", "")
+	require.NoError(t, err)
 
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	// K at top (selectedIdx=0) should be a no-op
@@ -306,14 +318,15 @@ func TestRebaseInteractiveModel_Update_MoveUp_AtTop(_ *testing.T) {
 	_ = m.View() // no panic
 }
 
-func TestRebaseInteractiveModel_Update_MoveDown_AtBottom(_ *testing.T) {
+func TestRebaseInteractiveModel_Update_MoveDown_AtBottom(t *testing.T) {
 	logOutput := "abc1234\x1ffeat: first\nbbb5678\x1ffix: second\n"
 	runner := &testhelper.FakeRunner{
 		Outputs: []string{logOutput, "main", "diff for abc1234", "diff for bbb5678"},
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~2", "")
+	m, err := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~2", "")
+	require.NoError(t, err)
 
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	_ = m.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
@@ -322,14 +335,15 @@ func TestRebaseInteractiveModel_Update_MoveDown_AtBottom(_ *testing.T) {
 	_ = m.View() // no panic
 }
 
-func TestRebaseInteractiveModel_Update_CtrlUp(_ *testing.T) {
+func TestRebaseInteractiveModel_Update_CtrlUp(t *testing.T) {
 	logOutput := "abc1234\x1ffeat: first\nbbb5678\x1ffix: second\n"
 	runner := &testhelper.FakeRunner{
 		Outputs: []string{logOutput, "main", "diff for abc1234", "diff for bbb5678", "diff for bbb5678"},
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~2", "")
+	m, err := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~2", "")
+	require.NoError(t, err)
 
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	_ = m.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
@@ -338,14 +352,15 @@ func TestRebaseInteractiveModel_Update_CtrlUp(_ *testing.T) {
 	_ = m.View() // no panic
 }
 
-func TestRebaseInteractiveModel_Update_CtrlDown(_ *testing.T) {
+func TestRebaseInteractiveModel_Update_CtrlDown(t *testing.T) {
 	logOutput := "abc1234\x1ffeat: first\nbbb5678\x1ffix: second\n"
 	runner := &testhelper.FakeRunner{
 		Outputs: []string{logOutput, "main", "diff for abc1234", "diff for abc1234"},
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~2", "")
+	m, err := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~2", "")
+	require.NoError(t, err)
 
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	// Ctrl+Down should move commit down
@@ -353,14 +368,15 @@ func TestRebaseInteractiveModel_Update_CtrlDown(_ *testing.T) {
 	_ = m.View() // no panic
 }
 
-func TestRebaseInteractiveModel_Update_UpArrowWithoutCtrl(_ *testing.T) {
+func TestRebaseInteractiveModel_Update_UpArrowWithoutCtrl(t *testing.T) {
 	logOutput := "abc1234\x1ffeat: first\nbbb5678\x1ffix: second\n"
 	runner := &testhelper.FakeRunner{
 		Outputs: []string{logOutput, "main", "diff for abc1234"},
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~2", "")
+	m, err := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~2", "")
+	require.NoError(t, err)
 
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	// Plain up arrow (no Ctrl) should navigate list, not move commit
@@ -376,7 +392,8 @@ func TestRebaseInteractiveModel_RenderSelectedDiff_ErrorPath(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~1", "")
+	m, err := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~1", "")
+	require.NoError(t, err)
 
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	// Press D to show the diff panel; this triggers renderSelectedDiff which will get the error
@@ -410,7 +427,8 @@ func TestRebaseInteractiveModel_TabThenQuitFromRightPanel(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~1", "")
+	m, err := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~1", "")
+	require.NoError(t, err)
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 
 	// Must show diff panel first before Tab can switch focus to right panel
@@ -429,7 +447,8 @@ func TestRebaseInteractiveModel_ActionKeysWorkFromRightPanel(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~1", "")
+	m, err := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~1", "")
+	require.NoError(t, err)
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 
 	// Must show diff panel first before Tab can switch focus to right panel
@@ -450,7 +469,8 @@ func TestRebaseInteractiveModel_Update_NavigationJ(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~2", "")
+	m, err := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~2", "")
+	require.NoError(t, err)
 
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	_ = m.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
@@ -474,7 +494,8 @@ func TestNewRebaseInteractiveModel_EditorMode_ParsesTodoFile(t *testing.T) {
 	runner := &testhelper.FakeRunner{Outputs: []string{"main"}}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "", todoPath)
+	m, err := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "", todoPath)
+	require.NoError(t, err)
 
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	view := m.View()
@@ -493,7 +514,8 @@ func TestRebaseInteractiveModel_EditorMode_ConfirmWritesFile(t *testing.T) {
 	runner := &testhelper.FakeRunner{Outputs: []string{"main"}}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "", todoPath)
+	m, err := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "", todoPath)
+	require.NoError(t, err)
 
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 
@@ -533,7 +555,8 @@ func TestRebaseInteractiveModel_EditorMode_AbortExitsNonZero(t *testing.T) {
 	runner := &testhelper.FakeRunner{Outputs: []string{"main"}}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "", todoPath)
+	m, err := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "", todoPath)
+	require.NoError(t, err)
 
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 
@@ -585,7 +608,8 @@ func TestRebaseInteractiveModel_DKey_ShowsDiff(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~1", "")
+	m, err := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~1", "")
+	require.NoError(t, err)
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 
 	viewBefore := m.View()
@@ -605,7 +629,8 @@ func TestRebaseInteractiveModel_DKey_HidesDiff(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~1", "")
+	m, err := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~1", "")
+	require.NoError(t, err)
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 
 	viewShown := m.View() // showDiff=true by default in standalone mode
@@ -628,7 +653,8 @@ func TestRebaseInteractiveModel_DKey_NoCommits_IsNoop(t *testing.T) {
 	runner := &testhelper.FakeRunner{Outputs: []string{"", "main"}}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~5", "")
+	m, err := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~5", "")
+	require.NoError(t, err)
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 
 	callsBefore := len(runner.Calls)
@@ -647,7 +673,8 @@ func TestRebaseInteractiveModel_Tab_WithHiddenDiffShowsAndFocusesPanel(t *testin
 	cfg := config.NewDefault()
 	cfg.ShowDiffPanel = false
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~1", "")
+	m, err := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~1", "")
+	require.NoError(t, err)
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 
 	// showDiff is false; Tab should show the diff panel and focus it
@@ -680,7 +707,8 @@ func TestRebaseInteractiveModel_View_SinglePanelWhenDiffHidden(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~1", "")
+	m, err := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~1", "")
+	require.NoError(t, err)
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 
 	viewHidden := m.View()
@@ -770,7 +798,8 @@ func TestRebaseInteractiveModel_BracketLeftKeyChangesLayout(t *testing.T) {
 	cfg := config.NewDefault()
 	cfg.PanelRatio = 60 // above 20 so [ takes effect
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~1", "")
+	m, err := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~1", "")
+	require.NoError(t, err)
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 
 	m.Update(tea.KeyPressMsg{Code: '[', Text: "["})
@@ -802,7 +831,8 @@ func TestRebaseInteractiveModel_WKey_ConfirmsRebase_StandaloneMode(t *testing.T)
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~1", "")
+	m, err := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~1", "")
+	require.NoError(t, err)
 
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	cmd := m.Update(tea.KeyPressMsg{Code: 'w', Text: "w"})
@@ -821,7 +851,8 @@ func TestRebaseInteractiveModel_WKey_WritesTodo_EditorMode(t *testing.T) {
 	runner := &testhelper.FakeRunner{Outputs: []string{"main"}}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "", todoPath)
+	m, err := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "", todoPath)
+	require.NoError(t, err)
 
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 
@@ -886,7 +917,8 @@ func TestRebaseInteractiveModel_BraceKeysAdjustContextLines(t *testing.T) {
 	}
 	cfg := config.NewDefault()
 	renderer := &diff.PlainRenderer{}
-	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~1", "")
+	m, err := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, renderer, "HEAD~1", "")
+	require.NoError(t, err)
 	_ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 
 	m.Update(tea.KeyPressMsg{Code: '}', ShiftedCode: '}', Mod: tea.ModShift, Text: "}"})

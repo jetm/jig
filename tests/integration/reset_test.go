@@ -51,7 +51,8 @@ func TestReset_TUI_UnstageFile(t *testing.T) {
 	cachedBefore := gitRun(t, repoDir, "diff", "--name-only", "--cached")
 	require.Contains(t, cachedBefore, "file1.txt", "file should be staged before reset")
 
-	tm := newResetTestModel(t, repoDir)
+	tm, err := newResetTestModel(t, repoDir)
+	require.NoError(t, err)
 
 	// Wait for the TUI to render the staged file
 	tm.waitFor(t, containsOutput("file1.txt"))

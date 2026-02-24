@@ -187,6 +187,22 @@ func (h *hunkAddTeaModelAdapter) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 func (h *hunkAddTeaModelAdapter) View() tea.View { return tea.NewView(h.inner.View()) }
 
+type hunkResetTeaModelAdapter struct{ inner *commands.HunkResetModel }
+
+func (h *hunkResetTeaModelAdapter) Init() tea.Cmd { return nil }
+func (h *hunkResetTeaModelAdapter) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	return h, h.inner.Update(msg)
+}
+func (h *hunkResetTeaModelAdapter) View() tea.View { return tea.NewView(h.inner.View()) }
+
+type hunkCheckoutTeaModelAdapter struct{ inner *commands.HunkCheckoutModel }
+
+func (h *hunkCheckoutTeaModelAdapter) Init() tea.Cmd { return nil }
+func (h *hunkCheckoutTeaModelAdapter) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	return h, h.inner.Update(msg)
+}
+func (h *hunkCheckoutTeaModelAdapter) View() tea.View { return tea.NewView(h.inner.View()) }
+
 type logTeaModelAdapter struct{ inner *commands.LogModel }
 
 func (l *logTeaModelAdapter) Init() tea.Cmd                           { return nil }
@@ -257,7 +273,10 @@ func newAddTestModel(tb testing.TB, repoDir string) *testModel {
 	tb.Helper()
 	runner := newRunnerInDir(tb, repoDir)
 	cfg := defaultConfig()
-	m := commands.NewAddModel(context.Background(), runner, cfg, plainRenderer())
+	m, err := commands.NewAddModel(context.Background(), runner, cfg, plainRenderer())
+	if err != nil {
+		tb.Fatalf("NewAddModel: %v", err)
+	}
 	appModel := app.New(&addTeaModelAdapter{inner: m}, runner, cfg)
 	return newTestModel(tb, appModel)
 }
@@ -267,40 +286,52 @@ func newAddTestModelFiltered(tb testing.TB, repoDir string, filterPaths []string
 	tb.Helper()
 	runner := newRunnerInDir(tb, repoDir)
 	cfg := defaultConfig()
-	m := commands.NewAddModel(context.Background(), runner, cfg, plainRenderer(), filterPaths)
+	m, err := commands.NewAddModel(context.Background(), runner, cfg, plainRenderer(), filterPaths)
+	if err != nil {
+		tb.Fatalf("NewAddModel: %v", err)
+	}
 	appModel := app.New(&addTeaModelAdapter{inner: m}, runner, cfg)
 	return newTestModel(tb, appModel)
 }
 
 // newCheckoutTestModel creates an in-process checkout TUI model for a temp repo.
-func newCheckoutTestModel(tb testing.TB, repoDir string) *testModel {
+func newCheckoutTestModel(tb testing.TB, repoDir string) (*testModel, error) {
 	tb.Helper()
 	runner := newRunnerInDir(tb, repoDir)
 	cfg := defaultConfig()
-	m := commands.NewCheckoutModel(context.Background(), runner, cfg, plainRenderer())
+	m, err := commands.NewCheckoutModel(context.Background(), runner, cfg, plainRenderer())
+	if err != nil {
+		return nil, fmt.Errorf("NewCheckoutModel: %w", err)
+	}
 	appModel := app.New(&checkoutTeaModelAdapter{inner: m}, runner, cfg)
-	return newTestModel(tb, appModel)
+	return newTestModel(tb, appModel), nil
 }
 
 // newDiffTestModel creates an in-process diff TUI model for a temp repo.
-func newDiffTestModel(tb testing.TB, repoDir string, revision string, staged bool) *testModel {
+func newDiffTestModel(tb testing.TB, repoDir string, revision string, staged bool) (*testModel, error) {
 	tb.Helper()
 	runner := newRunnerInDir(tb, repoDir)
 	cfg := defaultConfig()
-	m := commands.NewDiffModel(context.Background(), runner, cfg, plainRenderer(), revision, staged, "")
+	m, err := commands.NewDiffModel(context.Background(), runner, cfg, plainRenderer(), revision, staged, "")
+	if err != nil {
+		return nil, fmt.Errorf("NewDiffModel: %w", err)
+	}
 	appModel := app.New(&diffTeaModelAdapter{inner: m}, runner, cfg)
-	return newTestModel(tb, appModel)
+	return newTestModel(tb, appModel), nil
 }
 
 // newDiffPagerTestModel creates an in-process diff TUI model using pre-computed
 // diff content (pager mode), simulating what happens when git pipes to jig diff.
-func newDiffPagerTestModel(tb testing.TB, repoDir string, rawDiff string) *testModel {
+func newDiffPagerTestModel(tb testing.TB, repoDir string, rawDiff string) (*testModel, error) {
 	tb.Helper()
 	runner := newRunnerInDir(tb, repoDir)
 	cfg := defaultConfig()
-	m := commands.NewDiffModel(context.Background(), runner, cfg, plainRenderer(), "", false, rawDiff)
+	m, err := commands.NewDiffModel(context.Background(), runner, cfg, plainRenderer(), "", false, rawDiff)
+	if err != nil {
+		return nil, fmt.Errorf("NewDiffModel: %w", err)
+	}
 	appModel := app.New(&diffTeaModelAdapter{inner: m}, runner, cfg)
-	return newTestModel(tb, appModel)
+	return newTestModel(tb, appModel), nil
 }
 
 // newFixupTestModel creates an in-process fixup TUI model for a temp repo.
@@ -317,13 +348,42 @@ func newFixupTestModel(tb testing.TB, repoDir string) (*testModel, error) {
 }
 
 // newHunkAddTestModel creates an in-process hunk-add TUI model for a temp repo.
-func newHunkAddTestModel(tb testing.TB, repoDir string) *testModel {
+func newHunkAddTestModel(tb testing.TB, repoDir string) (*testModel, error) {
 	tb.Helper()
 	runner := newRunnerInDir(tb, repoDir)
 	cfg := defaultConfig()
-	m := commands.NewHunkAddModel(context.Background(), runner, cfg, plainRenderer())
+	m, err := commands.NewHunkAddModel(context.Background(), runner, cfg, plainRenderer())
+	if err != nil {
+		return nil, fmt.Errorf("NewHunkAddModel: %w", err)
+	}
 	appModel := app.New(&hunkAddTeaModelAdapter{inner: m}, runner, cfg)
-	return newTestModel(tb, appModel)
+	return newTestModel(tb, appModel), nil
+}
+
+// newHunkResetTestModel creates an in-process hunk-reset TUI model for a temp repo.
+func newHunkResetTestModel(tb testing.TB, repoDir string) (*testModel, error) {
+	tb.Helper()
+	runner := newRunnerInDir(tb, repoDir)
+	cfg := defaultConfig()
+	m, err := commands.NewHunkResetModel(context.Background(), runner, cfg, plainRenderer())
+	if err != nil {
+		return nil, fmt.Errorf("NewHunkResetModel: %w", err)
+	}
+	appModel := app.New(&hunkResetTeaModelAdapter{inner: m}, runner, cfg)
+	return newTestModel(tb, appModel), nil
+}
+
+// newHunkCheckoutTestModel creates an in-process hunk-checkout TUI model for a temp repo.
+func newHunkCheckoutTestModel(tb testing.TB, repoDir string) (*testModel, error) {
+	tb.Helper()
+	runner := newRunnerInDir(tb, repoDir)
+	cfg := defaultConfig()
+	m, err := commands.NewHunkCheckoutModel(context.Background(), runner, cfg, plainRenderer())
+	if err != nil {
+		return nil, fmt.Errorf("NewHunkCheckoutModel: %w", err)
+	}
+	appModel := app.New(&hunkCheckoutTeaModelAdapter{inner: m}, runner, cfg)
+	return newTestModel(tb, appModel), nil
 }
 
 // newLogTestModel creates an in-process log TUI model for a temp repo.
@@ -331,7 +391,10 @@ func newLogTestModel(tb testing.TB, repoDir string, ref string) *testModel {
 	tb.Helper()
 	runner := newRunnerInDir(tb, repoDir)
 	cfg := defaultConfig()
-	m := commands.NewLogModel(context.Background(), runner, cfg, plainRenderer(), ref)
+	m, err := commands.NewLogModel(context.Background(), runner, cfg, plainRenderer(), ref)
+	if err != nil {
+		tb.Fatalf("NewLogModel: %v", err)
+	}
 	appModel := app.New(&logTeaModelAdapter{inner: m}, runner, cfg)
 	return newTestModel(tb, appModel)
 }
@@ -341,19 +404,25 @@ func newRebaseInteractiveTestModel(tb testing.TB, repoDir string, base string) *
 	tb.Helper()
 	runner := newRunnerInDir(tb, repoDir)
 	cfg := defaultConfig()
-	m := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, plainRenderer(), base, "")
+	m, err := commands.NewRebaseInteractiveModel(context.Background(), runner, cfg, plainRenderer(), base, "")
+	if err != nil {
+		tb.Fatalf("NewRebaseInteractiveModel: %v", err)
+	}
 	appModel := app.New(&rebaseInteractiveTeaModelAdapter{inner: m}, runner, cfg)
 	return newTestModel(tb, appModel)
 }
 
 // newResetTestModel creates an in-process reset TUI model for a temp repo.
-func newResetTestModel(tb testing.TB, repoDir string) *testModel {
+func newResetTestModel(tb testing.TB, repoDir string) (*testModel, error) {
 	tb.Helper()
 	runner := newRunnerInDir(tb, repoDir)
 	cfg := defaultConfig()
-	m := commands.NewResetModel(context.Background(), runner, cfg, plainRenderer())
+	m, err := commands.NewResetModel(context.Background(), runner, cfg, plainRenderer())
+	if err != nil {
+		return nil, fmt.Errorf("NewResetModel: %w", err)
+	}
 	appModel := app.New(&resetTeaModelAdapter{inner: m}, runner, cfg)
-	return newTestModel(tb, appModel)
+	return newTestModel(tb, appModel), nil
 }
 
 // containsOutput returns a waitFor condition that checks for a substring.

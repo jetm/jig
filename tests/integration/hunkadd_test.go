@@ -7,6 +7,7 @@ import (
 
 	"github.com/jetm/jig/internal/testhelper"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestHunkAdd_ExitsCleanly(t *testing.T) {
@@ -35,7 +36,8 @@ func TestHunkAdd_TUI_StageHunk(t *testing.T) {
 	// Modify file to create a hunk
 	testhelper.WriteFile(t, repoDir, "file1.txt", "line1\nline2 modified\nline3\n")
 
-	tm := newHunkAddTestModel(t, repoDir)
+	tm, err := newHunkAddTestModel(t, repoDir)
+	require.NoError(t, err)
 
 	// Wait for the TUI to render the file
 	tm.waitFor(t, containsOutput("file1.txt"))

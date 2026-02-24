@@ -1,4 +1,5 @@
-package git
+// Package editor bridges git diff editing with an external text editor.
+package editor
 
 import (
 	"context"
@@ -9,6 +10,8 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/jetm/jig/internal/git"
 )
 
 // editedDiffPath returns the fixed path for the hunk-edit temp file.
@@ -30,7 +33,7 @@ type EditDiffMsg struct {
 // The callback sends an EditDiffMsg when the editor exits.
 // If the editor cannot be resolved (no GIT_EDITOR, core.editor, VISUAL, or EDITOR),
 // EditDiff returns nil - callers must check the editor before calling this.
-func EditDiff(ctx context.Context, runner Runner, rawDiff string) tea.Cmd {
+func EditDiff(ctx context.Context, runner git.Runner, rawDiff string) tea.Cmd {
 	path := editedDiffPath()
 	if err := os.WriteFile(path, []byte(rawDiff), 0o600); err != nil {
 		return func() tea.Msg {
@@ -38,7 +41,7 @@ func EditDiff(ctx context.Context, runner Runner, rawDiff string) tea.Cmd {
 		}
 	}
 
-	editor := ResolveEditor(ctx, runner)
+	editor := git.ResolveEditor(ctx, runner)
 	// Split editor string to handle "code --wait" style values.
 	parts := strings.Fields(editor)
 	args := make([]string, len(parts)-1, len(parts))
@@ -59,7 +62,7 @@ func EditDiff(ctx context.Context, runner Runner, rawDiff string) tea.Cmd {
 // handle common editor side effects (trailing whitespace stripping, comment
 // lines), and applies it via `git apply --cached --recount`.
 // Returns nil if the content is unchanged (no-op), or an error if apply fails.
-func ApplyEditedDiff(ctx context.Context, runner Runner, originalDiff, editedPath string) error {
+func ApplyEditedDiff(ctx context.Context, runner git.Runner, originalDiff, editedPath string) error {
 	edited, err := os.ReadFile(editedPath) //nolint:gosec // path is controlled by our code
 	if err != nil {
 		return fmt.Errorf("reading edited diff: %w", err)

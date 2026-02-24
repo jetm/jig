@@ -14,6 +14,7 @@ import (
 	"github.com/jetm/jig/internal/app"
 	"github.com/jetm/jig/internal/config"
 	"github.com/jetm/jig/internal/diff"
+	"github.com/jetm/jig/internal/editor"
 	"github.com/jetm/jig/internal/git"
 	"github.com/jetm/jig/internal/testhelper"
 )
@@ -732,7 +733,7 @@ func TestHunkAddModel_EditDiffMsg_Error(t *testing.T) {
 	m.width = 120
 	m.height = 40
 
-	cmd := m.Update(git.EditDiffMsg{Err: context.DeadlineExceeded})
+	cmd := m.Update(editor.EditDiffMsg{Err: context.DeadlineExceeded})
 	_ = cmd
 }
 
@@ -761,7 +762,7 @@ func TestHunkAddModel_EditDiffMsg_ApplyError(t *testing.T) {
 		t.Fatalf("failed to write edited diff: %v", err)
 	}
 
-	cmd := m.Update(git.EditDiffMsg{
+	cmd := m.Update(editor.EditDiffMsg{
 		EditedPath:   editedPath,
 		OriginalDiff: originalDiff,
 	})
@@ -790,7 +791,7 @@ func TestHunkAddModel_EditDiffMsg_Success(t *testing.T) {
 		t.Fatalf("failed to write edited diff: %v", err)
 	}
 
-	cmd := m.Update(git.EditDiffMsg{
+	cmd := m.Update(editor.EditDiffMsg{
 		EditedPath:   editedPath,
 		OriginalDiff: originalDiff,
 	})

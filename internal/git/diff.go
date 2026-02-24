@@ -25,6 +25,7 @@ type FileDiff struct {
 	NewPath string
 	Status  FileStatus
 	RawDiff string
+	Binary  bool
 }
 
 // DisplayPath returns a human-readable path for the file.
@@ -110,6 +111,10 @@ func parseOneFileDiff(block string) FileDiff {
 		fd.Status = Renamed
 		fd.OldPath = extractRenameField(block, "rename from ")
 		fd.NewPath = extractRenameField(block, "rename to ")
+	}
+
+	if strings.Contains(block, "\nBinary files ") {
+		fd.Binary = true
 	}
 
 	return fd

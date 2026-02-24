@@ -12,6 +12,7 @@ import (
 	"github.com/jetm/jig/internal/app"
 	"github.com/jetm/jig/internal/config"
 	"github.com/jetm/jig/internal/diff"
+	"github.com/jetm/jig/internal/editor"
 	"github.com/jetm/jig/internal/git"
 	"github.com/jetm/jig/internal/tui"
 	"github.com/jetm/jig/internal/tui/components"
@@ -164,12 +165,12 @@ func (m *HunkAddModel) Update(msg tea.Msg) tea.Cmd {
 			return app.PopModelMsg{MutatedGit: true}
 		}
 
-	case git.EditDiffMsg:
+	case editor.EditDiffMsg:
 		if msg.Err != nil {
 			_ = m.statusBar.SetMessage(fmt.Sprintf("Edit failed: %v", msg.Err), components.Error)
 			return sbCmd
 		}
-		if err := git.ApplyEditedDiff(m.ctx, m.runner, msg.OriginalDiff, msg.EditedPath); err != nil {
+		if err := editor.ApplyEditedDiff(m.ctx, m.runner, msg.OriginalDiff, msg.EditedPath); err != nil {
 			_ = m.statusBar.SetMessage(fmt.Sprintf("Apply failed: %v", err), components.Error)
 			return sbCmd
 		}
@@ -228,7 +229,7 @@ func (m *HunkAddModel) Update(msg tea.Msg) tea.Cmd {
 			}
 			fi := m.hunkList.CurrentFileIdx()
 			rawDiff := m.patchHeader(m.files[fi]) + "\n" + hunk.Body()
-			return git.EditDiff(m.ctx, m.runner, rawDiff)
+			return editor.EditDiff(m.ctx, m.runner, rawDiff)
 		}
 
 		if msg.String() == "{" {

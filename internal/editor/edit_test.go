@@ -1,4 +1,4 @@
-package git_test
+package editor_test
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/jetm/jig/internal/git"
+	"github.com/jetm/jig/internal/editor"
 	"github.com/jetm/jig/internal/testhelper"
 )
 
@@ -40,7 +40,7 @@ func TestEditDiff_WritesStandardPrefixToTempFile(t *testing.T) {
 		Errors:  []error{errors.New("no config")},
 	}
 
-	cmd := git.EditDiff(context.Background(), fr, standardDiff)
+	cmd := editor.EditDiff(context.Background(), fr, standardDiff)
 	if cmd == nil {
 		t.Fatal("EditDiff returned nil cmd")
 	}
@@ -68,7 +68,7 @@ func TestEditDiff_WritesMnemonicPrefixToTempFile(t *testing.T) {
 		Errors:  []error{errors.New("no config")},
 	}
 
-	cmd := git.EditDiff(context.Background(), fr, mnemonicDiff)
+	cmd := editor.EditDiff(context.Background(), fr, mnemonicDiff)
 	if cmd == nil {
 		t.Fatal("EditDiff returned nil cmd")
 	}
@@ -97,7 +97,7 @@ func TestApplyEditedDiff_ModifiedDiffApplies(t *testing.T) {
 		t.Fatalf("writing temp file: %v", err)
 	}
 
-	err := git.ApplyEditedDiff(context.Background(), fr, standardDiff, tmpPath)
+	err := editor.ApplyEditedDiff(context.Background(), fr, standardDiff, tmpPath)
 	if err != nil {
 		t.Fatalf("ApplyEditedDiff returned error: %v", err)
 	}
@@ -117,7 +117,7 @@ func TestApplyEditedDiff_UnmodifiedDiffSkipsApply(t *testing.T) {
 		t.Fatalf("writing temp file: %v", err)
 	}
 
-	err := git.ApplyEditedDiff(context.Background(), fr, standardDiff, tmpPath)
+	err := editor.ApplyEditedDiff(context.Background(), fr, standardDiff, tmpPath)
 	if err != nil {
 		t.Fatalf("ApplyEditedDiff returned error for unchanged diff: %v", err)
 	}
@@ -140,7 +140,7 @@ func TestApplyEditedDiff_ApplyErrorIsReturned(t *testing.T) {
 		t.Fatalf("writing temp file: %v", err)
 	}
 
-	err := git.ApplyEditedDiff(context.Background(), fr, standardDiff, tmpPath)
+	err := editor.ApplyEditedDiff(context.Background(), fr, standardDiff, tmpPath)
 	if err == nil {
 		t.Fatal("expected error from ApplyEditedDiff when git apply fails")
 	}
@@ -150,7 +150,7 @@ func TestApplyEditedDiff_MissingFileReturnsError(t *testing.T) {
 	t.Parallel()
 	fr := &testhelper.FakeRunner{}
 
-	err := git.ApplyEditedDiff(context.Background(), fr, standardDiff, "/nonexistent/path/file.diff")
+	err := editor.ApplyEditedDiff(context.Background(), fr, standardDiff, "/nonexistent/path/file.diff")
 	if err == nil {
 		t.Fatal("expected error when edited file does not exist")
 	}

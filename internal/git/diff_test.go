@@ -339,6 +339,409 @@ func TestParseFileDiffs(t *testing.T) {
 	}
 }
 
+func TestParseFileDiffs_BinaryDetection(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		input      string
+		wantLen    int
+		wantBinary []bool
+		wantStatus []FileStatus
+		wantPaths  []string // NewPath for each diff
+	}{
+		{
+			name: "new binary file",
+			input: "diff --git a/image.png b/image.png\n" +
+				"new file mode 100644\n" +
+				"index 0000000..abcdefg\n" +
+				"Binary files /dev/null and b/image.png differ\n",
+			wantLen:    1,
+			wantBinary: []bool{true},
+			wantStatus: []FileStatus{Added},
+			wantPaths:  []string{"image.png"},
+		},
+		{
+			name: "modified binary file",
+			input: "diff --git a/icon.png b/icon.png\n" +
+				"index 1234567..abcdefg 100644\n" +
+				"Binary files a/icon.png and b/icon.png differ\n",
+			wantLen:    1,
+			wantBinary: []bool{true},
+			wantStatus: []FileStatus{Modified},
+			wantPaths:  []string{"icon.png"},
+		},
+		{
+			name: "deleted binary file",
+			input: "diff --git a/old.bin b/old.bin\n" +
+				"deleted file mode 100644\n" +
+				"index abcdefg..0000000\n" +
+				"Binary files a/old.bin and /dev/null differ\n",
+			wantLen:    1,
+			wantBinary: []bool{true},
+			wantStatus: []FileStatus{Deleted},
+			wantPaths:  []string{"old.bin"},
+		},
+		{
+			name: "text file is not binary",
+			input: "diff --git a/main.go b/main.go\n" +
+				"index 1234567..abcdefg 100644\n" +
+				"--- a/main.go\n" +
+				"+++ b/main.go\n" +
+				"@@ -1 +1 @@\n" +
+				"-old\n" +
+				"+new\n",
+			wantLen:    1,
+			wantBinary: []bool{false},
+			wantStatus: []FileStatus{Modified},
+			wantPaths:  []string{"main.go"},
+		},
+		{
+			name: "mixed binary and text diffs",
+			input: "diff --git a/readme.md b/readme.md\n" +
+				"index 1234567..abcdefg 100644\n" +
+				"--- a/readme.md\n" +
+				"+++ b/readme.md\n" +
+				"@@ -1 +1 @@\n" +
+				"-old\n" +
+				"+new\n" +
+				"diff --git a/logo.png b/logo.png\n" +
+				"new file mode 100644\n" +
+				"index 0000000..abcdefg\n" +
+				"Binary files /dev/null and b/logo.png differ\n" +
+				"diff --git a/app.go b/app.go\n" +
+				"index 1234567..abcdefg 100644\n" +
+				"--- a/app.go\n" +
+				"+++ b/app.go\n" +
+				"@@ -1 +1 @@\n" +
+				"-foo\n" +
+				"+bar\n",
+			wantLen:    3,
+			wantBinary: []bool{false, true, false},
+			wantStatus: []FileStatus{Modified, Added, Modified},
+			wantPaths:  []string{"readme.md", "logo.png", "app.go"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			diffs := ParseFileDiffs(tc.input)
+
+			if got := len(diffs); got != tc.wantLen {
+				t.Fatalf("ParseFileDiffs() returned %d diffs, want %d", got, tc.wantLen)
+			}
+
+			for i, d := range diffs {
+				if d.Binary != tc.wantBinary[i] {
+					t.Errorf("diffs[%d].Binary = %v, want %v", i, d.Binary, tc.wantBinary[i])
+				}
+				if d.Status != tc.wantStatus[i] {
+					t.Errorf("diffs[%d].Status = %v, want %v", i, d.Status, tc.wantStatus[i])
+				}
+				if d.NewPath != tc.wantPaths[i] {
+					t.Errorf("diffs[%d].NewPath = %q, want %q", i, d.NewPath, tc.wantPaths[i])
+				}
+			}
+		})
+	}
+}
+
+func TestParseFileDiffs_UnicodeFilenames(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		input    string
+		wantLen  int
+		wantDiff struct {
+			oldPath string
+			newPath string
+			status  FileStatus
+		}
+	}{
+		{
+			name: "latin unicode filename",
+			input: "diff --git a/caf\u00e9.txt b/caf\u00e9.txt\n" +
+				"index 1234567..abcdefg 100644\n" +
+				"--- a/caf\u00e9.txt\n" +
+				"+++ b/caf\u00e9.txt\n" +
+				"@@ -1 +1 @@\n" +
+				"-old\n" +
+				"+new\n",
+			wantLen: 1,
+			wantDiff: struct {
+				oldPath string
+				newPath string
+				status  FileStatus
+			}{oldPath: "caf\u00e9.txt", newPath: "caf\u00e9.txt", status: Modified},
+		},
+		{
+			name: "CJK unicode filename",
+			input: "diff --git a/\u65e5\u672c\u8a9e.go b/\u65e5\u672c\u8a9e.go\n" +
+				"new file mode 100644\n" +
+				"index 0000000..abcdefg\n" +
+				"--- /dev/null\n" +
+				"+++ b/\u65e5\u672c\u8a9e.go\n" +
+				"@@ -0,0 +1 @@\n" +
+				"+package main\n",
+			wantLen: 1,
+			wantDiff: struct {
+				oldPath string
+				newPath string
+				status  FileStatus
+			}{oldPath: "\u65e5\u672c\u8a9e.go", newPath: "\u65e5\u672c\u8a9e.go", status: Added},
+		},
+		{
+			name: "emoji filename",
+			input: "diff --git a/\U0001f680.md b/\U0001f680.md\n" +
+				"index 1234567..abcdefg 100644\n" +
+				"--- a/\U0001f680.md\n" +
+				"+++ b/\U0001f680.md\n" +
+				"@@ -1 +1 @@\n" +
+				"-old\n" +
+				"+new\n",
+			wantLen: 1,
+			wantDiff: struct {
+				oldPath string
+				newPath string
+				status  FileStatus
+			}{oldPath: "\U0001f680.md", newPath: "\U0001f680.md", status: Modified},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			diffs := ParseFileDiffs(tc.input)
+
+			if got := len(diffs); got != tc.wantLen {
+				t.Fatalf("ParseFileDiffs() returned %d diffs, want %d", got, tc.wantLen)
+			}
+
+			got := diffs[0]
+			if got.OldPath != tc.wantDiff.oldPath {
+				t.Errorf("OldPath = %q, want %q", got.OldPath, tc.wantDiff.oldPath)
+			}
+			if got.NewPath != tc.wantDiff.newPath {
+				t.Errorf("NewPath = %q, want %q", got.NewPath, tc.wantDiff.newPath)
+			}
+			if got.Status != tc.wantDiff.status {
+				t.Errorf("Status = %v, want %v", got.Status, tc.wantDiff.status)
+			}
+		})
+	}
+}
+
+func TestParseFileDiffs_FilenamesWithSpaces(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		input    string
+		wantLen  int
+		wantDiff struct {
+			oldPath string
+			newPath string
+			status  FileStatus
+		}
+	}{
+		{
+			name: "spaces with mnemonic prefix",
+			input: "diff --git i/my file.go w/my file.go\n" +
+				"index 1234567..abcdefg 100644\n" +
+				"--- i/my file.go\n" +
+				"+++ w/my file.go\n" +
+				"@@ -1 +1 @@\n" +
+				"-old\n" +
+				"+new\n",
+			wantLen: 1,
+			wantDiff: struct {
+				oldPath string
+				newPath string
+				status  FileStatus
+			}{oldPath: "my file.go", newPath: "my file.go", status: Modified},
+		},
+		{
+			name: "spaces in subdirectory with standard prefix",
+			input: "diff --git a/path with spaces/foo.go b/path with spaces/foo.go\n" +
+				"index 1234567..abcdefg 100644\n" +
+				"--- a/path with spaces/foo.go\n" +
+				"+++ b/path with spaces/foo.go\n" +
+				"@@ -1 +1 @@\n" +
+				"-old\n" +
+				"+new\n",
+			wantLen: 1,
+			wantDiff: struct {
+				oldPath string
+				newPath string
+				status  FileStatus
+			}{oldPath: "path with spaces/foo.go", newPath: "path with spaces/foo.go", status: Modified},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			diffs := ParseFileDiffs(tc.input)
+
+			if got := len(diffs); got != tc.wantLen {
+				t.Fatalf("ParseFileDiffs() returned %d diffs, want %d", got, tc.wantLen)
+			}
+
+			got := diffs[0]
+			if got.OldPath != tc.wantDiff.oldPath {
+				t.Errorf("OldPath = %q, want %q", got.OldPath, tc.wantDiff.oldPath)
+			}
+			if got.NewPath != tc.wantDiff.newPath {
+				t.Errorf("NewPath = %q, want %q", got.NewPath, tc.wantDiff.newPath)
+			}
+			if got.Status != tc.wantDiff.status {
+				t.Errorf("Status = %v, want %v", got.Status, tc.wantDiff.status)
+			}
+		})
+	}
+}
+
+func TestParseFileDiffs_QuotedPaths(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		input    string
+		wantLen  int
+		wantOld  string
+		wantNew  string
+		wantStat FileStatus
+	}{
+		{
+			name: "quoted header with unquoted ---/+++ lines",
+			input: "diff --git \"a/path/caf\\303\\251.txt\" \"b/path/caf\\303\\251.txt\"\n" +
+				"index 1234567..abcdefg 100644\n" +
+				"--- a/path/caf\u00e9.txt\n" +
+				"+++ b/path/caf\u00e9.txt\n" +
+				"@@ -1 +1 @@\n" +
+				"-old\n" +
+				"+new\n",
+			wantLen:  1,
+			wantOld:  "path/caf\u00e9.txt",
+			wantNew:  "path/caf\u00e9.txt",
+			wantStat: Modified,
+		},
+		{
+			// Git quotes paths with special characters using octal escapes in
+			// the header. When ---/+++ lines are absent (binary files), the
+			// header fallback parser cannot split quoted paths, so both paths
+			// are empty. This documents current behavior.
+			name: "quoted header only (binary file, no ---/+++ lines)",
+			input: "diff --git \"a/caf\\303\\251.bin\" \"b/caf\\303\\251.bin\"\n" +
+				"index 1234567..abcdefg 100644\n" +
+				"Binary files \"a/caf\\303\\251.bin\" and \"b/caf\\303\\251.bin\" differ\n",
+			wantLen:  1,
+			wantOld:  "",
+			wantNew:  "",
+			wantStat: Modified,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			diffs := ParseFileDiffs(tc.input)
+
+			if got := len(diffs); got != tc.wantLen {
+				t.Fatalf("ParseFileDiffs() returned %d diffs, want %d", got, tc.wantLen)
+			}
+
+			got := diffs[0]
+			if got.OldPath != tc.wantOld {
+				t.Errorf("OldPath = %q, want %q", got.OldPath, tc.wantOld)
+			}
+			if got.NewPath != tc.wantNew {
+				t.Errorf("NewPath = %q, want %q", got.NewPath, tc.wantNew)
+			}
+			if got.Status != tc.wantStat {
+				t.Errorf("Status = %v, want %v", got.Status, tc.wantStat)
+			}
+		})
+	}
+}
+
+func TestParseFileDiffs_RenamesWithSpecialPaths(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		input    string
+		wantOld  string
+		wantNew  string
+		wantStat FileStatus
+	}{
+		{
+			name: "rename with spaces in old and new path",
+			input: "diff --git a/old file.go b/new file.go\n" +
+				"similarity index 100%\n" +
+				"rename from old file.go\n" +
+				"rename to new file.go\n",
+			wantOld:  "old file.go",
+			wantNew:  "new file.go",
+			wantStat: Renamed,
+		},
+		{
+			name: "rename with unicode in old and new path",
+			input: "diff --git a/caf\u00e9.txt b/\u65e5\u672c\u8a9e.txt\n" +
+				"similarity index 100%\n" +
+				"rename from caf\u00e9.txt\n" +
+				"rename to \u65e5\u672c\u8a9e.txt\n",
+			wantOld:  "caf\u00e9.txt",
+			wantNew:  "\u65e5\u672c\u8a9e.txt",
+			wantStat: Renamed,
+		},
+		{
+			name: "rename with spaces and unicode combined",
+			input: "diff --git a/my caf\u00e9.txt b/new \u65e5\u672c\u8a9e.txt\n" +
+				"similarity index 100%\n" +
+				"rename from my caf\u00e9.txt\n" +
+				"rename to new \u65e5\u672c\u8a9e.txt\n",
+			wantOld:  "my caf\u00e9.txt",
+			wantNew:  "new \u65e5\u672c\u8a9e.txt",
+			wantStat: Renamed,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			diffs := ParseFileDiffs(tc.input)
+
+			if got := len(diffs); got != 1 {
+				t.Fatalf("ParseFileDiffs() returned %d diffs, want 1", got)
+			}
+
+			got := diffs[0]
+			if got.OldPath != tc.wantOld {
+				t.Errorf("OldPath = %q, want %q", got.OldPath, tc.wantOld)
+			}
+			if got.NewPath != tc.wantNew {
+				t.Errorf("NewPath = %q, want %q", got.NewPath, tc.wantNew)
+			}
+			if got.Status != tc.wantStat {
+				t.Errorf("Status = %v, want %v", got.Status, tc.wantStat)
+			}
+			// Also verify DisplayPath shows "old -> new" for renames
+			wantDisplay := tc.wantOld + " -> " + tc.wantNew
+			if got.DisplayPath() != wantDisplay {
+				t.Errorf("DisplayPath() = %q, want %q", got.DisplayPath(), wantDisplay)
+			}
+		})
+	}
+}
+
 func TestFileDiff_DisplayPath(t *testing.T) {
 	t.Parallel()
 

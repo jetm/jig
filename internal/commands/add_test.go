@@ -12,6 +12,7 @@ import (
 	"github.com/jetm/jig/internal/app"
 	"github.com/jetm/jig/internal/config"
 	"github.com/jetm/jig/internal/diff"
+	"github.com/jetm/jig/internal/editor"
 	"github.com/jetm/jig/internal/git"
 	"github.com/jetm/jig/internal/testhelper"
 
@@ -980,7 +981,7 @@ func TestAddModel_EditDiffMsg_Success(t *testing.T) {
 	m.width = 120
 	m.height = 40
 
-	msg := git.EditDiffMsg{
+	msg := editor.EditDiffMsg{
 		EditedPath:   editedPath,
 		OriginalDiff: originalDiff,
 	}
@@ -996,7 +997,7 @@ func TestAddModel_EditDiffMsg_Error(t *testing.T) {
 	m.width = 120
 	m.height = 40
 
-	msg := git.EditDiffMsg{Err: fmt.Errorf("editor crashed")}
+	msg := editor.EditDiffMsg{Err: fmt.Errorf("editor crashed")}
 	cmd := m.Update(msg)
 	_ = cmd
 	// Should not panic; error displayed in status bar

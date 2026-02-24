@@ -65,7 +65,8 @@ func TestCheckout_TUI_RestoreModifiedFile(t *testing.T) {
 	testhelper.AddCommit(t, repoDir, "add file1.txt")
 	testhelper.WriteFile(t, repoDir, "file1.txt", "modified\n")
 
-	tm := newCheckoutTestModel(t, repoDir)
+	tm, err := newCheckoutTestModel(t, repoDir)
+	require.NoError(t, err)
 
 	// Wait for the TUI to render the file
 	tm.waitFor(t, containsOutput("file1.txt"))

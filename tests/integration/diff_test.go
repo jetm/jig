@@ -53,7 +53,8 @@ func TestDiff_TUI_ShowsModifiedFiles(t *testing.T) {
 	testhelper.AddCommit(t, repoDir, "add changed.txt")
 	testhelper.WriteFile(t, repoDir, "changed.txt", "modified\n")
 
-	tm := newDiffTestModel(t, repoDir, "", false)
+	tm, err := newDiffTestModel(t, repoDir, "", false)
+	require.NoError(t, err)
 
 	// Wait for the TUI to render the modified file name
 	tm.waitFor(t, containsOutput("changed.txt"))
@@ -74,7 +75,8 @@ func TestDiff_PagerMode_ShowsPipedDiff(t *testing.T) {
 		"+// added via pager\n" +
 		" func main() {}\n"
 
-	tm := newDiffPagerTestModel(t, repoDir, rawDiff)
+	tm, err := newDiffPagerTestModel(t, repoDir, rawDiff)
+	require.NoError(t, err)
 
 	tm.waitFor(t, containsOutput("piped.go"))
 	tm.waitFor(t, containsOutput("diff (pager)"))
@@ -90,7 +92,8 @@ func TestDiff_PagerMode_EmptyFileWithMnemonicPrefix(t *testing.T) {
 		"new file mode 100644\n" +
 		"index 0000000..e69de29\n"
 
-	tm := newDiffPagerTestModel(t, repoDir, rawDiff)
+	tm, err := newDiffPagerTestModel(t, repoDir, rawDiff)
+	require.NoError(t, err)
 
 	tm.waitFor(t, containsOutput("empty.txt"))
 
@@ -109,7 +112,8 @@ func TestDiff_PagerMode_ColoredInput(t *testing.T) {
 		"\x1b[31m-old\x1b[m\n" +
 		"\x1b[32m+new\x1b[m\n"
 
-	tm := newDiffPagerTestModel(t, repoDir, rawDiff)
+	tm, err := newDiffPagerTestModel(t, repoDir, rawDiff)
+	require.NoError(t, err)
 
 	tm.waitFor(t, containsOutput("colored.go"))
 
@@ -123,7 +127,8 @@ func TestDiff_TUI_StagedFlag_ShowsStagedFiles(t *testing.T) {
 	testhelper.WriteFile(t, repoDir, "staged.txt", "modified\n")
 	testhelper.StageFile(t, repoDir, "staged.txt")
 
-	tm := newDiffTestModel(t, repoDir, "", true)
+	tm, err := newDiffTestModel(t, repoDir, "", true)
+	require.NoError(t, err)
 
 	// Wait for the TUI to render the staged file name
 	tm.waitFor(t, containsOutput("staged.txt"))

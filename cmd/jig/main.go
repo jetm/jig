@@ -52,6 +52,33 @@ func newRootCmd() *cobra.Command {
 	return root
 }
 
+// childModel is the interface that all command models satisfy.
+// It captures the Update/View contract without requiring full tea.Model.
+type childModel interface {
+	Update(tea.Msg) tea.Cmd
+	View() string
+}
+
+// childTeaModel wraps a childModel as a tea.Model for AppModel.
+type childTeaModel struct {
+	inner childModel
+}
+
+func newChildTeaModel(m childModel) *childTeaModel {
+	return &childTeaModel{inner: m}
+}
+
+func (c *childTeaModel) Init() tea.Cmd { return nil }
+
+func (c *childTeaModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	cmd := c.inner.Update(msg)
+	return c, cmd
+}
+
+func (c *childTeaModel) View() tea.View {
+	return tea.NewView(c.inner.View())
+}
+
 func newDiffCmd() *cobra.Command {
 	var staged bool
 
@@ -101,7 +128,7 @@ func newDiffCmd() *cobra.Command {
 				return fmt.Errorf("diff: %w", err)
 			}
 
-			appModel := app.New(newDiffTeaModel(diffModel), runner, cfg)
+			appModel := app.New(newChildTeaModel(diffModel), runner, cfg)
 			p := tea.NewProgram(appModel, opts...)
 			if _, err = p.Run(); err != nil {
 				return fmt.Errorf("running diff: %w", err)
@@ -115,25 +142,6 @@ func newDiffCmd() *cobra.Command {
 	return cmd
 }
 
-// diffTeaModel wraps DiffModel (child component pattern) as a tea.Model for AppModel.
-type diffTeaModel struct {
-	inner *commands.DiffModel
-}
-
-func newDiffTeaModel(m *commands.DiffModel) *diffTeaModel {
-	return &diffTeaModel{inner: m}
-}
-
-func (d *diffTeaModel) Init() tea.Cmd { return nil }
-
-func (d *diffTeaModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	cmd := d.inner.Update(msg)
-	return d, cmd
-}
-
-func (d *diffTeaModel) View() tea.View {
-	return tea.NewView(d.inner.View())
-}
 func newAddCmd() *cobra.Command {
 	var interactive bool
 
@@ -167,7 +175,7 @@ func newAddCmd() *cobra.Command {
 				return fmt.Errorf("add: %w", err)
 			}
 
-			appModel := app.New(newAddTeaModel(addModel), runner, cfg)
+			appModel := app.New(newChildTeaModel(addModel), runner, cfg)
 			p := tea.NewProgram(appModel)
 			if _, err = p.Run(); err != nil {
 				return fmt.Errorf("running add: %w", err)
@@ -203,26 +211,6 @@ func addDirect(ctx context.Context, runner git.Runner, paths []string, w io.Writ
 	return nil
 }
 
-// addTeaModel wraps AddModel (child component pattern) as a tea.Model for AppModel.
-type addTeaModel struct {
-	inner *commands.AddModel
-}
-
-func newAddTeaModel(m *commands.AddModel) *addTeaModel {
-	return &addTeaModel{inner: m}
-}
-
-func (a *addTeaModel) Init() tea.Cmd { return nil }
-
-func (a *addTeaModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	cmd := a.inner.Update(msg)
-	return a, cmd
-}
-
-func (a *addTeaModel) View() tea.View {
-	return tea.NewView(a.inner.View())
-}
-
 func newCheckoutCmd() *cobra.Command {
 	var direct bool
 
@@ -256,7 +244,7 @@ func newCheckoutCmd() *cobra.Command {
 				return fmt.Errorf("checkout: %w", err)
 			}
 
-			appModel := app.New(newCheckoutTeaModel(checkoutModel), runner, cfg)
+			appModel := app.New(newChildTeaModel(checkoutModel), runner, cfg)
 			p := tea.NewProgram(appModel)
 			if _, err = p.Run(); err != nil {
 				return fmt.Errorf("running checkout: %w", err)
@@ -311,26 +299,6 @@ func checkoutDirect(ctx context.Context, runner git.Runner, paths []string, in i
 	return nil
 }
 
-// checkoutTeaModel wraps CheckoutModel (child component pattern) as a tea.Model for AppModel.
-type checkoutTeaModel struct {
-	inner *commands.CheckoutModel
-}
-
-func newCheckoutTeaModel(m *commands.CheckoutModel) *checkoutTeaModel {
-	return &checkoutTeaModel{inner: m}
-}
-
-func (c *checkoutTeaModel) Init() tea.Cmd { return nil }
-
-func (c *checkoutTeaModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	cmd := c.inner.Update(msg)
-	return c, cmd
-}
-
-func (c *checkoutTeaModel) View() tea.View {
-	return tea.NewView(c.inner.View())
-}
-
 func newHunkAddCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "hunk-add [paths...]",
@@ -358,7 +326,7 @@ func newHunkAddCmd() *cobra.Command {
 				return fmt.Errorf("hunk-add: %w", err)
 			}
 
-			appModel := app.New(newHunkAddTeaModel(hunkAddModel), runner, cfg)
+			appModel := app.New(newChildTeaModel(hunkAddModel), runner, cfg)
 			p := tea.NewProgram(appModel)
 			if _, err = p.Run(); err != nil {
 				return fmt.Errorf("running hunk-add: %w", err)
@@ -366,26 +334,6 @@ func newHunkAddCmd() *cobra.Command {
 			return nil
 		},
 	}
-}
-
-// hunkAddTeaModel wraps HunkAddModel (child component pattern) as a tea.Model for AppModel.
-type hunkAddTeaModel struct {
-	inner *commands.HunkAddModel
-}
-
-func newHunkAddTeaModel(m *commands.HunkAddModel) *hunkAddTeaModel {
-	return &hunkAddTeaModel{inner: m}
-}
-
-func (h *hunkAddTeaModel) Init() tea.Cmd { return nil }
-
-func (h *hunkAddTeaModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	cmd := h.inner.Update(msg)
-	return h, cmd
-}
-
-func (h *hunkAddTeaModel) View() tea.View {
-	return tea.NewView(h.inner.View())
 }
 
 func newHunkResetCmd() *cobra.Command {
@@ -415,7 +363,7 @@ func newHunkResetCmd() *cobra.Command {
 				return fmt.Errorf("hunk-reset: %w", err)
 			}
 
-			appModel := app.New(newHunkResetTeaModel(hunkResetModel), runner, cfg)
+			appModel := app.New(newChildTeaModel(hunkResetModel), runner, cfg)
 			p := tea.NewProgram(appModel)
 			if _, err = p.Run(); err != nil {
 				return fmt.Errorf("running hunk-reset: %w", err)
@@ -423,26 +371,6 @@ func newHunkResetCmd() *cobra.Command {
 			return nil
 		},
 	}
-}
-
-// hunkResetTeaModel wraps HunkResetModel (child component pattern) as a tea.Model for AppModel.
-type hunkResetTeaModel struct {
-	inner *commands.HunkResetModel
-}
-
-func newHunkResetTeaModel(m *commands.HunkResetModel) *hunkResetTeaModel {
-	return &hunkResetTeaModel{inner: m}
-}
-
-func (h *hunkResetTeaModel) Init() tea.Cmd { return nil }
-
-func (h *hunkResetTeaModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	cmd := h.inner.Update(msg)
-	return h, cmd
-}
-
-func (h *hunkResetTeaModel) View() tea.View {
-	return tea.NewView(h.inner.View())
 }
 
 func newHunkCheckoutCmd() *cobra.Command {
@@ -472,7 +400,7 @@ func newHunkCheckoutCmd() *cobra.Command {
 				return fmt.Errorf("hunk-checkout: %w", err)
 			}
 
-			appModel := app.New(newHunkCheckoutTeaModel(hunkCheckoutModel), runner, cfg)
+			appModel := app.New(newChildTeaModel(hunkCheckoutModel), runner, cfg)
 			p := tea.NewProgram(appModel)
 			if _, err = p.Run(); err != nil {
 				return fmt.Errorf("running hunk-checkout: %w", err)
@@ -480,26 +408,6 @@ func newHunkCheckoutCmd() *cobra.Command {
 			return nil
 		},
 	}
-}
-
-// hunkCheckoutTeaModel wraps HunkCheckoutModel (child component pattern) as a tea.Model for AppModel.
-type hunkCheckoutTeaModel struct {
-	inner *commands.HunkCheckoutModel
-}
-
-func newHunkCheckoutTeaModel(m *commands.HunkCheckoutModel) *hunkCheckoutTeaModel {
-	return &hunkCheckoutTeaModel{inner: m}
-}
-
-func (h *hunkCheckoutTeaModel) Init() tea.Cmd { return nil }
-
-func (h *hunkCheckoutTeaModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	cmd := h.inner.Update(msg)
-	return h, cmd
-}
-
-func (h *hunkCheckoutTeaModel) View() tea.View {
-	return tea.NewView(h.inner.View())
 }
 
 func newFixupCmd() *cobra.Command {
@@ -524,7 +432,7 @@ func newFixupCmd() *cobra.Command {
 				return fmt.Errorf("fixup: %w", err)
 			}
 
-			appModel := app.New(newFixupTeaModel(fixupModel), runner, cfg)
+			appModel := app.New(newChildTeaModel(fixupModel), runner, cfg)
 			p := tea.NewProgram(appModel)
 			if _, err = p.Run(); err != nil {
 				return fmt.Errorf("running fixup: %w", err)
@@ -532,26 +440,6 @@ func newFixupCmd() *cobra.Command {
 			return nil
 		},
 	}
-}
-
-// fixupTeaModel wraps FixupModel (child component pattern) as a tea.Model for AppModel.
-type fixupTeaModel struct {
-	inner *commands.FixupModel
-}
-
-func newFixupTeaModel(m *commands.FixupModel) *fixupTeaModel {
-	return &fixupTeaModel{inner: m}
-}
-
-func (f *fixupTeaModel) Init() tea.Cmd { return nil }
-
-func (f *fixupTeaModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	cmd := f.inner.Update(msg)
-	return f, cmd
-}
-
-func (f *fixupTeaModel) View() tea.View {
-	return tea.NewView(f.inner.View())
 }
 
 func newLogCmd() *cobra.Command {
@@ -581,7 +469,7 @@ func newLogCmd() *cobra.Command {
 				return fmt.Errorf("log: %w", err)
 			}
 
-			appModel := app.New(newLogTeaModel(logModel), runner, cfg)
+			appModel := app.New(newChildTeaModel(logModel), runner, cfg)
 			p := tea.NewProgram(appModel)
 			if _, err = p.Run(); err != nil {
 				return fmt.Errorf("running log: %w", err)
@@ -589,26 +477,6 @@ func newLogCmd() *cobra.Command {
 			return nil
 		},
 	}
-}
-
-// logTeaModel wraps LogModel (child component pattern) as a tea.Model for AppModel.
-type logTeaModel struct {
-	inner *commands.LogModel
-}
-
-func newLogTeaModel(m *commands.LogModel) *logTeaModel {
-	return &logTeaModel{inner: m}
-}
-
-func (l *logTeaModel) Init() tea.Cmd { return nil }
-
-func (l *logTeaModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	cmd := l.inner.Update(msg)
-	return l, cmd
-}
-
-func (l *logTeaModel) View() tea.View {
-	return tea.NewView(l.inner.View())
 }
 
 func newResetCmd() *cobra.Command {
@@ -644,7 +512,7 @@ func newResetCmd() *cobra.Command {
 				return fmt.Errorf("reset: %w", err)
 			}
 
-			appModel := app.New(newResetTeaModel(resetModel), runner, cfg)
+			appModel := app.New(newChildTeaModel(resetModel), runner, cfg)
 			p := tea.NewProgram(appModel)
 			if _, err = p.Run(); err != nil {
 				return fmt.Errorf("running reset: %w", err)
@@ -672,26 +540,6 @@ func resetDirect(ctx context.Context, runner git.Runner, paths []string, w io.Wr
 	}
 	_, _ = fmt.Fprint(w, status)
 	return nil
-}
-
-// resetTeaModel wraps ResetModel (child component pattern) as a tea.Model for AppModel.
-type resetTeaModel struct {
-	inner *commands.ResetModel
-}
-
-func newResetTeaModel(m *commands.ResetModel) *resetTeaModel {
-	return &resetTeaModel{inner: m}
-}
-
-func (r *resetTeaModel) Init() tea.Cmd { return nil }
-
-func (r *resetTeaModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	cmd := r.inner.Update(msg)
-	return r, cmd
-}
-
-func (r *resetTeaModel) View() tea.View {
-	return tea.NewView(r.inner.View())
 }
 
 func newRebaseInteractiveCmd() *cobra.Command {
@@ -726,7 +574,7 @@ func newRebaseInteractiveCmd() *cobra.Command {
 				return fmt.Errorf("rebase-interactive: %w", err)
 			}
 
-			rebaseTeaModel := newRebaseInteractiveTeaModel(rebaseModel)
+			rebaseTeaModel := newChildTeaModel(rebaseModel)
 			appModel := app.New(rebaseTeaModel, runner, cfg)
 
 			// In editor mode (invoked as GIT_SEQUENCE_EDITOR), explicitly open
@@ -753,26 +601,6 @@ func newRebaseInteractiveCmd() *cobra.Command {
 			return nil
 		},
 	}
-}
-
-// rebaseInteractiveTeaModel wraps RebaseInteractiveModel (child component pattern) as a tea.Model for AppModel.
-type rebaseInteractiveTeaModel struct {
-	inner *commands.RebaseInteractiveModel
-}
-
-func newRebaseInteractiveTeaModel(m *commands.RebaseInteractiveModel) *rebaseInteractiveTeaModel {
-	return &rebaseInteractiveTeaModel{inner: m}
-}
-
-func (r *rebaseInteractiveTeaModel) Init() tea.Cmd { return nil }
-
-func (r *rebaseInteractiveTeaModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	cmd := r.inner.Update(msg)
-	return r, cmd
-}
-
-func (r *rebaseInteractiveTeaModel) View() tea.View {
-	return tea.NewView(r.inner.View())
 }
 
 // newCompletionCmd returns a cobra command that generates shell completion scripts.

@@ -624,14 +624,14 @@ func newFakeHunkAddModel(t *testing.T) *commands.HunkAddModel {
 }
 
 func TestHunkAddTeaModel_InitReturnsNil(t *testing.T) {
-	m := newHunkAddTeaModel(newFakeHunkAddModel(t))
+	m := newChildTeaModel(newFakeHunkAddModel(t))
 	if cmd := m.Init(); cmd != nil {
 		t.Error("Init() should return nil")
 	}
 }
 
 func TestHunkAddTeaModel_Update(t *testing.T) {
-	m := newHunkAddTeaModel(newFakeHunkAddModel(t))
+	m := newChildTeaModel(newFakeHunkAddModel(t))
 	next, cmd := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	if next == nil {
 		t.Error("Update() should return non-nil model")
@@ -640,7 +640,7 @@ func TestHunkAddTeaModel_Update(t *testing.T) {
 }
 
 func TestHunkAddTeaModel_View(t *testing.T) {
-	m := newHunkAddTeaModel(newFakeHunkAddModel(t))
+	m := newChildTeaModel(newFakeHunkAddModel(t))
 	_ = m.View() // just ensure no panic
 }
 
@@ -658,14 +658,14 @@ func newFakeDiffModel(t *testing.T) *commands.DiffModel {
 }
 
 func TestDiffTeaModel_InitReturnsNil(t *testing.T) {
-	m := newDiffTeaModel(newFakeDiffModel(t))
+	m := newChildTeaModel(newFakeDiffModel(t))
 	if cmd := m.Init(); cmd != nil {
 		t.Error("Init() should return nil")
 	}
 }
 
 func TestDiffTeaModel_Update(t *testing.T) {
-	m := newDiffTeaModel(newFakeDiffModel(t))
+	m := newChildTeaModel(newFakeDiffModel(t))
 	next, cmd := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	if next == nil {
 		t.Error("Update() should return non-nil model")
@@ -674,7 +674,7 @@ func TestDiffTeaModel_Update(t *testing.T) {
 }
 
 func TestDiffTeaModel_View(t *testing.T) {
-	m := newDiffTeaModel(newFakeDiffModel(t))
+	m := newChildTeaModel(newFakeDiffModel(t))
 	view := m.View()
 	_ = view // just ensure no panic
 }
@@ -693,14 +693,14 @@ func newFakeAddModel(t *testing.T) *commands.AddModel {
 }
 
 func TestAddTeaModel_InitReturnsNil(t *testing.T) {
-	m := newAddTeaModel(newFakeAddModel(t))
+	m := newChildTeaModel(newFakeAddModel(t))
 	if cmd := m.Init(); cmd != nil {
 		t.Error("Init() should return nil")
 	}
 }
 
 func TestAddTeaModel_Update(t *testing.T) {
-	m := newAddTeaModel(newFakeAddModel(t))
+	m := newChildTeaModel(newFakeAddModel(t))
 	next, cmd := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	if next == nil {
 		t.Error("Update() should return non-nil model")
@@ -709,7 +709,7 @@ func TestAddTeaModel_Update(t *testing.T) {
 }
 
 func TestAddTeaModel_View(t *testing.T) {
-	m := newAddTeaModel(newFakeAddModel(t))
+	m := newChildTeaModel(newFakeAddModel(t))
 	view := m.View()
 	_ = view // just ensure no panic
 }
@@ -728,14 +728,14 @@ func newFakeResetModel(t *testing.T) *commands.ResetModel {
 }
 
 func TestResetTeaModel_InitReturnsNil(t *testing.T) {
-	m := newResetTeaModel(newFakeResetModel(t))
+	m := newChildTeaModel(newFakeResetModel(t))
 	if cmd := m.Init(); cmd != nil {
 		t.Error("Init() should return nil")
 	}
 }
 
 func TestResetTeaModel_Update(t *testing.T) {
-	m := newResetTeaModel(newFakeResetModel(t))
+	m := newChildTeaModel(newFakeResetModel(t))
 	next, cmd := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	if next == nil {
 		t.Error("Update() should return non-nil model")
@@ -744,7 +744,7 @@ func TestResetTeaModel_Update(t *testing.T) {
 }
 
 func TestResetTeaModel_View(t *testing.T) {
-	m := newResetTeaModel(newFakeResetModel(t))
+	m := newChildTeaModel(newFakeResetModel(t))
 	_ = m.View() // just ensure no panic
 }
 
@@ -762,14 +762,14 @@ func newFakeCheckoutModel(t *testing.T) *commands.CheckoutModel {
 }
 
 func TestCheckoutTeaModel_InitReturnsNil(t *testing.T) {
-	m := newCheckoutTeaModel(newFakeCheckoutModel(t))
+	m := newChildTeaModel(newFakeCheckoutModel(t))
 	if cmd := m.Init(); cmd != nil {
 		t.Error("Init() should return nil")
 	}
 }
 
 func TestCheckoutTeaModel_Update(t *testing.T) {
-	m := newCheckoutTeaModel(newFakeCheckoutModel(t))
+	m := newChildTeaModel(newFakeCheckoutModel(t))
 	next, cmd := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	if next == nil {
 		t.Error("Update() should return non-nil model")
@@ -778,7 +778,7 @@ func TestCheckoutTeaModel_Update(t *testing.T) {
 }
 
 func TestCheckoutTeaModel_View(t *testing.T) {
-	m := newCheckoutTeaModel(newFakeCheckoutModel(t))
+	m := newChildTeaModel(newFakeCheckoutModel(t))
 	view := m.View()
 	_ = view // just ensure no panic
 }
@@ -806,14 +806,14 @@ func newFakeFixupModel(t *testing.T) *commands.FixupModel {
 }
 
 func TestFixupTeaModel_InitReturnsNil(t *testing.T) {
-	m := newFixupTeaModel(newFakeFixupModel(t))
+	m := newChildTeaModel(newFakeFixupModel(t))
 	if cmd := m.Init(); cmd != nil {
 		t.Error("Init() should return nil")
 	}
 }
 
 func TestFixupTeaModel_Update(t *testing.T) {
-	m := newFixupTeaModel(newFakeFixupModel(t))
+	m := newChildTeaModel(newFakeFixupModel(t))
 	next, cmd := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	if next == nil {
 		t.Error("Update() should return non-nil model")
@@ -822,7 +822,7 @@ func TestFixupTeaModel_Update(t *testing.T) {
 }
 
 func TestFixupTeaModel_View(t *testing.T) {
-	m := newFixupTeaModel(newFakeFixupModel(t))
+	m := newChildTeaModel(newFakeFixupModel(t))
 	_ = m.View() // just ensure no panic
 }
 
@@ -840,14 +840,14 @@ func newFakeLogModel(t *testing.T) *commands.LogModel {
 }
 
 func TestLogTeaModel_InitReturnsNil(t *testing.T) {
-	m := newLogTeaModel(newFakeLogModel(t))
+	m := newChildTeaModel(newFakeLogModel(t))
 	if cmd := m.Init(); cmd != nil {
 		t.Error("Init() should return nil")
 	}
 }
 
 func TestLogTeaModel_Update(t *testing.T) {
-	m := newLogTeaModel(newFakeLogModel(t))
+	m := newChildTeaModel(newFakeLogModel(t))
 	next, cmd := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	if next == nil {
 		t.Error("Update() should return non-nil model")
@@ -856,7 +856,7 @@ func TestLogTeaModel_Update(t *testing.T) {
 }
 
 func TestLogTeaModel_View(t *testing.T) {
-	m := newLogTeaModel(newFakeLogModel(t))
+	m := newChildTeaModel(newFakeLogModel(t))
 	_ = m.View() // just ensure no panic
 }
 
@@ -885,14 +885,14 @@ func newFakeRebaseInteractiveModel(t *testing.T) *commands.RebaseInteractiveMode
 }
 
 func TestRebaseInteractiveTeaModel_InitReturnsNil(t *testing.T) {
-	m := newRebaseInteractiveTeaModel(newFakeRebaseInteractiveModel(t))
+	m := newChildTeaModel(newFakeRebaseInteractiveModel(t))
 	if cmd := m.Init(); cmd != nil {
 		t.Error("Init() should return nil")
 	}
 }
 
 func TestRebaseInteractiveTeaModel_Update(t *testing.T) {
-	m := newRebaseInteractiveTeaModel(newFakeRebaseInteractiveModel(t))
+	m := newChildTeaModel(newFakeRebaseInteractiveModel(t))
 	next, cmd := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	if next == nil {
 		t.Error("Update() should return non-nil model")
@@ -901,7 +901,7 @@ func TestRebaseInteractiveTeaModel_Update(t *testing.T) {
 }
 
 func TestRebaseInteractiveTeaModel_View(t *testing.T) {
-	m := newRebaseInteractiveTeaModel(newFakeRebaseInteractiveModel(t))
+	m := newChildTeaModel(newFakeRebaseInteractiveModel(t))
 	_ = m.View() // just ensure no panic
 }
 
@@ -1034,14 +1034,14 @@ func newFakeHunkResetModel(t *testing.T) *commands.HunkResetModel {
 }
 
 func TestHunkResetTeaModel_InitReturnsNil(t *testing.T) {
-	m := newHunkResetTeaModel(newFakeHunkResetModel(t))
+	m := newChildTeaModel(newFakeHunkResetModel(t))
 	if cmd := m.Init(); cmd != nil {
 		t.Error("Init() should return nil")
 	}
 }
 
 func TestHunkResetTeaModel_Update(t *testing.T) {
-	m := newHunkResetTeaModel(newFakeHunkResetModel(t))
+	m := newChildTeaModel(newFakeHunkResetModel(t))
 	next, cmd := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	if next == nil {
 		t.Error("Update() should return non-nil model")
@@ -1050,7 +1050,7 @@ func TestHunkResetTeaModel_Update(t *testing.T) {
 }
 
 func TestHunkResetTeaModel_View(t *testing.T) {
-	m := newHunkResetTeaModel(newFakeHunkResetModel(t))
+	m := newChildTeaModel(newFakeHunkResetModel(t))
 	_ = m.View() // just ensure no panic
 }
 
@@ -1068,14 +1068,14 @@ func newFakeHunkCheckoutModel(t *testing.T) *commands.HunkCheckoutModel {
 }
 
 func TestHunkCheckoutTeaModel_InitReturnsNil(t *testing.T) {
-	m := newHunkCheckoutTeaModel(newFakeHunkCheckoutModel(t))
+	m := newChildTeaModel(newFakeHunkCheckoutModel(t))
 	if cmd := m.Init(); cmd != nil {
 		t.Error("Init() should return nil")
 	}
 }
 
 func TestHunkCheckoutTeaModel_Update(t *testing.T) {
-	m := newHunkCheckoutTeaModel(newFakeHunkCheckoutModel(t))
+	m := newChildTeaModel(newFakeHunkCheckoutModel(t))
 	next, cmd := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	if next == nil {
 		t.Error("Update() should return non-nil model")
@@ -1084,7 +1084,7 @@ func TestHunkCheckoutTeaModel_Update(t *testing.T) {
 }
 
 func TestHunkCheckoutTeaModel_View(t *testing.T) {
-	m := newHunkCheckoutTeaModel(newFakeHunkCheckoutModel(t))
+	m := newChildTeaModel(newFakeHunkCheckoutModel(t))
 	_ = m.View() // just ensure no panic
 }
 
@@ -1190,5 +1190,80 @@ func TestResetCmd_DirectMode_StatusError(t *testing.T) {
 	err := resetDirect(ctx, runner, []string{"file1.go"}, &buf)
 	if err == nil {
 		t.Fatal("expected error when git status fails, got nil")
+	}
+}
+
+// runCmdOutsideRepo executes a subcommand from a non-git directory so
+// git.NewExecRunner fails with "not a git repository".
+func runCmdOutsideRepo(t *testing.T, args ...string) error {
+	t.Helper()
+	dir := t.TempDir()
+	t.Chdir(dir)
+	root := newRootCmd()
+	buf := new(bytes.Buffer)
+	root.SetOut(buf)
+	root.SetErr(buf)
+	root.SetArgs(args)
+	err := root.Execute()
+	return err //nolint:wrapcheck // test helper; caller checks for nil
+}
+
+func TestDiffCmd_GitRunnerInitError(t *testing.T) {
+	if err := runCmdOutsideRepo(t, "diff"); err == nil {
+		t.Fatal("expected error when not in a git repo, got nil")
+	}
+}
+
+func TestAddCmd_GitRunnerInitError(t *testing.T) {
+	if err := runCmdOutsideRepo(t, "add"); err == nil {
+		t.Fatal("expected error when not in a git repo, got nil")
+	}
+}
+
+func TestHunkAddCmd_GitRunnerInitError(t *testing.T) {
+	if err := runCmdOutsideRepo(t, "hunk-add"); err == nil {
+		t.Fatal("expected error when not in a git repo, got nil")
+	}
+}
+
+func TestLogCmd_GitRunnerInitError(t *testing.T) {
+	if err := runCmdOutsideRepo(t, "log"); err == nil {
+		t.Fatal("expected error when not in a git repo, got nil")
+	}
+}
+
+func TestFixupCmd_GitRunnerInitError(t *testing.T) {
+	if err := runCmdOutsideRepo(t, "fixup"); err == nil {
+		t.Fatal("expected error when not in a git repo, got nil")
+	}
+}
+
+func TestResetCmd_GitRunnerInitError(t *testing.T) {
+	if err := runCmdOutsideRepo(t, "reset"); err == nil {
+		t.Fatal("expected error when not in a git repo, got nil")
+	}
+}
+
+func TestCheckoutCmd_GitRunnerInitError(t *testing.T) {
+	if err := runCmdOutsideRepo(t, "checkout"); err == nil {
+		t.Fatal("expected error when not in a git repo, got nil")
+	}
+}
+
+func TestHunkResetCmd_GitRunnerInitError(t *testing.T) {
+	if err := runCmdOutsideRepo(t, "hunk-reset"); err == nil {
+		t.Fatal("expected error when not in a git repo, got nil")
+	}
+}
+
+func TestHunkCheckoutCmd_GitRunnerInitError(t *testing.T) {
+	if err := runCmdOutsideRepo(t, "hunk-checkout"); err == nil {
+		t.Fatal("expected error when not in a git repo, got nil")
+	}
+}
+
+func TestRebaseInteractiveCmd_GitRunnerInitError(t *testing.T) {
+	if err := runCmdOutsideRepo(t, "rebase-interactive"); err == nil {
+		t.Fatal("expected error when not in a git repo, got nil")
 	}
 }

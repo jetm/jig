@@ -530,9 +530,9 @@ func TestDiffModel_WKeyTogglesSoftWrap(t *testing.T) {
 	m.height = 40
 
 	m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
-	initial := m.diffView.SoftWrap()
+	initial := m.diff.SoftWrap()
 	m.Update(tea.KeyPressMsg{Code: 'w', Text: "w"})
-	if m.diffView.SoftWrap() == initial {
+	if m.diff.SoftWrap() == initial {
 		t.Error("w should toggle soft-wrap when right panel focused")
 	}
 }

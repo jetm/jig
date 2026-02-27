@@ -19,23 +19,15 @@ import (
 // It uses a HunkList component for checkbox-based hunk selection and working tree discard.
 // Discarding is irreversible, so a confirmation prompt is shown before applying.
 type HunkCheckoutModel struct {
+	twoPanelModel
+
 	ctx      context.Context
 	runner   git.Runner
 	renderer diff.Renderer
-	cfg      config.Config
 
 	files         []git.FileDiff
 	hunkList      components.HunkList
-	diffView      components.DiffView
-	statusBar     components.StatusBar
-	help          components.HelpOverlay
 	branch        string
-	width         int
-	height        int
-	panelRatio    int
-	focusRight    bool
-	showDiff      bool
-	diffMaximized bool
 	confirming    bool
 	filterPaths   []string
 	noMatchFilter bool
@@ -83,47 +75,46 @@ func NewHunkCheckoutModel(
 	hl.SetSelectionLabel("selected")
 
 	m := &HunkCheckoutModel{
+		twoPanelModel: newTwoPanelModel(
+			&hl,
+			components.NewDiffView(80, 20),
+			components.NewStatusBar(120),
+			components.NewHelpOverlay([]components.KeyGroup{
+				{
+					Name: "Navigation",
+					Bindings: []components.KeyBinding{
+						{Key: "j/k", Desc: "move between hunks"},
+						{Key: "Tab", Desc: "switch panel"},
+						{Key: "D", Desc: "toggle diff"},
+						{Key: "?", Desc: "toggle help"},
+					},
+				},
+				{
+					Name: "Actions",
+					Bindings: []components.KeyBinding{
+						{Key: "Space", Desc: "toggle hunk selected"},
+						{Key: "Enter", Desc: "discard selected hunks (with confirmation)"},
+						{Key: "w", Desc: "toggle soft-wrap (diff panel)"},
+						{Key: "F", Desc: "maximize diff panel"},
+						{Key: "q/Esc", Desc: "quit"},
+					},
+				},
+			}),
+			cfg,
+		),
 		ctx:           ctx,
 		runner:        runner,
 		renderer:      renderer,
-		cfg:           cfg,
 		files:         files,
 		hunkList:      hl,
 		filterPaths:   paths,
 		noMatchFilter: noMatch,
-		diffView:      components.NewDiffView(80, 20),
-		statusBar:     components.NewStatusBar(120),
-		help: components.NewHelpOverlay([]components.KeyGroup{
-			{
-				Name: "Navigation",
-				Bindings: []components.KeyBinding{
-					{Key: "j/k", Desc: "move between hunks"},
-					{Key: "Tab", Desc: "switch panel"},
-					{Key: "D", Desc: "toggle diff"},
-					{Key: "?", Desc: "toggle help"},
-				},
-			},
-			{
-				Name: "Actions",
-				Bindings: []components.KeyBinding{
-					{Key: "Space", Desc: "toggle hunk selected"},
-					{Key: "Enter", Desc: "discard selected hunks (with confirmation)"},
-					{Key: "w", Desc: "toggle soft-wrap (diff panel)"},
-					{Key: "F", Desc: "maximize diff panel"},
-					{Key: "q/Esc", Desc: "quit"},
-				},
-			},
-		}),
-		branch:     branchName,
-		panelRatio: cfg.PanelRatio,
+		branch:        branchName,
 	}
 
-	m.showDiff = cfg.ShowDiffPanel
-	m.diffView.SetSoftWrap(cfg.SoftWrap)
-
-	m.statusBar.SetHints(m.hintsForContext())
-	m.statusBar.SetBranch(branchName)
-	m.statusBar.SetMode("hunk-checkout")
+	m.status.SetHints(m.hintsForContext())
+	m.status.SetBranch(branchName)
+	m.status.SetMode("hunk-checkout")
 
 	if len(files) > 0 {
 		m.renderCurrentHunk()
@@ -134,7 +125,7 @@ func NewHunkCheckoutModel(
 
 // Update handles messages and returns commands.
 func (m *HunkCheckoutModel) Update(msg tea.Msg) tea.Cmd {
-	sbCmd := m.statusBar.Update(msg)
+	sbCmd := m.status.Update(msg)
 
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -153,62 +144,14 @@ func (m *HunkCheckoutModel) Update(msg tea.Msg) tea.Cmd {
 			return sbCmd
 		}
 
-		if msg.Code == tea.KeyTab {
-			if m.showDiff && !m.diffMaximized {
-				m.focusRight = !m.focusRight
-				m.statusBar.SetHints(m.hintsForContext())
+		if cmd, handled := m.handleKey(msg); handled {
+			if cmd != nil {
+				return cmd
 			}
-			return sbCmd
-		}
-
-		if msg.String() == "D" {
-			m.showDiff = !m.showDiff
-			if m.showDiff && len(m.files) > 0 {
+			if msg.String() == "D" && m.showDiff && len(m.files) > 0 {
 				m.renderCurrentHunk()
 			}
-			return sbCmd
-		}
-
-		if msg.String() == "F" {
-			if m.showDiff {
-				m.diffMaximized = !m.diffMaximized
-				m.statusBar.SetHints(m.hintsForContext())
-			}
-			return sbCmd
-		}
-
-		if msg.String() == "w" && m.focusRight {
-			m.diffView.SetSoftWrap(!m.diffView.SoftWrap())
-			return sbCmd
-		}
-
-		if msg.String() == "[" {
-			if m.panelRatio > 20 {
-				m.panelRatio -= 5
-				if m.panelRatio < 20 {
-					m.panelRatio = 20
-				}
-				m.cfg.PanelRatio = m.panelRatio
-				if err := config.Save(m.cfg); err != nil {
-					return m.statusBar.SetMessage(fmt.Sprintf("Config save failed: %v", err), components.Error)
-				}
-				m.resize()
-			}
-			return sbCmd
-		}
-
-		if msg.String() == "]" {
-			if m.panelRatio < 80 {
-				m.panelRatio += 5
-				if m.panelRatio > 80 {
-					m.panelRatio = 80
-				}
-				m.cfg.PanelRatio = m.panelRatio
-				if err := config.Save(m.cfg); err != nil {
-					return m.statusBar.SetMessage(fmt.Sprintf("Config save failed: %v", err), components.Error)
-				}
-				m.resize()
-			}
+			m.status.SetHints(m.hintsForContext())
 			return sbCmd
 		}
 
@@ -228,7 +171,7 @@ func (m *HunkCheckoutModel) Update(msg tea.Msg) tea.Cmd {
 		}
 
 		if m.focusRight {
-			dvCmd := m.diffView.Update(msg)
+			dvCmd := m.diff.Update(msg)
 			return tea.Batch(sbCmd, dvCmd)
 		}
 
@@ -269,75 +212,64 @@ func (m *HunkCheckoutModel) View() string {
 	case len(m.files) == 0:
 		background = "No working tree changes to discard."
 	default:
-		contentHeight := m.height - 1
-		m.statusBar.SetWidth(m.width)
-		m.statusBar.SetHints(m.hintsForContext())
-
-		promptStyle := lipgloss.NewStyle().
-			Foreground(tui.ColorYellow).
-			Bold(true)
-
-		switch {
-		case !m.showDiff:
-			panelW := m.width - 1
-			leftContent := m.renderLeftPanel(panelW, contentHeight)
-			leftPanel := tui.StyleFocusBorder.Width(panelW).Height(contentHeight).MaxHeight(contentHeight).Render(leftContent)
-			if m.confirming {
-				selected := m.hunkList.StagedHunks()
-				prompt := fmt.Sprintf("Discard %d hunk(s)? This cannot be undone. [y/N] ", len(selected))
-				background = leftPanel + "\n" + promptStyle.Render(prompt)
-			} else {
-				background = leftPanel + "\n" + m.statusBar.View()
-			}
-		case m.diffMaximized:
-			rightW := m.width - 1
-			m.diffView.SetWidth(rightW)
-			m.diffView.SetHeight(contentHeight)
-			rightPanel := tui.StyleFocusBorder.Width(rightW).Height(contentHeight).MaxHeight(contentHeight).Render(m.diffView.View())
-			if m.confirming {
-				selected := m.hunkList.StagedHunks()
-				prompt := fmt.Sprintf("Discard %d hunk(s)? This cannot be undone. [y/N] ", len(selected))
-				background = rightPanel + "\n" + promptStyle.Render(prompt)
-			} else {
-				background = rightPanel + "\n" + m.statusBar.View()
-			}
-		default:
-			leftW, rightW := tui.ColumnsFromConfig(m.width, m.panelRatio)
-
-			leftW--
-			rightW--
-
-			m.diffView.SetWidth(rightW)
-			m.diffView.SetHeight(contentHeight)
-
-			leftBorder, rightBorder := tui.StyleFocusBorder, tui.StyleDimBorder
-			if m.focusRight {
-				leftBorder, rightBorder = tui.StyleDimBorder, tui.StyleFocusBorder
-			}
-
-			leftContent := m.renderLeftPanel(leftW, contentHeight)
-			leftPanel := leftBorder.Width(leftW).Height(contentHeight).MaxHeight(contentHeight).Render(leftContent)
-			rightPanel := rightBorder.Width(rightW).Height(contentHeight).MaxHeight(contentHeight).Render(m.diffView.View())
-
-			panels := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
-			if m.confirming {
-				selected := m.hunkList.StagedHunks()
-				prompt := fmt.Sprintf("Discard %d hunk(s)? This cannot be undone. [y/N] ", len(selected))
-				background = panels + "\n" + promptStyle.Render(prompt)
-			} else {
-				background = panels + "\n" + m.statusBar.View()
-			}
+		m.left = &m.hunkList
+		m.status.SetHints(m.hintsForContext())
+		if m.confirming {
+			background = m.renderLayoutWithConfirm()
+		} else {
+			background = m.renderLayout()
 		}
 	}
 
 	return m.help.View(background, m.width, m.height)
 }
 
-// renderLeftPanel renders the hunk list at full panel height.
-func (m *HunkCheckoutModel) renderLeftPanel(width, height int) string {
-	m.hunkList.SetWidth(width)
-	m.hunkList.SetHeight(height)
-	return m.hunkList.View()
+// renderLayoutWithConfirm renders the layout with a confirmation prompt replacing the status bar.
+func (m *HunkCheckoutModel) renderLayoutWithConfirm() string {
+	contentHeight := m.height - 1
+	m.status.SetWidth(m.width)
+
+	selected := m.hunkList.StagedHunks()
+	prompt := fmt.Sprintf("Discard %d hunk(s)? This cannot be undone. [y/N] ", len(selected))
+	promptStyle := lipgloss.NewStyle().
+		Foreground(tui.ColorYellow).
+		Bold(true)
+	promptLine := promptStyle.Render(prompt)
+
+	switch {
+	case !m.showDiff:
+		panelW := m.width - 1
+		m.hunkList.SetWidth(panelW)
+		m.hunkList.SetHeight(contentHeight)
+		leftPanel := tui.StyleFocusBorder.Width(panelW).Height(contentHeight).MaxHeight(contentHeight).Render(m.hunkList.View())
+		return leftPanel + "\n" + promptLine
+	case m.diffMaximized:
+		rightW := m.width - 1
+		m.diff.SetWidth(rightW)
+		m.diff.SetHeight(contentHeight)
+		rightPanel := tui.StyleFocusBorder.Width(rightW).Height(contentHeight).MaxHeight(contentHeight).Render(m.diff.View())
+		return rightPanel + "\n" + promptLine
+	default:
+		leftW, rightW := tui.ColumnsFromConfig(m.width, m.panelRatio)
+		leftW--
+		rightW--
+
+		m.hunkList.SetWidth(leftW)
+		m.hunkList.SetHeight(contentHeight)
+		m.diff.SetWidth(rightW)
+		m.diff.SetHeight(contentHeight)
+
+		leftBorder, rightBorder := tui.StyleFocusBorder, tui.StyleDimBorder
+		if m.focusRight {
+			leftBorder, rightBorder = tui.StyleDimBorder, tui.StyleFocusBorder
+		}
+
+		leftPanel := leftBorder.Width(leftW).Height(contentHeight).MaxHeight(contentHeight).Render(m.hunkList.View())
+		rightPanel := rightBorder.Width(rightW).Height(contentHeight).MaxHeight(contentHeight).Render(m.diff.View())
+
+		panels := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
+		return panels + "\n" + promptLine
+	}
 }
 
 // hintsForContext returns status bar hints based on current context.
@@ -355,7 +287,7 @@ func (m *HunkCheckoutModel) hintsForContext() string {
 func (m *HunkCheckoutModel) renderCurrentHunk() {
 	hunk, ok := m.hunkList.CurrentHunk()
 	if !ok {
-		m.diffView.SetContent("(no hunks)")
+		m.diff.SetContent("(no hunks)")
 		return
 	}
 
@@ -364,7 +296,7 @@ func (m *HunkCheckoutModel) renderCurrentHunk() {
 	if err != nil {
 		rendered = raw
 	}
-	m.diffView.SetContent(rendered)
+	m.diff.SetContent(rendered)
 	m.prevFileIdx = m.hunkList.CurrentFileIdx()
 	m.prevHunkIdx = m.hunkList.CurrentHunkIdx()
 }
@@ -402,9 +334,9 @@ func (m *HunkCheckoutModel) applySelected() tea.Cmd {
 
 	if lastErr != nil {
 		if applied == 0 {
-			return m.statusBar.SetMessage(fmt.Sprintf("Discard failed: %v", lastErr), components.Error)
+			return m.status.SetMessage(fmt.Sprintf("Discard failed: %v", lastErr), components.Error)
 		}
-		_ = m.statusBar.SetMessage(fmt.Sprintf("Discard failed: %v", lastErr), components.Error)
+		_ = m.status.SetMessage(fmt.Sprintf("Discard failed: %v", lastErr), components.Error)
 	}
 
 	return func() tea.Msg {
@@ -417,34 +349,4 @@ func (m *HunkCheckoutModel) patchHeader(fd git.FileDiff) string {
 	oldPath := "a/" + fd.OldPath
 	newPath := "b/" + fd.NewPath
 	return fmt.Sprintf("diff --git %s %s\n--- %s\n+++ %s", oldPath, newPath, oldPath, newPath)
-}
-
-// resize recalculates component dimensions after a terminal resize.
-func (m *HunkCheckoutModel) resize() {
-	contentHeight := m.height - 1
-	m.statusBar.SetWidth(m.width)
-
-	if !m.showDiff {
-		panelW := m.width - 1
-		m.hunkList.SetWidth(panelW)
-		m.hunkList.SetHeight(contentHeight)
-		return
-	}
-
-	if m.diffMaximized {
-		rightW := m.width - 1
-		m.diffView.SetWidth(rightW)
-		m.diffView.SetHeight(contentHeight)
-		return
-	}
-
-	leftW, rightW := tui.ColumnsFromConfig(m.width, m.panelRatio)
-
-	leftW--
-	rightW--
-
-	m.hunkList.SetWidth(leftW)
-	m.hunkList.SetHeight(contentHeight)
-	m.diffView.SetWidth(rightW)
-	m.diffView.SetHeight(contentHeight)
 }

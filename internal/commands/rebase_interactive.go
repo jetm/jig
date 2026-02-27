@@ -7,7 +7,6 @@ import (
 
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 
 	"github.com/jetm/jig/internal/app"
 	"github.com/jetm/jig/internal/config"
@@ -63,30 +62,28 @@ func (r rebaseItem) FilterValue() string {
 	return r.entry.Hash + " " + r.entry.Subject
 }
 
+const (
+	rebaseHintsLeft     = "Space: action  K/J: reorder  w: write  Tab: panel  ?: help  q: quit"
+	rebaseHintsRight    = "W: wrap  F: maximize  Tab: panel  ?: help  q: quit"
+	rebaseHintsMaximize = "F: restore  ?: help  q: quit"
+)
+
 // RebaseInteractiveModel is the TUI model for interactive rebase.
 // It follows the child component pattern: Update returns tea.Cmd, View returns string.
 type RebaseInteractiveModel struct {
+	twoPanelModel
+
 	ctx      context.Context
 	runner   git.Runner
 	renderer diff.Renderer
-	cfg      config.Config
 
-	base          string
-	todoFilePath  string // non-empty = editor mode (invoked as $GIT_SEQUENCE_EDITOR)
-	entries       []git.RebaseTodoEntry
-	commitList    components.ItemList
-	diffView      components.DiffView
-	statusBar     components.StatusBar
-	help          components.HelpOverlay
-	branch        string
-	selectedIdx   int
-	width         int
-	height        int
-	panelRatio    int
-	contextLines  int
-	focusRight    bool
-	showDiff      bool
-	diffMaximized bool
+	base         string
+	todoFilePath string // non-empty = editor mode (invoked as $GIT_SEQUENCE_EDITOR)
+	entries      []git.RebaseTodoEntry
+	commitList   components.ItemList
+	branch       string
+	selectedIdx  int
+	contextLines int
 }
 
 // NewRebaseInteractiveModel creates a RebaseInteractiveModel.
@@ -128,71 +125,75 @@ func NewRebaseInteractiveModel(
 		items[i] = rebaseItem{entry: e}
 	}
 
+	commitList := components.NewCompactItemList(items, 40, 20)
+
 	m := &RebaseInteractiveModel{
+		twoPanelModel: newTwoPanelModel(
+			&commitList,
+			components.NewDiffView(80, 20),
+			components.NewStatusBar(120),
+			components.NewHelpOverlay([]components.KeyGroup{
+				{
+					Name: "Navigation",
+					Bindings: []components.KeyBinding{
+						{Key: "j/k or \u2191/\u2193", Desc: "move cursor"},
+						{Key: "Tab", Desc: "switch panel"},
+						{Key: "Ctrl+Up / K", Desc: "move commit up"},
+						{Key: "Ctrl+Down / J", Desc: "move commit down"},
+						{Key: "D", Desc: "toggle diff"},
+						{Key: "?", Desc: "toggle help"},
+					},
+				},
+				{
+					Name: "Actions",
+					Bindings: []components.KeyBinding{
+						{Key: "Space", Desc: "cycle action"},
+						{Key: "p", Desc: "pick"},
+						{Key: "r", Desc: "reword"},
+						{Key: "e", Desc: "edit"},
+						{Key: "s", Desc: "squash"},
+						{Key: "f", Desc: "fixup"},
+						{Key: "d", Desc: "drop"},
+						{Key: "w/Enter", Desc: "write & execute rebase"},
+						{Key: "W", Desc: "toggle soft-wrap (diff panel)"},
+						{Key: "F", Desc: "maximize diff panel"},
+						{Key: "q/Esc", Desc: "abort"},
+					},
+				},
+			}),
+			cfg,
+		),
 		ctx:          ctx,
 		runner:       runner,
 		renderer:     renderer,
-		cfg:          cfg,
 		base:         base,
 		todoFilePath: todoFilePath,
 		entries:      entries,
-		commitList:   components.NewCompactItemList(items, 40, 20),
-		diffView:     components.NewDiffView(80, 20),
-		statusBar:    components.NewStatusBar(120),
-		help: components.NewHelpOverlay([]components.KeyGroup{
-			{
-				Name: "Navigation",
-				Bindings: []components.KeyBinding{
-					{Key: "j/k or ↑/↓", Desc: "move cursor"},
-					{Key: "Tab", Desc: "switch panel"},
-					{Key: "Ctrl+Up / K", Desc: "move commit up"},
-					{Key: "Ctrl+Down / J", Desc: "move commit down"},
-					{Key: "D", Desc: "toggle diff"},
-					{Key: "?", Desc: "toggle help"},
-				},
-			},
-			{
-				Name: "Actions",
-				Bindings: []components.KeyBinding{
-					{Key: "Space", Desc: "cycle action"},
-					{Key: "p", Desc: "pick"},
-					{Key: "r", Desc: "reword"},
-					{Key: "e", Desc: "edit"},
-					{Key: "s", Desc: "squash"},
-					{Key: "f", Desc: "fixup"},
-					{Key: "d", Desc: "drop"},
-					{Key: "w/Enter", Desc: "write & execute rebase"},
-					{Key: "W", Desc: "toggle soft-wrap (diff panel)"},
-					{Key: "F", Desc: "maximize diff panel"},
-					{Key: "q/Esc", Desc: "abort"},
-				},
-			},
-		}),
+		commitList:   commitList,
 		branch:       branchName,
 		selectedIdx:  0,
-		panelRatio:   cfg.PanelRatio,
 		contextLines: cfg.DiffContext,
 	}
 
 	// Editor mode always starts with diff hidden; standalone reads from config.
-	if todoFilePath == "" {
-		m.showDiff = cfg.ShowDiffPanel
-		m.diffView.SetSoftWrap(cfg.SoftWrap)
-		if m.showDiff && len(entries) > 0 {
-			m.renderSelectedDiff()
-		}
+	if todoFilePath != "" {
+		m.showDiff = false
+	} else if m.showDiff && len(entries) > 0 {
+		m.renderSelectedDiff()
 	}
 
-	m.updateHints()
-	m.statusBar.SetBranch(branchName)
-	m.statusBar.SetMode("rebase-interactive")
+	m.setHints(rebaseHintsLeft, rebaseHintsRight, rebaseHintsMaximize)
+	m.status.SetBranch(branchName)
+	m.status.SetMode("rebase-interactive")
 
 	return m, nil
 }
 
 // Update handles messages and returns commands.
+// Note: rebase_interactive has custom Tab/w/W behavior, so it handles most keys
+// inline rather than delegating to twoPanelModel.handleKey.
 func (m *RebaseInteractiveModel) Update(msg tea.Msg) tea.Cmd {
-	sbCmd := m.statusBar.Update(msg)
+	sbCmd := m.status.Update(msg)
 
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -208,6 +209,7 @@ func (m *RebaseInteractiveModel) Update(msg tea.Msg) tea.Cmd {
 
 		switch msg.String() {
 		case "tab":
+			// Custom Tab: opens diff panel if hidden
 			if !m.showDiff {
 				m.showDiff = true
 				m.focusRight = true
@@ -284,7 +286,7 @@ func (m *RebaseInteractiveModel) Update(msg tea.Msg) tea.Cmd {
 
 		case "W":
 			if m.focusRight {
-				m.diffView.SetSoftWrap(!m.diffView.SoftWrap())
+				m.diff.SetSoftWrap(!m.diff.SoftWrap())
 			}
 			return sbCmd
 
@@ -307,32 +309,20 @@ func (m *RebaseInteractiveModel) Update(msg tea.Msg) tea.Cmd {
 			return sbCmd
 
 		case "[":
-			if m.panelRatio > 20 {
-				m.panelRatio -= 5
-				if m.panelRatio < 20 {
-					m.panelRatio = 20
+			if cmd, handled := m.handleKey(msg); handled {
+				if cmd != nil {
+					return cmd
 				}
-				m.cfg.PanelRatio = m.panelRatio
-				if err := config.Save(m.cfg); err != nil {
-					return m.statusBar.SetMessage(fmt.Sprintf("Config save failed: %v", err), components.Error)
-				}
-				m.resize()
+				return sbCmd
 			}
-			return sbCmd
 
 		case "]":
-			if m.panelRatio < 80 {
-				m.panelRatio += 5
-				if m.panelRatio > 80 {
-					m.panelRatio = 80
+			if cmd, handled := m.handleKey(msg); handled {
+				if cmd != nil {
+					return cmd
 				}
-				m.cfg.PanelRatio = m.panelRatio
-				if err := config.Save(m.cfg); err != nil {
-					return m.statusBar.SetMessage(fmt.Sprintf("Config save failed: %v", err), components.Error)
-				}
-				m.resize()
+				return sbCmd
 			}
-			return sbCmd
 
 		case "K":
 			m.moveUp()
@@ -352,7 +342,7 @@ func (m *RebaseInteractiveModel) Update(msg tea.Msg) tea.Cmd {
 		}
 
 		if m.focusRight {
-			dvCmd := m.diffView.Update(msg)
+			dvCmd := m.diff.Update(msg)
 			return tea.Batch(sbCmd, dvCmd)
 		}
 
@@ -376,45 +366,8 @@ func (m *RebaseInteractiveModel) View() string {
 	if len(m.entries) == 0 {
 		background = "No commits to rebase. Specify a valid base revision."
 	} else {
-		contentHeight := m.height - 1 // reserve 1 row for status bar
-		m.statusBar.SetWidth(m.width)
-
-		switch {
-		case !m.showDiff:
-			// Single-panel mode: left panel fills the full terminal width
-			panelW := m.width - 1
-			m.commitList.SetWidth(panelW)
-			m.commitList.SetHeight(contentHeight)
-			leftPanel := tui.StyleFocusBorder.Width(panelW).Height(contentHeight).MaxHeight(contentHeight).Render(m.commitList.View())
-			background = leftPanel + "\n" + m.statusBar.View()
-		case m.diffMaximized:
-			rightW := m.width - 1
-			m.diffView.SetWidth(rightW)
-			m.diffView.SetHeight(contentHeight)
-			rightPanel := tui.StyleFocusBorder.Width(rightW).Height(contentHeight).MaxHeight(contentHeight).Render(m.diffView.View())
-			background = rightPanel + "\n" + m.statusBar.View()
-		default:
-			leftW, rightW := tui.ColumnsFromConfig(m.width, m.panelRatio)
-
-			leftW--
-			rightW--
-
-			m.commitList.SetWidth(leftW)
-			m.commitList.SetHeight(contentHeight)
-			m.diffView.SetWidth(rightW)
-			m.diffView.SetHeight(contentHeight)
-
-			leftBorder, rightBorder := tui.StyleFocusBorder, tui.StyleDimBorder
-			if m.focusRight {
-				leftBorder, rightBorder = tui.StyleDimBorder, tui.StyleFocusBorder
-			}
-
-			leftPanel := leftBorder.Width(leftW).Height(contentHeight).MaxHeight(contentHeight).Render(m.commitList.View())
-			rightPanel := rightBorder.Width(rightW).Height(contentHeight).MaxHeight(contentHeight).Render(m.diffView.View())
-
-			panels := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
-			background = panels + "\n" + m.statusBar.View()
-		}
+		m.left = &m.commitList
+		background = m.renderLayout()
 	}
 
 	return m.help.View(background, m.width, m.height)
@@ -432,7 +385,7 @@ func (m *RebaseInteractiveModel) confirmRebase() tea.Cmd {
 		// Editor mode: write modified todo back to file
 		todo := git.FormatTodo(m.entries)
 		if err := os.WriteFile(m.todoFilePath, []byte(todo), 0o644); err != nil {
-			return m.statusBar.SetMessage(fmt.Sprintf("Write todo file: %v", err), components.Error)
+			return m.status.SetMessage(fmt.Sprintf("Write todo file: %v", err), components.Error)
 		}
 		return func() tea.Msg {
 			return app.PopModelMsg{MutatedGit: false}
@@ -442,7 +395,7 @@ func (m *RebaseInteractiveModel) confirmRebase() tea.Cmd {
 	// Standalone mode: execute rebase
 	err := git.ExecuteRebaseInteractive(m.ctx, m.runner, m.base, m.entries)
 	if err != nil {
-		return m.statusBar.SetMessage(fmt.Sprintf("Rebase failed: %v", err), components.Error)
+		return m.status.SetMessage(fmt.Sprintf("Rebase failed: %v", err), components.Error)
 	}
 	return func() tea.Msg {
 		return app.PopModelMsg{MutatedGit: true}
@@ -530,60 +483,12 @@ func (m *RebaseInteractiveModel) renderSelectedDiff() {
 	hash := m.entries[m.selectedIdx].Hash
 	raw, err := git.CommitDiff(m.ctx, m.runner, hash, m.contextLines)
 	if err != nil {
-		m.diffView.SetContent(fmt.Sprintf("(could not load diff: %v)", err))
+		m.diff.SetContent(fmt.Sprintf("(could not load diff: %v)", err))
 		return
 	}
 	rendered, err := m.renderer.Render(raw)
 	if err != nil {
 		rendered = raw
 	}
-	m.diffView.SetContent(rendered)
-}
-
-const (
-	rebaseHintsLeft     = "Space: action  K/J: reorder  w: write  Tab: panel  ?: help  q: quit"
-	rebaseHintsRight    = "W: wrap  F: maximize  Tab: panel  ?: help  q: quit"
-	rebaseHintsMaximize = "F: restore  ?: help  q: quit"
-)
-
-// updateHints sets the status bar hints based on the current focus and maximize state.
-func (m *RebaseInteractiveModel) updateHints() {
-	switch {
-	case m.diffMaximized:
-		m.statusBar.SetHints(rebaseHintsMaximize)
-	case m.focusRight:
-		m.statusBar.SetHints(rebaseHintsRight)
-	default:
-		m.statusBar.SetHints(rebaseHintsLeft)
-	}
-}
-
-// resize recalculates component dimensions after a terminal resize.
-func (m *RebaseInteractiveModel) resize() {
-	contentHeight := m.height - 1
-	m.statusBar.SetWidth(m.width)
-
-	if !m.showDiff {
-		panelW := m.width - 1
-		m.commitList.SetWidth(panelW)
-		m.commitList.SetHeight(contentHeight)
-		return
-	}
-
-	if m.diffMaximized {
-		rightW := m.width - 1
-		m.diffView.SetWidth(rightW)
-		m.diffView.SetHeight(contentHeight)
-		return
-	}
-
-	leftW, rightW := tui.ColumnsFromConfig(m.width, m.panelRatio)
-
-	leftW--
-	rightW--
-
-	m.commitList.SetWidth(leftW)
-	m.commitList.SetHeight(contentHeight)
-	m.diffView.SetWidth(rightW)
-	m.diffView.SetHeight(contentHeight)
+	m.diff.SetContent(rendered)
 }

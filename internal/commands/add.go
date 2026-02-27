@@ -6,7 +6,6 @@ import (
 	"os/exec"
 
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 
 	"github.com/jetm/jig/internal/app"
 	"github.com/jetm/jig/internal/config"
@@ -17,26 +16,24 @@ import (
 	"github.com/jetm/jig/internal/tui/components"
 )
 
+const (
+	addHintsLeft     = "Tab: panel  Enter: stage  c: commit  D: diff  ?: help  q: quit"
+	addHintsRight    = "w: wrap  F: maximize  Tab: panel  ?: help  q: quit"
+	addHintsMaximize = "F: restore  ?: help  q: quit"
+)
+
 // AddModel is the command model for the add TUI (interactive staging).
 // It follows the child component pattern: Update returns tea.Cmd, View returns string.
 type AddModel struct {
+	twoPanelModel
+
 	ctx           context.Context
 	runner        git.Runner
 	renderer      diff.Renderer
-	cfg           config.Config
 	files         []git.StatusFile
 	fileList      components.FileList
-	diffView      components.DiffView
-	statusBar     components.StatusBar
-	help          components.HelpOverlay
 	branch        string
-	width         int
-	height        int
-	panelRatio    int
 	contextLines  int
-	focusRight    bool
-	showDiff      bool
-	diffMaximized bool
 	filterPaths   []string // optional paths to filter the file list
 	noMatchFilter bool     // true when filterPaths produced no matching changes
 }
@@ -67,54 +64,55 @@ func NewAddModel(
 
 	noMatch := len(filterPaths) > 0 && len(filterPaths[0]) > 0 && len(files) == 0
 
+	fileList := components.NewFileList(entries, true)
+
 	m := &AddModel{
+		twoPanelModel: newTwoPanelModel(
+			&fileList,
+			components.NewDiffView(80, 20),
+			components.NewStatusBar(120),
+			components.NewHelpOverlay([]components.KeyGroup{
+				{
+					Name: "Navigation",
+					Bindings: []components.KeyBinding{
+						{Key: "j/k", Desc: "move up/down"},
+						{Key: "o", Desc: "expand/collapse"},
+						{Key: "Tab", Desc: "switch panel"},
+						{Key: "D", Desc: "toggle diff"},
+						{Key: "Space", Desc: "toggle selection"},
+						{Key: "a", Desc: "select all"},
+						{Key: "d", Desc: "deselect all"},
+						{Key: "?", Desc: "toggle help"},
+					},
+				},
+				{
+					Name: "Actions",
+					Bindings: []components.KeyBinding{
+						{Key: "Enter", Desc: "stage selected files"},
+						{Key: "c", Desc: "stage and commit"},
+						{Key: "C", Desc: "stage and commit (title only)"},
+						{Key: "w", Desc: "toggle soft-wrap (diff panel)"},
+						{Key: "F", Desc: "maximize diff panel"},
+						{Key: "q/Esc", Desc: "quit without staging"},
+					},
+				},
+			}),
+			cfg,
+		),
 		ctx:           ctx,
 		runner:        runner,
 		renderer:      renderer,
-		cfg:           cfg,
 		files:         files,
-		fileList:      components.NewFileList(entries, true),
+		fileList:      fileList,
 		filterPaths:   paths,
 		noMatchFilter: noMatch,
-		diffView:      components.NewDiffView(80, 20),
-		statusBar:     components.NewStatusBar(120),
-		help: components.NewHelpOverlay([]components.KeyGroup{
-			{
-				Name: "Navigation",
-				Bindings: []components.KeyBinding{
-					{Key: "j/k", Desc: "move up/down"},
-					{Key: "o", Desc: "expand/collapse"},
-					{Key: "Tab", Desc: "switch panel"},
-					{Key: "D", Desc: "toggle diff"},
-					{Key: "Space", Desc: "toggle selection"},
-					{Key: "a", Desc: "select all"},
-					{Key: "d", Desc: "deselect all"},
-					{Key: "?", Desc: "toggle help"},
-				},
-			},
-			{
-				Name: "Actions",
-				Bindings: []components.KeyBinding{
-					{Key: "Enter", Desc: "stage selected files"},
-					{Key: "c", Desc: "stage and commit"},
-					{Key: "C", Desc: "stage and commit (title only)"},
-					{Key: "w", Desc: "toggle soft-wrap (diff panel)"},
-					{Key: "F", Desc: "maximize diff panel"},
-					{Key: "q/Esc", Desc: "quit without staging"},
-				},
-			},
-		}),
-		branch:       branchName,
-		panelRatio:   cfg.PanelRatio,
-		contextLines: cfg.DiffContext,
+		branch:        branchName,
+		contextLines:  cfg.DiffContext,
 	}
 
-	m.showDiff = cfg.ShowDiffPanel
-	m.diffView.SetSoftWrap(cfg.SoftWrap)
-
-	m.updateHints()
-	m.statusBar.SetBranch(branchName)
-	m.statusBar.SetMode("add")
+	m.setHints(addHintsLeft, addHintsRight, addHintsMaximize)
+	m.status.SetBranch(branchName)
+	m.status.SetMode("add")
 
 	if len(files) > 0 && m.showDiff {
 		m.renderSelectedDiff()
@@ -125,12 +123,12 @@ func NewAddModel(
 
 // Update handles messages.
 func (m *AddModel) Update(msg tea.Msg) tea.Cmd {
-	sbCmd := m.statusBar.Update(msg)
+	sbCmd := m.status.Update(msg)
 
 	switch msg := msg.(type) {
 	case CommitDoneMsg:
 		if msg.Err != nil {
-			_ = m.statusBar.SetMessage("Commit aborted", components.Info)
+			_ = m.status.SetMessage("Commit aborted", components.Info)
 			m.refreshFiles()
 			return sbCmd
 		}
@@ -140,11 +138,11 @@ func (m *AddModel) Update(msg tea.Msg) tea.Cmd {
 
 	case editor.EditDiffMsg:
 		if msg.Err != nil {
-			_ = m.statusBar.SetMessage(fmt.Sprintf("Edit failed: %v", msg.Err), components.Error)
+			_ = m.status.SetMessage(fmt.Sprintf("Edit failed: %v", msg.Err), components.Error)
 			return sbCmd
 		}
 		if err := editor.ApplyEditedDiff(m.ctx, m.runner, msg.OriginalDiff, msg.EditedPath); err != nil {
-			_ = m.statusBar.SetMessage(fmt.Sprintf("Apply failed: %v", err), components.Error)
+			_ = m.status.SetMessage(fmt.Sprintf("Apply failed: %v", err), components.Error)
 			return sbCmd
 		}
 		m.renderSelectedDiff()
@@ -161,32 +159,13 @@ func (m *AddModel) Update(msg tea.Msg) tea.Cmd {
 			return sbCmd
 		}
 
-		if msg.Code == tea.KeyTab {
-			if m.showDiff && !m.diffMaximized {
-				m.focusRight = !m.focusRight
-				m.updateHints()
+		if cmd, handled := m.handleKey(msg); handled {
+			if cmd != nil {
+				return cmd
 			}
-			return sbCmd
-		}
-
-		if msg.String() == "D" {
-			m.showDiff = !m.showDiff
-			if m.showDiff && len(m.files) > 0 {
+			if msg.String() == "D" && m.showDiff && len(m.files) > 0 {
 				m.renderSelectedDiff()
 			}
-			return sbCmd
-		}
-
-		if msg.String() == "F" {
-			if m.showDiff {
-				m.diffMaximized = !m.diffMaximized
-				m.updateHints()
-			}
-			return sbCmd
-		}
-
-		if msg.String() == "w" && m.focusRight {
-			m.diffView.SetSoftWrap(!m.diffView.SoftWrap())
 			return sbCmd
 		}
 
@@ -197,7 +176,7 @@ func (m *AddModel) Update(msg tea.Msg) tea.Cmd {
 			}
 			rawDiff, err := m.runner.Run(m.ctx, "diff", "--", path)
 			if err != nil || rawDiff == "" {
-				_ = m.statusBar.SetMessage("No diff to edit", components.Info)
+				_ = m.status.SetMessage("No diff to edit", components.Info)
 				return sbCmd
 			}
 			return editor.EditDiff(m.ctx, m.runner, rawDiff)
@@ -215,36 +194,6 @@ func (m *AddModel) Update(msg tea.Msg) tea.Cmd {
 			if m.contextLines < 20 {
 				m.contextLines++
 				m.renderSelectedDiff()
-			}
-			return sbCmd
-		}
-
-		if msg.String() == "[" {
-			if m.panelRatio > 20 {
-				m.panelRatio -= 5
-				if m.panelRatio < 20 {
-					m.panelRatio = 20
-				}
-				m.cfg.PanelRatio = m.panelRatio
-				if err := config.Save(m.cfg); err != nil {
-					return m.statusBar.SetMessage(fmt.Sprintf("Config save failed: %v", err), components.Error)
-				}
-				m.resize()
-			}
-			return sbCmd
-		}
-
-		if msg.String() == "]" {
-			if m.panelRatio < 80 {
-				m.panelRatio += 5
-				if m.panelRatio > 80 {
-					m.panelRatio = 80
-				}
-				m.cfg.PanelRatio = m.panelRatio
-				if err := config.Save(m.cfg); err != nil {
-					return m.statusBar.SetMessage(fmt.Sprintf("Config save failed: %v", err), components.Error)
-				}
-				m.resize()
 			}
 			return sbCmd
 		}
@@ -280,7 +229,7 @@ func (m *AddModel) Update(msg tea.Msg) tea.Cmd {
 		}
 
 		if m.focusRight {
-			dvCmd := m.diffView.Update(msg)
+			dvCmd := m.diff.Update(msg)
 			return tea.Batch(sbCmd, dvCmd)
 		}
 
@@ -306,44 +255,8 @@ func (m *AddModel) View() string {
 	case len(m.files) == 0:
 		background = "Nothing to stage."
 	default:
-		contentHeight := m.height - 1
-		m.statusBar.SetWidth(m.width)
-
-		switch {
-		case !m.showDiff:
-			panelW := m.width - 1
-			m.fileList.SetWidth(panelW)
-			m.fileList.SetHeight(contentHeight)
-			leftPanel := tui.StyleFocusBorder.Width(panelW).Height(contentHeight).MaxHeight(contentHeight).Render(m.fileList.View())
-			background = leftPanel + "\n" + m.statusBar.View()
-		case m.diffMaximized:
-			rightW := m.width - 1
-			m.diffView.SetWidth(rightW)
-			m.diffView.SetHeight(contentHeight)
-			rightPanel := tui.StyleFocusBorder.Width(rightW).Height(contentHeight).MaxHeight(contentHeight).Render(m.diffView.View())
-			background = rightPanel + "\n" + m.statusBar.View()
-		default:
-			leftW, rightW := tui.ColumnsFromConfig(m.width, m.panelRatio)
-
-			leftW--
-			rightW--
-
-			m.fileList.SetWidth(leftW)
-			m.fileList.SetHeight(contentHeight)
-			m.diffView.SetWidth(rightW)
-			m.diffView.SetHeight(contentHeight)
-
-			leftBorder, rightBorder := tui.StyleFocusBorder, tui.StyleDimBorder
-			if m.focusRight {
-				leftBorder, rightBorder = tui.StyleDimBorder, tui.StyleFocusBorder
-			}
-
-			leftPanel := leftBorder.Width(leftW).Height(contentHeight).MaxHeight(contentHeight).Render(m.fileList.View())
-			rightPanel := rightBorder.Width(rightW).Height(contentHeight).MaxHeight(contentHeight).Render(m.diffView.View())
-
-			panels := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
-			background = panels + "\n" + m.statusBar.View()
-		}
+		m.left = &m.fileList
+		background = m.renderLayout()
 	}
 
 	return m.help.View(background, m.width, m.height)
@@ -371,7 +284,7 @@ func (m *AddModel) stageSelected() tea.Cmd {
 		return nil
 	}
 	if err := git.StageFiles(m.ctx, m.runner, paths); err != nil {
-		return m.statusBar.SetMessage(fmt.Sprintf("Stage failed: %v", err), components.Error)
+		return m.status.SetMessage(fmt.Sprintf("Stage failed: %v", err), components.Error)
 	}
 	return func() tea.Msg {
 		return app.PopModelMsg{MutatedGit: true}
@@ -397,7 +310,7 @@ func (m *AddModel) renderSelectedDiff() {
 		raw, err = m.runner.Run(m.ctx, "diff", contextArg, "--", path)
 	}
 	if err != nil || raw == "" {
-		m.diffView.SetContent("(no diff available)")
+		m.diff.SetContent("(no diff available)")
 		return
 	}
 
@@ -405,7 +318,7 @@ func (m *AddModel) renderSelectedDiff() {
 	if err != nil {
 		rendered = raw
 	}
-	m.diffView.SetContent(rendered)
+	m.diff.SetContent(rendered)
 }
 
 // findFile returns the StatusFile for the given path, or nil.
@@ -429,24 +342,6 @@ func (m *AddModel) isTracked(path string) bool {
 	return false
 }
 
-const (
-	addHintsLeft     = "Tab: panel  Enter: stage  c: commit  D: diff  ?: help  q: quit"
-	addHintsRight    = "w: wrap  F: maximize  Tab: panel  ?: help  q: quit"
-	addHintsMaximize = "F: restore  ?: help  q: quit"
-)
-
-// updateHints sets the status bar hints based on the current focus and maximize state.
-func (m *AddModel) updateHints() {
-	switch {
-	case m.diffMaximized:
-		m.statusBar.SetHints(addHintsMaximize)
-	case m.focusRight:
-		m.statusBar.SetHints(addHintsRight)
-	default:
-		m.statusBar.SetHints(addHintsLeft)
-	}
-}
-
 // execCommit stages selected files and launches devtool commit as a subprocess.
 // If titleOnly is true, passes -t for a title-only commit message.
 // Returns nil if staging fails (error shown in status bar).
@@ -456,7 +351,7 @@ func (m *AddModel) execCommit(titleOnly bool) tea.Cmd {
 		return nil
 	}
 	if err := git.StageFiles(m.ctx, m.runner, paths); err != nil {
-		_ = m.statusBar.SetMessage(fmt.Sprintf("Stage failed: %v", err), components.Error)
+		_ = m.status.SetMessage(fmt.Sprintf("Stage failed: %v", err), components.Error)
 		return nil
 	}
 	args := []string{"commit"}
@@ -480,39 +375,10 @@ func (m *AddModel) refreshFiles() {
 		entries[i] = components.FileEntry{Path: f.Path, Status: f.Status}
 	}
 	m.fileList = components.NewFileList(entries, true)
+	m.left = &m.fileList
 
 	if len(files) > 0 && m.showDiff {
 		m.renderSelectedDiff()
 	}
 	m.resize()
-}
-
-// resize recalculates component dimensions after a terminal resize.
-func (m *AddModel) resize() {
-	contentHeight := m.height - 1
-	m.statusBar.SetWidth(m.width)
-
-	if !m.showDiff {
-		panelW := m.width - 1
-		m.fileList.SetWidth(panelW)
-		m.fileList.SetHeight(contentHeight)
-		return
-	}
-
-	if m.diffMaximized {
-		rightW := m.width - 1
-		m.diffView.SetWidth(rightW)
-		m.diffView.SetHeight(contentHeight)
-		return
-	}
-
-	leftW, rightW := tui.ColumnsFromConfig(m.width, m.panelRatio)
-
-	leftW--
-	rightW--
-
-	m.fileList.SetWidth(leftW)
-	m.fileList.SetHeight(contentHeight)
-	m.diffView.SetWidth(rightW)
-	m.diffView.SetHeight(contentHeight)
 }

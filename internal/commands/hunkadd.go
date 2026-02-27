@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 
 	"github.com/jetm/jig/internal/app"
 	"github.com/jetm/jig/internal/config"
@@ -22,10 +21,11 @@ import (
 // It uses a HunkList component for checkbox-based hunk selection and batch staging.
 // Supports two phases: hunk list (default) and line-level editing (via Enter on a hunk).
 type HunkAddModel struct {
+	twoPanelModel
+
 	ctx      context.Context
 	runner   git.Runner
 	renderer diff.Renderer
-	cfg      config.Config
 
 	files         []git.FileDiff
 	hunkList      components.HunkList
@@ -33,16 +33,7 @@ type HunkAddModel struct {
 	inLineEdit    bool
 	lineEditFile  int // file index of the hunk being line-edited
 	lineEditHunk  int // hunk index within file being line-edited
-	diffView      components.DiffView
-	statusBar     components.StatusBar
-	help          components.HelpOverlay
 	branch        string
-	width         int
-	height        int
-	panelRatio    int
-	focusRight    bool
-	showDiff      bool
-	diffMaximized bool
 	contextLines  int
 	filterPaths   []string
 	noMatchFilter bool
@@ -86,62 +77,63 @@ func NewHunkAddModel(
 
 	noMatch := len(filterPaths) > 0 && len(filterPaths[0]) > 0 && len(files) == 0
 
+	hl := components.NewHunkList(files, hunks)
+
 	m := &HunkAddModel{
+		twoPanelModel: newTwoPanelModel(
+			&hl,
+			components.NewDiffView(80, 20),
+			components.NewStatusBar(120),
+			components.NewHelpOverlay([]components.KeyGroup{
+				{
+					Name: "Navigation",
+					Bindings: []components.KeyBinding{
+						{Key: "j/k", Desc: "move between hunks"},
+						{Key: "Tab", Desc: "switch panel"},
+						{Key: "D", Desc: "toggle diff"},
+						{Key: "?", Desc: "toggle help"},
+					},
+				},
+				{
+					Name: "Hunk Actions",
+					Bindings: []components.KeyBinding{
+						{Key: "Space", Desc: "toggle hunk staged"},
+						{Key: "Enter", Desc: "edit lines in hunk"},
+						{Key: "w", Desc: "apply staged hunks"},
+						{Key: "c", Desc: "stage and commit"},
+						{Key: "C", Desc: "stage and commit (title only)"},
+						{Key: "s", Desc: "split hunk"},
+						{Key: "e", Desc: "edit hunk in editor"},
+						{Key: "F", Desc: "maximize diff panel"},
+						{Key: "q/Esc", Desc: "quit"},
+					},
+				},
+				{
+					Name: "Line Edit",
+					Bindings: []components.KeyBinding{
+						{Key: "j/k", Desc: "move between lines"},
+						{Key: "Space", Desc: "toggle line selection"},
+						{Key: "u", Desc: "undo last toggle"},
+						{Key: "Esc", Desc: "back to hunk list"},
+					},
+				},
+			}),
+			cfg,
+		),
 		ctx:           ctx,
 		runner:        runner,
 		renderer:      renderer,
-		cfg:           cfg,
 		files:         files,
-		hunkList:      components.NewHunkList(files, hunks),
+		hunkList:      hl,
 		contextLines:  cfg.DiffContext,
 		filterPaths:   paths,
 		noMatchFilter: noMatch,
-		diffView:      components.NewDiffView(80, 20),
-		statusBar:     components.NewStatusBar(120),
-		help: components.NewHelpOverlay([]components.KeyGroup{
-			{
-				Name: "Navigation",
-				Bindings: []components.KeyBinding{
-					{Key: "j/k", Desc: "move between hunks"},
-					{Key: "Tab", Desc: "switch panel"},
-					{Key: "D", Desc: "toggle diff"},
-					{Key: "?", Desc: "toggle help"},
-				},
-			},
-			{
-				Name: "Hunk Actions",
-				Bindings: []components.KeyBinding{
-					{Key: "Space", Desc: "toggle hunk staged"},
-					{Key: "Enter", Desc: "edit lines in hunk"},
-					{Key: "w", Desc: "apply staged hunks"},
-					{Key: "c", Desc: "stage and commit"},
-					{Key: "C", Desc: "stage and commit (title only)"},
-					{Key: "s", Desc: "split hunk"},
-					{Key: "e", Desc: "edit hunk in editor"},
-					{Key: "F", Desc: "maximize diff panel"},
-					{Key: "q/Esc", Desc: "quit"},
-				},
-			},
-			{
-				Name: "Line Edit",
-				Bindings: []components.KeyBinding{
-					{Key: "j/k", Desc: "move between lines"},
-					{Key: "Space", Desc: "toggle line selection"},
-					{Key: "u", Desc: "undo last toggle"},
-					{Key: "Esc", Desc: "back to hunk list"},
-				},
-			},
-		}),
-		branch:     branchName,
-		panelRatio: cfg.PanelRatio,
+		branch:        branchName,
 	}
 
-	m.showDiff = cfg.ShowDiffPanel
-	m.diffView.SetSoftWrap(cfg.SoftWrap)
-
-	m.statusBar.SetHints(m.hintsForContext())
-	m.statusBar.SetBranch(branchName)
-	m.statusBar.SetMode("hunk-add")
+	m.status.SetHints(m.hintsForContext())
+	m.status.SetBranch(branchName)
+	m.status.SetMode("hunk-add")
 
 	if len(files) > 0 {
 		m.renderCurrentHunk()
@@ -151,13 +143,15 @@ func NewHunkAddModel(
 }
 
 // Update handles messages and returns commands.
+// Note: hunkadd has custom 'w' behavior (apply staged hunks when not focusRight),
+// so it handles 'w' before delegating to twoPanelModel.handleKey.
 func (m *HunkAddModel) Update(msg tea.Msg) tea.Cmd {
-	sbCmd := m.statusBar.Update(msg)
+	sbCmd := m.status.Update(msg)
 
 	switch msg := msg.(type) {
 	case CommitDoneMsg:
 		if msg.Err != nil {
-			_ = m.statusBar.SetMessage("Commit aborted", components.Info)
+			_ = m.status.SetMessage("Commit aborted", components.Info)
 			m.refreshHunks()
 			return sbCmd
 		}
@@ -167,11 +161,11 @@ func (m *HunkAddModel) Update(msg tea.Msg) tea.Cmd {
 
 	case editor.EditDiffMsg:
 		if msg.Err != nil {
-			_ = m.statusBar.SetMessage(fmt.Sprintf("Edit failed: %v", msg.Err), components.Error)
+			_ = m.status.SetMessage(fmt.Sprintf("Edit failed: %v", msg.Err), components.Error)
 			return sbCmd
 		}
 		if err := editor.ApplyEditedDiff(m.ctx, m.runner, msg.OriginalDiff, msg.EditedPath); err != nil {
-			_ = m.statusBar.SetMessage(fmt.Sprintf("Apply failed: %v", err), components.Error)
+			_ = m.status.SetMessage(fmt.Sprintf("Apply failed: %v", err), components.Error)
 			return sbCmd
 		}
 		m.renderCurrentHunk()
@@ -193,32 +187,22 @@ func (m *HunkAddModel) Update(msg tea.Msg) tea.Cmd {
 			return sbCmd
 		}
 
-		if msg.Code == tea.KeyTab {
-			if m.showDiff && !m.diffMaximized {
-				m.focusRight = !m.focusRight
-				m.statusBar.SetHints(m.hintsForContext())
+		// Handle 'w' before twoPanelModel - hunkadd uses 'w' for apply (not soft-wrap)
+		if msg.String() == "w" {
+			if !m.focusRight {
+				return m.applyStaged()
 			}
-			return sbCmd
+			// When focusRight, fall through to twoPanelModel for soft-wrap toggle
 		}
 
-		if msg.String() == "D" {
-			m.showDiff = !m.showDiff
-			if m.showDiff && len(m.files) > 0 {
+		if cmd, handled := m.handleKey(msg); handled {
+			if cmd != nil {
+				return cmd
+			}
+			if msg.String() == "D" && m.showDiff && len(m.files) > 0 {
 				m.renderCurrentHunk()
 			}
-			return sbCmd
-		}
-
-		if msg.String() == "F" {
-			if m.showDiff {
-				m.diffMaximized = !m.diffMaximized
-				m.statusBar.SetHints(m.hintsForContext())
-			}
-			return sbCmd
-		}
-
-		if msg.String() == "w" && m.focusRight {
-			m.diffView.SetSoftWrap(!m.diffView.SoftWrap())
+			m.status.SetHints(m.hintsForContext())
 			return sbCmd
 		}
 
@@ -248,36 +232,6 @@ func (m *HunkAddModel) Update(msg tea.Msg) tea.Cmd {
 			return sbCmd
 		}
 
-		if msg.String() == "[" {
-			if m.panelRatio > 20 {
-				m.panelRatio -= 5
-				if m.panelRatio < 20 {
-					m.panelRatio = 20
-				}
-				m.cfg.PanelRatio = m.panelRatio
-				if err := config.Save(m.cfg); err != nil {
-					return m.statusBar.SetMessage(fmt.Sprintf("Config save failed: %v", err), components.Error)
-				}
-				m.resize()
-			}
-			return sbCmd
-		}
-
-		if msg.String() == "]" {
-			if m.panelRatio < 80 {
-				m.panelRatio += 5
-				if m.panelRatio > 80 {
-					m.panelRatio = 80
-				}
-				m.cfg.PanelRatio = m.panelRatio
-				if err := config.Save(m.cfg); err != nil {
-					return m.statusBar.SetMessage(fmt.Sprintf("Config save failed: %v", err), components.Error)
-				}
-				m.resize()
-			}
-			return sbCmd
-		}
-
 		if msg.String() == "c" {
 			return m.execCommit(false)
 		}
@@ -301,18 +255,13 @@ func (m *HunkAddModel) Update(msg tea.Msg) tea.Cmd {
 			m.enterLineEdit()
 			return sbCmd
 
-		case 'w':
-			if !m.focusRight {
-				return m.applyStaged()
-			}
-
 		case 's':
 			m.splitCurrentHunk()
 			return sbCmd
 		}
 
 		if m.focusRight {
-			dvCmd := m.diffView.Update(msg)
+			dvCmd := m.diff.Update(msg)
 			return tea.Batch(sbCmd, dvCmd)
 		}
 
@@ -339,58 +288,44 @@ func (m *HunkAddModel) View() string {
 	case len(m.files) == 0:
 		background = "No unstaged changes to stage."
 	default:
-		contentHeight := m.height - 1
-		m.statusBar.SetWidth(m.width)
-		m.statusBar.SetHints(m.hintsForContext())
-
-		switch {
-		case !m.showDiff:
-			panelW := m.width - 1
-			leftContent := m.renderLeftPanel(panelW, contentHeight)
-			leftPanel := tui.StyleFocusBorder.Width(panelW).Height(contentHeight).MaxHeight(contentHeight).Render(leftContent)
-			background = leftPanel + "\n" + m.statusBar.View()
-		case m.diffMaximized:
-			rightW := m.width - 1
-			m.diffView.SetWidth(rightW)
-			m.diffView.SetHeight(contentHeight)
-			rightPanel := tui.StyleFocusBorder.Width(rightW).Height(contentHeight).MaxHeight(contentHeight).Render(m.diffView.View())
-			background = rightPanel + "\n" + m.statusBar.View()
-		default:
-			leftW, rightW := tui.ColumnsFromConfig(m.width, m.panelRatio)
-
-			leftW--
-			rightW--
-
-			m.diffView.SetWidth(rightW)
-			m.diffView.SetHeight(contentHeight)
-
-			leftBorder, rightBorder := tui.StyleFocusBorder, tui.StyleDimBorder
-			if m.focusRight {
-				leftBorder, rightBorder = tui.StyleDimBorder, tui.StyleFocusBorder
-			}
-
-			leftContent := m.renderLeftPanel(leftW, contentHeight)
-			leftPanel := leftBorder.Width(leftW).Height(contentHeight).MaxHeight(contentHeight).Render(leftContent)
-			rightPanel := rightBorder.Width(rightW).Height(contentHeight).MaxHeight(contentHeight).Render(m.diffView.View())
-
-			panels := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
-			background = panels + "\n" + m.statusBar.View()
-		}
+		m.status.SetHints(m.hintsForContext())
+		// Use custom left panel rendering for line-edit mode
+		m.left = &hunkAddLeftPanel{m: m}
+		background = m.renderLayout()
 	}
 
 	return m.help.View(background, m.width, m.height)
 }
 
-// renderLeftPanel renders the hunk list or hunk view at full panel height.
-func (m *HunkAddModel) renderLeftPanel(width, height int) string {
-	if m.inLineEdit && m.hunkView != nil {
-		m.hunkView.SetWidth(width)
-		m.hunkView.SetHeight(height)
-		return m.hunkView.View()
+// hunkAddLeftPanel wraps the HunkAddModel's left panel logic to satisfy tui.LeftPanel.
+// It renders either the HunkView (in line-edit mode) or the HunkList.
+type hunkAddLeftPanel struct {
+	m *HunkAddModel
+}
+
+func (p *hunkAddLeftPanel) View() string {
+	if p.m.inLineEdit && p.m.hunkView != nil {
+		return p.m.hunkView.View()
 	}
-	m.hunkList.SetWidth(width)
-	m.hunkList.SetHeight(height)
-	return m.hunkList.View()
+	return p.m.hunkList.View()
+}
+
+func (p *hunkAddLeftPanel) SetWidth(w int) {
+	if p.m.inLineEdit && p.m.hunkView != nil {
+		p.m.hunkView.SetWidth(w)
+	}
+	p.m.hunkList.SetWidth(w)
+}
+
+func (p *hunkAddLeftPanel) SetHeight(h int) {
+	if p.m.inLineEdit && p.m.hunkView != nil {
+		p.m.hunkView.SetHeight(h)
+	}
+	p.m.hunkList.SetHeight(h)
+}
+
+func (p *hunkAddLeftPanel) Update(msg tea.Msg) tea.Cmd {
+	return p.m.hunkList.Update(msg)
 }
 
 // hintsForContext returns status bar hints based on current context.
@@ -418,7 +353,7 @@ func (m *HunkAddModel) enterLineEdit() {
 	m.inLineEdit = true
 	m.lineEditFile = m.hunkList.CurrentFileIdx()
 	m.lineEditHunk = m.hunkList.CurrentHunkIdx()
-	m.statusBar.SetHints(m.hintsForContext())
+	m.status.SetHints(m.hintsForContext())
 }
 
 // exitLineEdit returns from line-level editing to the hunk list,
@@ -439,7 +374,7 @@ func (m *HunkAddModel) exitLineEdit() {
 	}
 	m.hunkView = nil
 	m.inLineEdit = false
-	m.statusBar.SetHints(m.hintsForContext())
+	m.status.SetHints(m.hintsForContext())
 	m.renderCurrentHunk()
 }
 
@@ -468,7 +403,7 @@ func (m *HunkAddModel) updateLineEdit(msg tea.KeyPressMsg, sbCmd tea.Cmd) tea.Cm
 func (m *HunkAddModel) renderCurrentHunk() {
 	hunk, ok := m.hunkList.CurrentHunk()
 	if !ok {
-		m.diffView.SetContent("(no hunks)")
+		m.diff.SetContent("(no hunks)")
 		return
 	}
 
@@ -477,7 +412,7 @@ func (m *HunkAddModel) renderCurrentHunk() {
 	if err != nil {
 		rendered = raw
 	}
-	m.diffView.SetContent(rendered)
+	m.diff.SetContent(rendered)
 	m.prevFileIdx = m.hunkList.CurrentFileIdx()
 	m.prevHunkIdx = m.hunkList.CurrentHunkIdx()
 }
@@ -515,9 +450,9 @@ func (m *HunkAddModel) applyStaged() tea.Cmd {
 
 	if lastErr != nil {
 		if applied == 0 {
-			return m.statusBar.SetMessage(fmt.Sprintf("Stage failed: %v", lastErr), components.Error)
+			return m.status.SetMessage(fmt.Sprintf("Stage failed: %v", lastErr), components.Error)
 		}
-		_ = m.statusBar.SetMessage(fmt.Sprintf("Stage failed: %v", lastErr), components.Error)
+		_ = m.status.SetMessage(fmt.Sprintf("Stage failed: %v", lastErr), components.Error)
 	}
 
 	return func() tea.Msg {
@@ -534,7 +469,7 @@ func (m *HunkAddModel) splitCurrentHunk() {
 
 	sub := splitHunk(hunk, m.contextLines)
 	if len(sub) <= 1 {
-		_ = m.statusBar.SetMessage("Cannot split hunk further", components.Info)
+		_ = m.status.SetMessage("Cannot split hunk further", components.Info)
 		return
 	}
 
@@ -653,7 +588,7 @@ func (m *HunkAddModel) execCommit(titleOnly bool) tea.Cmd {
 
 	if applied == 0 {
 		if lastErr != nil {
-			_ = m.statusBar.SetMessage(fmt.Sprintf("Stage failed: %v", lastErr), components.Error)
+			_ = m.status.SetMessage(fmt.Sprintf("Stage failed: %v", lastErr), components.Error)
 		}
 		return nil
 	}
@@ -686,6 +621,7 @@ func (m *HunkAddModel) refreshHunks() {
 
 	m.files = files
 	m.hunkList = components.NewHunkList(files, hunks)
+	m.left = &m.hunkList
 	m.prevFileIdx = 0
 	m.prevHunkIdx = 0
 
@@ -693,34 +629,4 @@ func (m *HunkAddModel) refreshHunks() {
 		m.renderCurrentHunk()
 	}
 	m.resize()
-}
-
-// resize recalculates component dimensions after a terminal resize.
-func (m *HunkAddModel) resize() {
-	contentHeight := m.height - 1
-	m.statusBar.SetWidth(m.width)
-
-	if !m.showDiff {
-		panelW := m.width - 1
-		m.hunkList.SetWidth(panelW)
-		m.hunkList.SetHeight(contentHeight)
-		return
-	}
-
-	if m.diffMaximized {
-		rightW := m.width - 1
-		m.diffView.SetWidth(rightW)
-		m.diffView.SetHeight(contentHeight)
-		return
-	}
-
-	leftW, rightW := tui.ColumnsFromConfig(m.width, m.panelRatio)
-
-	leftW--
-	rightW--
-
-	m.hunkList.SetWidth(leftW)
-	m.hunkList.SetHeight(contentHeight)
-	m.diffView.SetWidth(rightW)
-	m.diffView.SetHeight(contentHeight)
 }

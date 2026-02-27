@@ -16,27 +16,25 @@ import (
 	"github.com/jetm/jig/internal/tui/components"
 )
 
+const (
+	checkoutHintsLeft     = "Tab: panel  Enter: discard  D: diff  ?: help  q: quit"
+	checkoutHintsRight    = "w: wrap  F: maximize  Tab: panel  ?: help  q: quit"
+	checkoutHintsMaximize = "F: restore  ?: help  q: quit"
+)
+
 // CheckoutModel is the command model for the checkout TUI (interactive discard).
 // It follows the child component pattern: Update returns tea.Cmd, View returns string.
 type CheckoutModel struct {
+	twoPanelModel
+
 	ctx           context.Context
 	runner        git.Runner
 	renderer      diff.Renderer
-	cfg           config.Config
 	files         []git.StatusFile
 	fileList      components.FileList
-	diffView      components.DiffView
-	statusBar     components.StatusBar
-	help          components.HelpOverlay
 	branch        string
-	width         int
-	height        int
-	panelRatio    int
 	contextLines  int
 	confirming    bool
-	focusRight    bool
-	showDiff      bool
-	diffMaximized bool
 	filterPaths   []string
 	noMatchFilter bool
 }
@@ -67,52 +65,53 @@ func NewCheckoutModel(
 
 	noMatch := len(filterPaths) > 0 && len(filterPaths[0]) > 0 && len(files) == 0
 
+	fileList := components.NewFileList(entries, true)
+
 	m := &CheckoutModel{
+		twoPanelModel: newTwoPanelModel(
+			&fileList,
+			components.NewDiffView(80, 20),
+			components.NewStatusBar(120),
+			components.NewHelpOverlay([]components.KeyGroup{
+				{
+					Name: "Navigation",
+					Bindings: []components.KeyBinding{
+						{Key: "j/k", Desc: "move up/down"},
+						{Key: "o", Desc: "expand/collapse"},
+						{Key: "Tab", Desc: "switch panel"},
+						{Key: "D", Desc: "toggle diff"},
+						{Key: "Space", Desc: "toggle selection"},
+						{Key: "a", Desc: "select all"},
+						{Key: "d", Desc: "deselect all"},
+						{Key: "?", Desc: "toggle help"},
+					},
+				},
+				{
+					Name: "Actions",
+					Bindings: []components.KeyBinding{
+						{Key: "Enter", Desc: "discard changes (with confirmation)"},
+						{Key: "w", Desc: "toggle soft-wrap (diff panel)"},
+						{Key: "F", Desc: "maximize diff panel"},
+						{Key: "q/Esc", Desc: "quit without discarding"},
+					},
+				},
+			}),
+			cfg,
+		),
 		ctx:           ctx,
 		runner:        runner,
 		renderer:      renderer,
-		cfg:           cfg,
 		files:         files,
-		fileList:      components.NewFileList(entries, true),
+		fileList:      fileList,
 		filterPaths:   paths,
 		noMatchFilter: noMatch,
-		diffView:      components.NewDiffView(80, 20),
-		statusBar:     components.NewStatusBar(120),
-		help: components.NewHelpOverlay([]components.KeyGroup{
-			{
-				Name: "Navigation",
-				Bindings: []components.KeyBinding{
-					{Key: "j/k", Desc: "move up/down"},
-					{Key: "o", Desc: "expand/collapse"},
-					{Key: "Tab", Desc: "switch panel"},
-					{Key: "D", Desc: "toggle diff"},
-					{Key: "Space", Desc: "toggle selection"},
-					{Key: "a", Desc: "select all"},
-					{Key: "d", Desc: "deselect all"},
-					{Key: "?", Desc: "toggle help"},
-				},
-			},
-			{
-				Name: "Actions",
-				Bindings: []components.KeyBinding{
-					{Key: "Enter", Desc: "discard changes (with confirmation)"},
-					{Key: "w", Desc: "toggle soft-wrap (diff panel)"},
-					{Key: "F", Desc: "maximize diff panel"},
-					{Key: "q/Esc", Desc: "quit without discarding"},
-				},
-			},
-		}),
-		branch:       branchName,
-		panelRatio:   cfg.PanelRatio,
-		contextLines: cfg.DiffContext,
+		branch:        branchName,
+		contextLines:  cfg.DiffContext,
 	}
 
-	m.showDiff = cfg.ShowDiffPanel
-	m.diffView.SetSoftWrap(cfg.SoftWrap)
-
-	m.updateHints()
-	m.statusBar.SetBranch(branchName)
-	m.statusBar.SetMode("checkout")
+	m.setHints(checkoutHintsLeft, checkoutHintsRight, checkoutHintsMaximize)
+	m.status.SetBranch(branchName)
+	m.status.SetMode("checkout")
 
 	if len(files) > 0 && m.showDiff {
 		m.renderSelectedDiff()
@@ -123,16 +122,16 @@ func NewCheckoutModel(
 
 // Update handles messages.
 func (m *CheckoutModel) Update(msg tea.Msg) tea.Cmd {
-	sbCmd := m.statusBar.Update(msg)
+	sbCmd := m.status.Update(msg)
 
 	switch msg := msg.(type) {
 	case editor.EditDiffMsg:
 		if msg.Err != nil {
-			_ = m.statusBar.SetMessage(fmt.Sprintf("Edit failed: %v", msg.Err), components.Error)
+			_ = m.status.SetMessage(fmt.Sprintf("Edit failed: %v", msg.Err), components.Error)
 			return sbCmd
 		}
 		if err := editor.ApplyEditedDiff(m.ctx, m.runner, msg.OriginalDiff, msg.EditedPath); err != nil {
-			_ = m.statusBar.SetMessage(fmt.Sprintf("Apply failed: %v", err), components.Error)
+			_ = m.status.SetMessage(fmt.Sprintf("Apply failed: %v", err), components.Error)
 			return sbCmd
 		}
 		m.renderSelectedDiff()
@@ -154,32 +153,13 @@ func (m *CheckoutModel) Update(msg tea.Msg) tea.Cmd {
 			return sbCmd
 		}
 
-		if msg.Code == tea.KeyTab {
-			if m.showDiff && !m.diffMaximized {
-				m.focusRight = !m.focusRight
-				m.updateHints()
+		if cmd, handled := m.handleKey(msg); handled {
+			if cmd != nil {
+				return cmd
 			}
-			return sbCmd
-		}
-
-		if msg.String() == "D" {
-			m.showDiff = !m.showDiff
-			if m.showDiff && len(m.files) > 0 {
+			if msg.String() == "D" && m.showDiff && len(m.files) > 0 {
 				m.renderSelectedDiff()
 			}
-			return sbCmd
-		}
-
-		if msg.String() == "F" {
-			if m.showDiff {
-				m.diffMaximized = !m.diffMaximized
-				m.updateHints()
-			}
-			return sbCmd
-		}
-
-		if msg.String() == "w" && m.focusRight {
-			m.diffView.SetSoftWrap(!m.diffView.SoftWrap())
 			return sbCmd
 		}
 
@@ -190,7 +170,7 @@ func (m *CheckoutModel) Update(msg tea.Msg) tea.Cmd {
 			}
 			rawDiff, err := m.runner.Run(m.ctx, "diff", "--", path)
 			if err != nil || rawDiff == "" {
-				_ = m.statusBar.SetMessage("No diff to edit", components.Info)
+				_ = m.status.SetMessage("No diff to edit", components.Info)
 				return sbCmd
 			}
 			return editor.EditDiff(m.ctx, m.runner, rawDiff)
@@ -208,36 +188,6 @@ func (m *CheckoutModel) Update(msg tea.Msg) tea.Cmd {
 			if m.contextLines < 20 {
 				m.contextLines++
 				m.renderSelectedDiff()
-			}
-			return sbCmd
-		}
-
-		if msg.String() == "[" {
-			if m.panelRatio > 20 {
-				m.panelRatio -= 5
-				if m.panelRatio < 20 {
-					m.panelRatio = 20
-				}
-				m.cfg.PanelRatio = m.panelRatio
-				if err := config.Save(m.cfg); err != nil {
-					return m.statusBar.SetMessage(fmt.Sprintf("Config save failed: %v", err), components.Error)
-				}
-				m.resize()
-			}
-			return sbCmd
-		}
-
-		if msg.String() == "]" {
-			if m.panelRatio < 80 {
-				m.panelRatio += 5
-				if m.panelRatio > 80 {
-					m.panelRatio = 80
-				}
-				m.cfg.PanelRatio = m.panelRatio
-				if err := config.Save(m.cfg); err != nil {
-					return m.statusBar.SetMessage(fmt.Sprintf("Config save failed: %v", err), components.Error)
-				}
-				m.resize()
 			}
 			return sbCmd
 		}
@@ -270,7 +220,7 @@ func (m *CheckoutModel) Update(msg tea.Msg) tea.Cmd {
 		}
 
 		if m.focusRight {
-			dvCmd := m.diffView.Update(msg)
+			dvCmd := m.diff.Update(msg)
 			return tea.Batch(sbCmd, dvCmd)
 		}
 
@@ -310,76 +260,63 @@ func (m *CheckoutModel) View() string {
 	case len(m.files) == 0:
 		background = "Nothing to discard."
 	default:
-		contentHeight := m.height - 1
-		m.statusBar.SetWidth(m.width)
-
-		switch {
-		case !m.showDiff:
-			panelW := m.width - 1
-			m.fileList.SetWidth(panelW)
-			m.fileList.SetHeight(contentHeight)
-			leftPanel := tui.StyleFocusBorder.Width(panelW).Height(contentHeight).MaxHeight(contentHeight).Render(m.fileList.View())
-
-			if m.confirming {
-				paths := m.selectedPaths()
-				prompt := fmt.Sprintf("Discard changes to %d file(s)? [y/N] ", len(paths))
-				promptStyle := lipgloss.NewStyle().
-					Foreground(tui.ColorYellow).
-					Bold(true)
-				background = leftPanel + "\n" + promptStyle.Render(prompt)
-			} else {
-				background = leftPanel + "\n" + m.statusBar.View()
-			}
-		case m.diffMaximized:
-			rightW := m.width - 1
-			m.diffView.SetWidth(rightW)
-			m.diffView.SetHeight(contentHeight)
-			rightPanel := tui.StyleFocusBorder.Width(rightW).Height(contentHeight).MaxHeight(contentHeight).Render(m.diffView.View())
-			if m.confirming {
-				paths := m.selectedPaths()
-				prompt := fmt.Sprintf("Discard changes to %d file(s)? [y/N] ", len(paths))
-				promptStyle := lipgloss.NewStyle().
-					Foreground(tui.ColorYellow).
-					Bold(true)
-				background = rightPanel + "\n" + promptStyle.Render(prompt)
-			} else {
-				background = rightPanel + "\n" + m.statusBar.View()
-			}
-		default:
-			leftW, rightW := tui.ColumnsFromConfig(m.width, m.panelRatio)
-
-			leftW--
-			rightW--
-
-			m.fileList.SetWidth(leftW)
-			m.fileList.SetHeight(contentHeight)
-			m.diffView.SetWidth(rightW)
-			m.diffView.SetHeight(contentHeight)
-
-			leftBorder, rightBorder := tui.StyleFocusBorder, tui.StyleDimBorder
-			if m.focusRight {
-				leftBorder, rightBorder = tui.StyleDimBorder, tui.StyleFocusBorder
-			}
-
-			leftPanel := leftBorder.Width(leftW).Height(contentHeight).MaxHeight(contentHeight).Render(m.fileList.View())
-			rightPanel := rightBorder.Width(rightW).Height(contentHeight).MaxHeight(contentHeight).Render(m.diffView.View())
-
-			panels := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
-
-			if m.confirming {
-				paths := m.selectedPaths()
-				prompt := fmt.Sprintf("Discard changes to %d file(s)? [y/N] ", len(paths))
-				promptStyle := lipgloss.NewStyle().
-					Foreground(tui.ColorYellow).
-					Bold(true)
-				background = panels + "\n" + promptStyle.Render(prompt)
-			} else {
-				background = panels + "\n" + m.statusBar.View()
-			}
+		m.left = &m.fileList
+		if m.confirming {
+			background = m.renderLayoutWithConfirm()
+		} else {
+			background = m.renderLayout()
 		}
 	}
 
 	return m.help.View(background, m.width, m.height)
+}
+
+// renderLayoutWithConfirm renders the layout with a confirmation prompt replacing the status bar.
+func (m *CheckoutModel) renderLayoutWithConfirm() string {
+	contentHeight := m.height - 1
+	m.status.SetWidth(m.width)
+
+	paths := m.selectedPaths()
+	prompt := fmt.Sprintf("Discard changes to %d file(s)? [y/N] ", len(paths))
+	promptStyle := lipgloss.NewStyle().
+		Foreground(tui.ColorYellow).
+		Bold(true)
+	promptLine := promptStyle.Render(prompt)
+
+	switch {
+	case !m.showDiff:
+		panelW := m.width - 1
+		m.fileList.SetWidth(panelW)
+		m.fileList.SetHeight(contentHeight)
+		leftPanel := tui.StyleFocusBorder.Width(panelW).Height(contentHeight).MaxHeight(contentHeight).Render(m.fileList.View())
+		return leftPanel + "\n" + promptLine
+	case m.diffMaximized:
+		rightW := m.width - 1
+		m.diff.SetWidth(rightW)
+		m.diff.SetHeight(contentHeight)
+		rightPanel := tui.StyleFocusBorder.Width(rightW).Height(contentHeight).MaxHeight(contentHeight).Render(m.diff.View())
+		return rightPanel + "\n" + promptLine
+	default:
+		leftW, rightW := tui.ColumnsFromConfig(m.width, m.panelRatio)
+		leftW--
+		rightW--
+
+		m.fileList.SetWidth(leftW)
+		m.fileList.SetHeight(contentHeight)
+		m.diff.SetWidth(rightW)
+		m.diff.SetHeight(contentHeight)
+
+		leftBorder, rightBorder := tui.StyleFocusBorder, tui.StyleDimBorder
+		if m.focusRight {
+			leftBorder, rightBorder = tui.StyleDimBorder, tui.StyleFocusBorder
+		}
+
+		leftPanel := leftBorder.Width(leftW).Height(contentHeight).MaxHeight(contentHeight).Render(m.fileList.View())
+		rightPanel := rightBorder.Width(rightW).Height(contentHeight).MaxHeight(contentHeight).Render(m.diff.View())
+
+		panels := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
+		return panels + "\n" + promptLine
+	}
 }
 
 // selectedPaths returns paths of checked files or the focused file if none checked.
@@ -402,7 +339,7 @@ func (m *CheckoutModel) discardSelected() tea.Cmd {
 		return nil
 	}
 	if err := git.DiscardFiles(m.ctx, m.runner, paths); err != nil {
-		return m.statusBar.SetMessage(fmt.Sprintf("Discard failed: %v", err), components.Error)
+		return m.status.SetMessage(fmt.Sprintf("Discard failed: %v", err), components.Error)
 	}
 	return func() tea.Msg {
 		return app.PopModelMsg{MutatedGit: true}
@@ -418,7 +355,7 @@ func (m *CheckoutModel) renderSelectedDiff() {
 
 	raw, err := m.runner.Run(m.ctx, "diff", fmt.Sprintf("-U%d", m.contextLines), "--", path)
 	if err != nil || raw == "" {
-		m.diffView.SetContent("(no diff available)")
+		m.diff.SetContent("(no diff available)")
 		return
 	}
 
@@ -426,53 +363,5 @@ func (m *CheckoutModel) renderSelectedDiff() {
 	if err != nil {
 		rendered = raw
 	}
-	m.diffView.SetContent(rendered)
-}
-
-const (
-	checkoutHintsLeft     = "Tab: panel  Enter: discard  D: diff  ?: help  q: quit"
-	checkoutHintsRight    = "w: wrap  F: maximize  Tab: panel  ?: help  q: quit"
-	checkoutHintsMaximize = "F: restore  ?: help  q: quit"
-)
-
-// updateHints sets the status bar hints based on the current focus and maximize state.
-func (m *CheckoutModel) updateHints() {
-	switch {
-	case m.diffMaximized:
-		m.statusBar.SetHints(checkoutHintsMaximize)
-	case m.focusRight:
-		m.statusBar.SetHints(checkoutHintsRight)
-	default:
-		m.statusBar.SetHints(checkoutHintsLeft)
-	}
-}
-
-// resize recalculates component dimensions after a terminal resize.
-func (m *CheckoutModel) resize() {
-	contentHeight := m.height - 1
-	m.statusBar.SetWidth(m.width)
-
-	if !m.showDiff {
-		panelW := m.width - 1
-		m.fileList.SetWidth(panelW)
-		m.fileList.SetHeight(contentHeight)
-		return
-	}
-
-	if m.diffMaximized {
-		rightW := m.width - 1
-		m.diffView.SetWidth(rightW)
-		m.diffView.SetHeight(contentHeight)
-		return
-	}
-
-	leftW, rightW := tui.ColumnsFromConfig(m.width, m.panelRatio)
-
-	leftW--
-	rightW--
-
-	m.fileList.SetWidth(leftW)
-	m.fileList.SetHeight(contentHeight)
-	m.diffView.SetWidth(rightW)
-	m.diffView.SetHeight(contentHeight)
+	m.diff.SetContent(rendered)
 }

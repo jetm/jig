@@ -740,14 +740,14 @@ func TestAddModel_WKeyTogglesSoftWrap(t *testing.T) {
 		t.Fatal("should be focused on right panel after Tab")
 	}
 
-	initial := m.diffView.SoftWrap()
+	initial := m.diff.SoftWrap()
 	m.Update(tea.KeyPressMsg{Code: 'w', Text: "w"})
-	if m.diffView.SoftWrap() == initial {
+	if m.diff.SoftWrap() == initial {
 		t.Error("w should toggle soft-wrap")
 	}
 
 	m.Update(tea.KeyPressMsg{Code: 'w', Text: "w"})
-	if m.diffView.SoftWrap() != initial {
+	if m.diff.SoftWrap() != initial {
 		t.Error("w again should restore soft-wrap to initial state")
 	}
 }
@@ -767,7 +767,7 @@ func TestAddModel_WKeyNoopWhenLeftFocused(t *testing.T) {
 
 	// Left panel focused (default)
 	m.Update(tea.KeyPressMsg{Code: 'w', Text: "w"})
-	if m.diffView.SoftWrap() {
+	if m.diff.SoftWrap() {
 		t.Error("w should not toggle soft-wrap when left panel is focused")
 	}
 }
@@ -801,7 +801,7 @@ func TestAddModel_InitialSoftWrapFromConfig(t *testing.T) {
 	m, err := NewAddModel(context.Background(), runner, cfg, renderer)
 	require.NoError(t, err)
 
-	if !m.diffView.SoftWrap() {
+	if !m.diff.SoftWrap() {
 		t.Error("diffView should start with soft-wrap enabled when config.SoftWrap=true")
 	}
 }

@@ -464,3 +464,163 @@ func TestHunkCheckoutModel_SyncDiffPreview_SamePosition(t *testing.T) {
 	m.height = 40
 	m.syncDiffPreview()
 }
+
+func TestTwoPanelModel_HandleKey_Slash_EntersSearchMode(t *testing.T) {
+	t.Parallel()
+	tp := newTestTwoPanel()
+	tp.showDiff = true
+	tp.focusRight = true
+
+	_, consumed := tp.handleKey(tea.KeyPressMsg{Code: '/'})
+	assert.True(t, consumed)
+	assert.True(t, tp.searchMode)
+}
+
+func TestTwoPanelModel_HandleKey_Slash_IgnoredWhenNotFocusRight(t *testing.T) {
+	t.Parallel()
+	tp := newTestTwoPanel()
+	tp.showDiff = true
+	tp.focusRight = false
+
+	_, consumed := tp.handleKey(tea.KeyPressMsg{Code: '/'})
+	assert.False(t, consumed)
+	assert.False(t, tp.searchMode)
+}
+
+func TestTwoPanelModel_HandleKey_Esc_ClearsSearch(t *testing.T) {
+	t.Parallel()
+	tp := newTestTwoPanel()
+	tp.showDiff = true
+	tp.focusRight = true
+	tp.diff.SetContent("foo bar foo")
+	tp.diff.Search("foo")
+	tp.searchMode = true
+
+	_, consumed := tp.handleKey(tea.KeyPressMsg{Code: tea.KeyEscape})
+	assert.True(t, consumed)
+	assert.False(t, tp.searchMode)
+	assert.False(t, tp.diff.HasSearch())
+}
+
+func TestTwoPanelModel_HandleKey_N_NavigatesSearch(t *testing.T) {
+	t.Parallel()
+	tp := newTestTwoPanel()
+	tp.showDiff = true
+	tp.focusRight = true
+	tp.diff.SetContent("foo bar foo baz foo")
+	tp.diff.Search("foo")
+
+	_, consumed := tp.handleKey(tea.KeyPressMsg{Code: 'n'})
+	assert.True(t, consumed)
+
+	_, consumed = tp.handleKey(tea.KeyPressMsg{Code: 'N'})
+	assert.True(t, consumed)
+}
+
+func TestTwoPanelModel_HandleKey_Slash_SearchInputEnterSubmits(t *testing.T) {
+	t.Parallel()
+	tp := newTestTwoPanel()
+	tp.showDiff = true
+	tp.focusRight = true
+	tp.diff.SetContent("foo bar foo baz")
+
+	// Enter search mode
+	tp.handleKey(tea.KeyPressMsg{Code: '/'})
+	require.True(t, tp.searchMode)
+	require.True(t, tp.searchInput.Focused())
+
+	// Type search query
+	tp.handleKey(tea.KeyPressMsg{Code: 'f', Text: "f"})
+	tp.handleKey(tea.KeyPressMsg{Code: 'o', Text: "o"})
+	tp.handleKey(tea.KeyPressMsg{Code: 'o', Text: "o"})
+
+	// Submit search
+	tp.handleKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	assert.True(t, tp.diff.HasSearch())
+	assert.Equal(t, 2, tp.diff.MatchCount())
+	assert.False(t, tp.searchInput.Focused())
+}
+
+func TestTwoPanelModel_HandleKey_Slash_EmptySearchCancels(t *testing.T) {
+	t.Parallel()
+	tp := newTestTwoPanel()
+	tp.showDiff = true
+	tp.focusRight = true
+
+	// Enter search mode
+	tp.handleKey(tea.KeyPressMsg{Code: '/'})
+	require.True(t, tp.searchMode)
+
+	// Submit empty search
+	tp.handleKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	assert.False(t, tp.searchMode)
+}
+
+func TestTwoPanelModel_HandleKey_Slash_EscCancelsInput(t *testing.T) {
+	t.Parallel()
+	tp := newTestTwoPanel()
+	tp.showDiff = true
+	tp.focusRight = true
+
+	// Enter search mode
+	tp.handleKey(tea.KeyPressMsg{Code: '/'})
+	require.True(t, tp.searchMode)
+
+	// Escape while input is focused
+	tp.handleKey(tea.KeyPressMsg{Code: tea.KeyEscape})
+	assert.False(t, tp.searchMode)
+}
+
+func TestTwoPanelModel_HandleKey_NoMatchesShowsMessage(t *testing.T) {
+	t.Parallel()
+	tp := newTestTwoPanel()
+	tp.showDiff = true
+	tp.focusRight = true
+	tp.diff.SetContent("foo bar baz")
+
+	// Enter search mode
+	tp.handleKey(tea.KeyPressMsg{Code: '/'})
+
+	// Type non-matching query
+	tp.handleKey(tea.KeyPressMsg{Code: 'x', Text: "x"})
+	tp.handleKey(tea.KeyPressMsg{Code: 'y', Text: "y"})
+	tp.handleKey(tea.KeyPressMsg{Code: 'z', Text: "z"})
+
+	// Submit
+	cmd, consumed := tp.handleKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	assert.True(t, consumed)
+	assert.NotNil(t, cmd, "should return a status message command for no matches")
+	assert.Equal(t, 0, tp.diff.MatchCount())
+}
+
+func TestTwoPanelModel_BottomBar_ShowsSearchInput(t *testing.T) {
+	t.Parallel()
+	tp := newTestTwoPanel()
+	tp.showDiff = true
+	tp.focusRight = true
+	tp.width = 120
+	tp.height = 40
+
+	// Not in search mode - shows status bar
+	bar := tp.bottomBar()
+	assert.NotEmpty(t, bar)
+
+	// Enter search mode
+	tp.handleKey(tea.KeyPressMsg{Code: '/'})
+	bar = tp.bottomBar()
+	assert.Contains(t, bar, "/", "search input should show the / prompt")
+}
+
+func TestTwoPanelModel_RenderLayout_SearchMode(t *testing.T) {
+	t.Parallel()
+	tp := newTestTwoPanel()
+	tp.showDiff = true
+	tp.focusRight = true
+	tp.width = 120
+	tp.height = 40
+
+	// Enter search mode and render
+	tp.handleKey(tea.KeyPressMsg{Code: '/'})
+	layout := tp.renderLayout()
+	assert.Contains(t, layout, "/", "layout should contain search prompt when in search mode")
+}

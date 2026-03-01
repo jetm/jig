@@ -90,6 +90,8 @@ func NewResetModel(
 						{Key: "Enter", Desc: "unstage selected files"},
 						{Key: "w", Desc: "toggle soft-wrap (diff panel)"},
 						{Key: "F", Desc: "maximize diff panel"},
+						{Key: "/", Desc: "search in diff"},
+						{Key: "n/N", Desc: "next/prev match"},
 						{Key: "q/Esc", Desc: "quit without unstaging"},
 					},
 				},

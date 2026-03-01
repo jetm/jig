@@ -3,6 +3,7 @@ package commands
 import (
 	"fmt"
 
+	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
@@ -31,6 +32,9 @@ type twoPanelModel struct {
 	hintsLeft     string
 	hintsRight    string
 	hintsMaximize string
+
+	searchMode  bool
+	searchInput textinput.Model
 }
 
 // newTwoPanelModel creates a twoPanelModel with the given configuration.
@@ -75,10 +79,37 @@ func (tp *twoPanelModel) updateHints() {
 	}
 }
 
-// handleKey processes universal two-panel keys: Tab, D, F, w, [, ].
+// handleKey processes universal two-panel keys: Tab, D, F, w, [, ], /, n, N, Esc.
 // Returns the command to execute and whether the key was consumed.
 // Commands must call this before processing their own keys.
 func (tp *twoPanelModel) handleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	// When search input is active, route keys to the text input.
+	if tp.searchMode && tp.searchInput.Focused() {
+		switch msg.Code {
+		case tea.KeyEnter:
+			query := tp.searchInput.Value()
+			tp.searchInput.Blur()
+			if query == "" {
+				tp.searchMode = false
+				return nil, true
+			}
+			tp.diff.Search(query)
+			if tp.diff.MatchCount() == 0 {
+				return tp.status.SetMessage("No matches", components.Error), true
+			}
+			return tp.status.SetMessage(
+				fmt.Sprintf("%d matches", tp.diff.MatchCount()), components.Success,
+			), true
+		case tea.KeyEscape:
+			tp.searchMode = false
+			tp.searchInput.Blur()
+			return nil, true
+		default:
+			tp.searchInput, _ = tp.searchInput.Update(msg)
+			return nil, true
+		}
+	}
+
 	if msg.Code == tea.KeyTab {
 		if tp.showDiff && !tp.diffMaximized {
 			tp.focusRight = !tp.focusRight
@@ -88,6 +119,30 @@ func (tp *twoPanelModel) handleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	}
 
 	switch msg.String() {
+	case "/":
+		if tp.focusRight {
+			tp.searchMode = true
+			tp.searchInput = textinput.New()
+			tp.searchInput.Prompt = "/"
+			tp.searchInput.Focus()
+			return nil, true
+		}
+		return nil, false
+
+	case "n":
+		if tp.diff.HasSearch() {
+			tp.diff.SearchNext()
+			return nil, true
+		}
+		return nil, false
+
+	case "N":
+		if tp.diff.HasSearch() {
+			tp.diff.SearchPrev()
+			return nil, true
+		}
+		return nil, false
+
 	case "D":
 		tp.showDiff = !tp.showDiff
 		return nil, true
@@ -135,6 +190,13 @@ func (tp *twoPanelModel) handleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, true
 	}
 
+	// Esc clears search if active, otherwise not consumed.
+	if msg.Code == tea.KeyEscape && tp.diff.HasSearch() {
+		tp.searchMode = false
+		tp.diff.ClearSearch()
+		return nil, true
+	}
+
 	return nil, false
 }
 
@@ -168,6 +230,14 @@ func (tp *twoPanelModel) resize() {
 	tp.diff.SetHeight(contentHeight)
 }
 
+// bottomBar returns the search input view when in search mode, or the status bar otherwise.
+func (tp *twoPanelModel) bottomBar() string {
+	if tp.searchMode && tp.searchInput.Focused() {
+		return tp.searchInput.View()
+	}
+	return tp.status.View()
+}
+
 // renderLayout produces the two-panel layout string respecting showDiff,
 // diffMaximized, and focusRight state. The status bar is included at the bottom.
 func (tp *twoPanelModel) renderLayout() string {
@@ -180,14 +250,14 @@ func (tp *twoPanelModel) renderLayout() string {
 		tp.left.SetWidth(panelW)
 		tp.left.SetHeight(contentHeight)
 		leftPanel := tui.StyleFocusBorder.Width(panelW).Height(contentHeight).MaxHeight(contentHeight).Render(tp.left.View())
-		return leftPanel + "\n" + tp.status.View()
+		return leftPanel + "\n" + tp.bottomBar()
 
 	case tp.diffMaximized:
 		rightW := tp.width - 1
 		tp.diff.SetWidth(rightW)
 		tp.diff.SetHeight(contentHeight)
 		rightPanel := tui.StyleFocusBorder.Width(rightW).Height(contentHeight).MaxHeight(contentHeight).Render(tp.diff.View())
-		return rightPanel + "\n" + tp.status.View()
+		return rightPanel + "\n" + tp.bottomBar()
 
 	default:
 		leftW, rightW := tui.ColumnsFromConfig(tp.width, tp.panelRatio)
@@ -208,6 +278,6 @@ func (tp *twoPanelModel) renderLayout() string {
 		rightPanel := rightBorder.Width(rightW).Height(contentHeight).MaxHeight(contentHeight).Render(tp.diff.View())
 
 		panels := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
-		return panels + "\n" + tp.status.View()
+		return panels + "\n" + tp.bottomBar()
 	}
 }

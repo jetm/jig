@@ -2,6 +2,8 @@
 package components
 
 import (
+	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/muesli/reflow/wordwrap"
@@ -16,6 +18,8 @@ type DiffView struct {
 	vp         viewport.Model
 	rawContent string
 	softWrap   bool
+	searching  bool
+	matchCount int
 }
 
 // NewDiffView creates a DiffView with the given dimensions.
@@ -24,6 +28,16 @@ func NewDiffView(width, height int) DiffView {
 		viewport.WithWidth(width),
 		viewport.WithHeight(height),
 	)
+	vp.FillHeight = true
+	vp.LeftGutterFunc = func(info viewport.GutterContext) string {
+		if info.Soft {
+			return "     \u2502 "
+		}
+		if info.Index >= info.TotalLines {
+			return "   ~ \u2502 "
+		}
+		return fmt.Sprintf("%4d \u2502 ", info.Index+1)
+	}
 	return DiffView{vp: vp}
 }
 
@@ -109,3 +123,38 @@ func (d *DiffView) Update(msg tea.Msg) tea.Cmd {
 	d.vp, cmd = d.vp.Update(msg)
 	return cmd
 }
+
+// Search highlights all matches of query in the viewport content.
+// If query is not valid regex, it is treated as a literal string.
+func (d *DiffView) Search(query string) {
+	d.searching = true
+	re, err := regexp.Compile(query)
+	if err != nil {
+		re = regexp.MustCompile(regexp.QuoteMeta(query))
+	}
+	content := d.vp.GetContent()
+	indices := re.FindAllStringIndex(content, -1)
+	d.matchCount = len(indices)
+	if len(indices) > 0 {
+		d.vp.SetHighlights(indices)
+	}
+}
+
+// SearchNext moves to the next search match.
+func (d *DiffView) SearchNext() { d.vp.HighlightNext() }
+
+// SearchPrev moves to the previous search match.
+func (d *DiffView) SearchPrev() { d.vp.HighlightPrevious() }
+
+// ClearSearch removes all search highlights.
+func (d *DiffView) ClearSearch() {
+	d.searching = false
+	d.matchCount = 0
+	d.vp.ClearHighlights()
+}
+
+// HasSearch reports whether a search is active.
+func (d *DiffView) HasSearch() bool { return d.searching }
+
+// MatchCount returns the number of matches from the last search.
+func (d *DiffView) MatchCount() int { return d.matchCount }

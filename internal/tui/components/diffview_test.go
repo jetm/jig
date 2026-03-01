@@ -101,18 +101,21 @@ func TestDiffViewSoftWrapOffStoresContentUnchanged(t *testing.T) {
 }
 
 func TestDiffViewSoftWrapOnWrapsLongLines(t *testing.T) {
-	dv := NewDiffView(10, 20)
+	dv := NewDiffView(40, 20)
 	dv.SetSoftWrap(true)
-	// A 25-char line should be broken into multiple physical lines of <=10 chars.
-	long := strings.Repeat("a", 25)
+	// A 50-char line should be broken into multiple physical lines.
+	long := strings.Repeat("a", 50)
 	dv.SetContent(long)
 	view := dv.View()
+	contentLines := 0
 	for line := range strings.SplitSeq(view, "\n") {
-		// viewport may pad lines but logical content lines should not exceed width
 		stripped := strings.TrimRight(line, " ")
-		if len(stripped) > 10 {
-			t.Errorf("line too long after soft-wrap: %q (len %d)", stripped, len(stripped))
+		if strings.ContainsAny(stripped, "a") {
+			contentLines++
 		}
+	}
+	if contentLines < 2 {
+		t.Errorf("expected long line to wrap into multiple lines, got %d content lines", contentLines)
 	}
 }
 
@@ -135,18 +138,19 @@ func TestDiffViewSoftWrapToggleReappliesContent(t *testing.T) {
 }
 
 func TestDiffViewSoftWrapPreservesDiffPrefix(t *testing.T) {
-	dv := NewDiffView(10, 20)
+	dv := NewDiffView(40, 20)
 	dv.SetSoftWrap(true)
-	// diff prefix + 20 chars should wrap but keep + on first line
-	line := "+" + strings.Repeat("c", 20)
+	// diff prefix + 40 chars should wrap but keep + on first content line
+	line := "+" + strings.Repeat("c", 40)
 	dv.SetContent(line)
 	view := dv.View()
 	lines := strings.SplitSeq(strings.TrimRight(view, "\n "), "\n")
-	// First non-empty line should start with +
+	// First non-empty line should contain the + prefix after the gutter
 	for l := range lines {
-		if strings.TrimSpace(l) != "" {
-			if !strings.HasPrefix(l, "+") {
-				t.Errorf("first content line should start with '+', got %q", l)
+		trimmed := strings.TrimSpace(l)
+		if trimmed != "" {
+			if !strings.Contains(l, "+") {
+				t.Errorf("first content line should contain '+', got %q", l)
 			}
 			break
 		}
@@ -295,5 +299,113 @@ func TestWrapContent_ContinuationEffectiveWidth(t *testing.T) {
 		if len(trimmed) > 10 {
 			t.Errorf("line exceeds width 10: %q (len %d)", trimmed, len(trimmed))
 		}
+	}
+}
+
+func TestNewDiffView_FillHeightEnabled(t *testing.T) {
+	t.Parallel()
+	dv := NewDiffView(80, 20)
+	dv.SetContent("line1\nline2")
+
+	view := dv.View()
+	lines := strings.Split(view, "\n")
+	// With FillHeight, the viewport should fill to its full height (20 lines)
+	if len(lines) != 20 {
+		t.Errorf("expected 20 lines with FillHeight, got %d", len(lines))
+	}
+}
+
+func TestNewDiffView_GutterShowsLineNumbers(t *testing.T) {
+	t.Parallel()
+	dv := NewDiffView(80, 10)
+	dv.SetContent("first\nsecond\nthird")
+
+	view := dv.View()
+	lines := strings.Split(view, "\n")
+
+	// First three lines should have line numbers
+	if !strings.Contains(lines[0], "1 ") {
+		t.Errorf("line 0 should contain line number 1, got %q", lines[0])
+	}
+	if !strings.Contains(lines[1], "2 ") {
+		t.Errorf("line 1 should contain line number 2, got %q", lines[1])
+	}
+	if !strings.Contains(lines[2], "3 ") {
+		t.Errorf("line 2 should contain line number 3, got %q", lines[2])
+	}
+}
+
+func TestNewDiffView_GutterFillLinesShowTilde(t *testing.T) {
+	t.Parallel()
+	dv := NewDiffView(80, 10)
+	dv.SetContent("only one line")
+
+	view := dv.View()
+	lines := strings.Split(view, "\n")
+
+	// Lines beyond content should show tilde marker
+	if len(lines) >= 3 {
+		if !strings.Contains(lines[2], "~") {
+			t.Errorf("fill line should contain tilde marker, got %q", lines[2])
+		}
+	}
+}
+
+func TestDiffView_SearchFindsMatches(t *testing.T) {
+	t.Parallel()
+	dv := NewDiffView(80, 10)
+	dv.SetContent("foo bar\nbaz foo\nqux")
+
+	dv.Search("foo")
+	if !dv.HasSearch() {
+		t.Error("HasSearch should be true after Search")
+	}
+	if dv.MatchCount() != 2 {
+		t.Errorf("expected 2 matches, got %d", dv.MatchCount())
+	}
+}
+
+func TestDiffView_SearchNoMatches(t *testing.T) {
+	t.Parallel()
+	dv := NewDiffView(80, 10)
+	dv.SetContent("foo bar baz")
+
+	dv.Search("xyz")
+	if dv.MatchCount() != 0 {
+		t.Errorf("expected 0 matches, got %d", dv.MatchCount())
+	}
+	if !dv.HasSearch() {
+		t.Error("HasSearch should be true even with no matches")
+	}
+}
+
+func TestDiffView_ClearSearch(t *testing.T) {
+	t.Parallel()
+	dv := NewDiffView(80, 10)
+	dv.SetContent("foo bar foo")
+
+	dv.Search("foo")
+	if dv.MatchCount() != 2 {
+		t.Errorf("expected 2 matches before clear, got %d", dv.MatchCount())
+	}
+
+	dv.ClearSearch()
+	if dv.HasSearch() {
+		t.Error("HasSearch should be false after ClearSearch")
+	}
+	if dv.MatchCount() != 0 {
+		t.Errorf("expected 0 matches after clear, got %d", dv.MatchCount())
+	}
+}
+
+func TestDiffView_SearchInvalidRegexFallsBackToLiteral(t *testing.T) {
+	t.Parallel()
+	dv := NewDiffView(80, 10)
+	dv.SetContent("foo (bar) baz (bar)")
+
+	dv.Search("(bar")
+	// Invalid regex should be treated as literal string via QuoteMeta
+	if dv.MatchCount() != 2 {
+		t.Errorf("expected 2 literal matches for invalid regex, got %d", dv.MatchCount())
 	}
 }

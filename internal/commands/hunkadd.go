@@ -105,6 +105,8 @@ func NewHunkAddModel(
 						{Key: "s", Desc: "split hunk"},
 						{Key: "e", Desc: "edit hunk in editor"},
 						{Key: "F", Desc: "maximize diff panel"},
+						{Key: "/", Desc: "search in diff"},
+						{Key: "n/N", Desc: "next/prev match"},
 						{Key: "q/Esc", Desc: "quit"},
 					},
 				},

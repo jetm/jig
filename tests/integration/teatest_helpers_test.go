@@ -148,87 +148,6 @@ func sendEnter(tm *testModel)       { tm.send(specialKey(tea.KeyEnter)) }
 func sendTab(tm *testModel)         { tm.send(specialKey(tea.KeyTab)) }
 func sendKey(tm *testModel, c rune) { tm.send(keyPress(c)) }
 
-// --- tea.Model adapters ---
-// These duplicate the unexported adapters in cmd/jig/main.go.
-
-type addTeaModelAdapter struct{ inner *commands.AddModel }
-
-func (a *addTeaModelAdapter) Init() tea.Cmd                           { return nil }
-func (a *addTeaModelAdapter) Update(msg tea.Msg) (tea.Model, tea.Cmd) { return a, a.inner.Update(msg) }
-func (a *addTeaModelAdapter) View() tea.View                          { return tea.NewView(a.inner.View()) }
-
-type checkoutTeaModelAdapter struct{ inner *commands.CheckoutModel }
-
-func (c *checkoutTeaModelAdapter) Init() tea.Cmd { return nil }
-func (c *checkoutTeaModelAdapter) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	return c, c.inner.Update(msg)
-}
-func (c *checkoutTeaModelAdapter) View() tea.View { return tea.NewView(c.inner.View()) }
-
-type diffTeaModelAdapter struct{ inner *commands.DiffModel }
-
-func (d *diffTeaModelAdapter) Init() tea.Cmd                           { return nil }
-func (d *diffTeaModelAdapter) Update(msg tea.Msg) (tea.Model, tea.Cmd) { return d, d.inner.Update(msg) }
-func (d *diffTeaModelAdapter) View() tea.View                          { return tea.NewView(d.inner.View()) }
-
-type fixupTeaModelAdapter struct{ inner *commands.FixupModel }
-
-func (f *fixupTeaModelAdapter) Init() tea.Cmd { return nil }
-func (f *fixupTeaModelAdapter) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	return f, f.inner.Update(msg)
-}
-func (f *fixupTeaModelAdapter) View() tea.View { return tea.NewView(f.inner.View()) }
-
-type hunkAddTeaModelAdapter struct{ inner *commands.HunkAddModel }
-
-func (h *hunkAddTeaModelAdapter) Init() tea.Cmd { return nil }
-func (h *hunkAddTeaModelAdapter) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	return h, h.inner.Update(msg)
-}
-func (h *hunkAddTeaModelAdapter) View() tea.View { return tea.NewView(h.inner.View()) }
-
-type hunkResetTeaModelAdapter struct{ inner *commands.HunkResetModel }
-
-func (h *hunkResetTeaModelAdapter) Init() tea.Cmd { return nil }
-func (h *hunkResetTeaModelAdapter) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	return h, h.inner.Update(msg)
-}
-func (h *hunkResetTeaModelAdapter) View() tea.View { return tea.NewView(h.inner.View()) }
-
-type hunkCheckoutTeaModelAdapter struct{ inner *commands.HunkCheckoutModel }
-
-func (h *hunkCheckoutTeaModelAdapter) Init() tea.Cmd { return nil }
-func (h *hunkCheckoutTeaModelAdapter) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	return h, h.inner.Update(msg)
-}
-func (h *hunkCheckoutTeaModelAdapter) View() tea.View { return tea.NewView(h.inner.View()) }
-
-type logTeaModelAdapter struct{ inner *commands.LogModel }
-
-func (l *logTeaModelAdapter) Init() tea.Cmd                           { return nil }
-func (l *logTeaModelAdapter) Update(msg tea.Msg) (tea.Model, tea.Cmd) { return l, l.inner.Update(msg) }
-func (l *logTeaModelAdapter) View() tea.View                          { return tea.NewView(l.inner.View()) }
-
-type rebaseInteractiveTeaModelAdapter struct {
-	inner *commands.RebaseInteractiveModel
-}
-
-func (r *rebaseInteractiveTeaModelAdapter) Init() tea.Cmd { return nil }
-func (r *rebaseInteractiveTeaModelAdapter) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	return r, r.inner.Update(msg)
-}
-func (r *rebaseInteractiveTeaModelAdapter) View() tea.View {
-	return tea.NewView(r.inner.View())
-}
-
-type resetTeaModelAdapter struct{ inner *commands.ResetModel }
-
-func (r *resetTeaModelAdapter) Init() tea.Cmd { return nil }
-func (r *resetTeaModelAdapter) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	return r, r.inner.Update(msg)
-}
-func (r *resetTeaModelAdapter) View() tea.View { return tea.NewView(r.inner.View()) }
-
 // --- Model construction helpers ---
 
 // newRunnerInDir creates an ExecRunner rooted at the given directory.
@@ -277,7 +196,7 @@ func newAddTestModel(tb testing.TB, repoDir string) *testModel {
 	if err != nil {
 		tb.Fatalf("NewAddModel: %v", err)
 	}
-	appModel := app.New(&addTeaModelAdapter{inner: m}, runner, cfg)
+	appModel := app.New(commands.NewTeaModelAdapter(m), runner, cfg)
 	return newTestModel(tb, appModel)
 }
 
@@ -290,7 +209,7 @@ func newAddTestModelFiltered(tb testing.TB, repoDir string, filterPaths []string
 	if err != nil {
 		tb.Fatalf("NewAddModel: %v", err)
 	}
-	appModel := app.New(&addTeaModelAdapter{inner: m}, runner, cfg)
+	appModel := app.New(commands.NewTeaModelAdapter(m), runner, cfg)
 	return newTestModel(tb, appModel)
 }
 
@@ -303,7 +222,7 @@ func newCheckoutTestModel(tb testing.TB, repoDir string) (*testModel, error) {
 	if err != nil {
 		return nil, fmt.Errorf("NewCheckoutModel: %w", err)
 	}
-	appModel := app.New(&checkoutTeaModelAdapter{inner: m}, runner, cfg)
+	appModel := app.New(commands.NewTeaModelAdapter(m), runner, cfg)
 	return newTestModel(tb, appModel), nil
 }
 
@@ -316,7 +235,7 @@ func newDiffTestModel(tb testing.TB, repoDir string, revision string, staged boo
 	if err != nil {
 		return nil, fmt.Errorf("NewDiffModel: %w", err)
 	}
-	appModel := app.New(&diffTeaModelAdapter{inner: m}, runner, cfg)
+	appModel := app.New(commands.NewTeaModelAdapter(m), runner, cfg)
 	return newTestModel(tb, appModel), nil
 }
 
@@ -330,7 +249,7 @@ func newDiffPagerTestModel(tb testing.TB, repoDir string, rawDiff string) (*test
 	if err != nil {
 		return nil, fmt.Errorf("NewDiffModel: %w", err)
 	}
-	appModel := app.New(&diffTeaModelAdapter{inner: m}, runner, cfg)
+	appModel := app.New(commands.NewTeaModelAdapter(m), runner, cfg)
 	return newTestModel(tb, appModel), nil
 }
 
@@ -343,7 +262,7 @@ func newFixupTestModel(tb testing.TB, repoDir string) (*testModel, error) {
 	if err != nil {
 		return nil, fmt.Errorf("NewFixupModel: %w", err)
 	}
-	appModel := app.New(&fixupTeaModelAdapter{inner: m}, runner, cfg)
+	appModel := app.New(commands.NewTeaModelAdapter(m), runner, cfg)
 	return newTestModel(tb, appModel), nil
 }
 
@@ -356,7 +275,7 @@ func newHunkAddTestModel(tb testing.TB, repoDir string) (*testModel, error) {
 	if err != nil {
 		return nil, fmt.Errorf("NewHunkAddModel: %w", err)
 	}
-	appModel := app.New(&hunkAddTeaModelAdapter{inner: m}, runner, cfg)
+	appModel := app.New(commands.NewTeaModelAdapter(m), runner, cfg)
 	return newTestModel(tb, appModel), nil
 }
 
@@ -369,7 +288,7 @@ func newHunkResetTestModel(tb testing.TB, repoDir string) (*testModel, error) {
 	if err != nil {
 		return nil, fmt.Errorf("NewHunkResetModel: %w", err)
 	}
-	appModel := app.New(&hunkResetTeaModelAdapter{inner: m}, runner, cfg)
+	appModel := app.New(commands.NewTeaModelAdapter(m), runner, cfg)
 	return newTestModel(tb, appModel), nil
 }
 
@@ -382,7 +301,7 @@ func newHunkCheckoutTestModel(tb testing.TB, repoDir string) (*testModel, error)
 	if err != nil {
 		return nil, fmt.Errorf("NewHunkCheckoutModel: %w", err)
 	}
-	appModel := app.New(&hunkCheckoutTeaModelAdapter{inner: m}, runner, cfg)
+	appModel := app.New(commands.NewTeaModelAdapter(m), runner, cfg)
 	return newTestModel(tb, appModel), nil
 }
 
@@ -395,7 +314,7 @@ func newLogTestModel(tb testing.TB, repoDir string, ref string) *testModel {
 	if err != nil {
 		tb.Fatalf("NewLogModel: %v", err)
 	}
-	appModel := app.New(&logTeaModelAdapter{inner: m}, runner, cfg)
+	appModel := app.New(commands.NewTeaModelAdapter(m), runner, cfg)
 	return newTestModel(tb, appModel)
 }
 
@@ -408,7 +327,7 @@ func newRebaseInteractiveTestModel(tb testing.TB, repoDir string, base string) *
 	if err != nil {
 		tb.Fatalf("NewRebaseInteractiveModel: %v", err)
 	}
-	appModel := app.New(&rebaseInteractiveTeaModelAdapter{inner: m}, runner, cfg)
+	appModel := app.New(commands.NewTeaModelAdapter(m), runner, cfg)
 	return newTestModel(tb, appModel)
 }
 
@@ -421,7 +340,7 @@ func newResetTestModel(tb testing.TB, repoDir string) (*testModel, error) {
 	if err != nil {
 		return nil, fmt.Errorf("NewResetModel: %w", err)
 	}
-	appModel := app.New(&resetTeaModelAdapter{inner: m}, runner, cfg)
+	appModel := app.New(commands.NewTeaModelAdapter(m), runner, cfg)
 	return newTestModel(tb, appModel), nil
 }
 

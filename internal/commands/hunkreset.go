@@ -206,70 +206,14 @@ func (m *HunkResetModel) hintsForContext() string {
 	return "Space: toggle  Enter: unstage  Tab: panel  ?: help  q: quit"
 }
 
-// renderCurrentHunk updates the right-panel diff view with the hunk under the cursor.
 func (m *HunkResetModel) renderCurrentHunk() {
-	hunk, ok := m.hunkList.CurrentHunk()
-	if !ok {
-		m.diff.SetContent("(no hunks)")
-		return
-	}
-
-	raw := hunk.Body()
-	rendered, err := m.renderer.Render(raw)
-	if err != nil {
-		rendered = raw
-	}
-	m.diff.SetContent(rendered)
-	m.prevFileIdx = m.hunkList.CurrentFileIdx()
-	m.prevHunkIdx = m.hunkList.CurrentHunkIdx()
+	renderHunkPreview(&m.hunkList, &m.diff, m.renderer, &m.prevFileIdx, &m.prevHunkIdx)
 }
 
-// syncDiffPreview updates the diff view if the cursor moved to a different hunk.
 func (m *HunkResetModel) syncDiffPreview() {
-	fi := m.hunkList.CurrentFileIdx()
-	hi := m.hunkList.CurrentHunkIdx()
-	if fi != m.prevFileIdx || hi != m.prevHunkIdx {
-		m.renderCurrentHunk()
-	}
+	syncHunkPreview(&m.hunkList, &m.diff, m.renderer, &m.prevFileIdx, &m.prevHunkIdx)
 }
 
-// applySelected unstages all checked hunks via git apply --cached --reverse.
 func (m *HunkResetModel) applySelected() tea.Cmd {
-	staged := m.hunkList.StagedHunks()
-	if len(staged) == 0 {
-		return nil
-	}
-
-	var lastErr error
-	applied := 0
-	for _, sh := range staged {
-		if sh.FileIdx >= len(m.files) {
-			continue
-		}
-		patch := m.patchHeader(m.files[sh.FileIdx]) + "\n" + sh.Hunk.Body() + "\n"
-		err := git.UnstageHunk(m.ctx, m.runner, patch)
-		if err != nil {
-			lastErr = err
-			continue
-		}
-		applied++
-	}
-
-	if lastErr != nil {
-		if applied == 0 {
-			return m.status.SetMessage(fmt.Sprintf("Unstage failed: %v", lastErr), components.Error)
-		}
-		_ = m.status.SetMessage(fmt.Sprintf("Unstage failed: %v", lastErr), components.Error)
-	}
-
-	return func() tea.Msg {
-		return app.PopModelMsg{MutatedGit: true}
-	}
-}
-
-// patchHeader builds a minimal unified diff header for git apply.
-func (m *HunkResetModel) patchHeader(fd git.FileDiff) string {
-	oldPath := "a/" + fd.OldPath
-	newPath := "b/" + fd.NewPath
-	return fmt.Sprintf("diff --git %s %s\n--- %s\n+++ %s", oldPath, newPath, oldPath, newPath)
+	return applyHunks(m.ctx, m.runner, &m.hunkList, m.files, &m.status, git.UnstageHunk, "Unstage")
 }

@@ -244,23 +244,10 @@ func (m *ResetModel) View() string {
 	return m.help.View(background, m.width, m.height)
 }
 
-// selectedPaths returns the paths of all checked files.
-// If none are checked, returns the focused file's path (single-file shortcut).
-func (m *ResetModel) selectedPaths() []string {
-	paths := m.fileList.CheckedPaths()
-	if len(paths) > 0 {
-		return paths
-	}
-	if path := m.fileList.SelectedPath(); path != "" {
-		return []string{path}
-	}
-	return nil
-}
-
 // unstageSelected runs git reset HEAD for the selected files and returns a PopModelMsg on success.
 // On failure, the model stays visible with the error in the status bar.
 func (m *ResetModel) unstageSelected() tea.Cmd {
-	paths := m.selectedPaths()
+	paths := m.fileList.SelectedOrCheckedPaths()
 	if len(paths) == 0 {
 		return nil
 	}

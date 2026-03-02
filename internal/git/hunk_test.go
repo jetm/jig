@@ -484,7 +484,7 @@ func TestParseHunkHeader_MissingNewRange(t *testing.T) {
 func TestStageHunk_CallsApplyCached(t *testing.T) {
 	t.Parallel()
 	runner := &fakeStdinRunner{}
-	err := StageHunk(context.Background(), runner, "diff --git a/f b/f\n--- a/f\n+++ b/f", "@@ -1 +1 @@\n+x\n")
+	err := StageHunk(context.Background(), runner, "diff --git a/f b/f\n--- a/f\n+++ b/f\n@@ -1 +1 @@\n+x\n")
 	if err != nil {
 		t.Fatalf("StageHunk returned error: %v", err)
 	}
@@ -502,7 +502,7 @@ func TestStageHunk_CallsApplyCached(t *testing.T) {
 func TestStageHunk_PropagatesError(t *testing.T) {
 	t.Parallel()
 	runner := &fakeStdinRunner{err: &ExecError{Args: []string{"apply"}, ExitCode: 1, Stderr: "patch failed"}}
-	err := StageHunk(context.Background(), runner, "header", "body")
+	err := StageHunk(context.Background(), runner, "header\nbody\n")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}

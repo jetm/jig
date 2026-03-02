@@ -264,24 +264,10 @@ func (m *AddModel) View() string {
 	return m.help.View(background, m.width, m.height)
 }
 
-// selectedPaths returns the paths of all checked files.
-// If none are checked, returns the focused file's path (single-file shortcut).
-func (m *AddModel) selectedPaths() []string {
-	paths := m.fileList.CheckedPaths()
-	if len(paths) > 0 {
-		return paths
-	}
-	// Fallback: stage focused file
-	if path := m.fileList.SelectedPath(); path != "" {
-		return []string{path}
-	}
-	return nil
-}
-
 // stageSelected runs git add for the selected files and returns a PopModelMsg on success.
 // On failure, the model stays visible with the error in the status bar.
 func (m *AddModel) stageSelected() tea.Cmd {
-	paths := m.selectedPaths()
+	paths := m.fileList.SelectedOrCheckedPaths()
 	if len(paths) == 0 {
 		return nil
 	}
@@ -348,7 +334,7 @@ func (m *AddModel) isTracked(path string) bool {
 // If titleOnly is true, passes -t for a title-only commit message.
 // Returns nil if staging fails (error shown in status bar).
 func (m *AddModel) execCommit(titleOnly bool) tea.Cmd {
-	paths := m.selectedPaths()
+	paths := m.fileList.SelectedOrCheckedPaths()
 	if len(paths) == 0 {
 		return nil
 	}

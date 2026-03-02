@@ -12,46 +12,8 @@ type StatusFile struct {
 	Status FileStatus
 }
 
-// ListUnstagedFiles returns the list of working-tree modified files (unstaged changes)
-// plus untracked files. It runs two git commands:
-//  1. git diff --name-status (modified/deleted/renamed working-tree files)
-//  2. git ls-files --others --exclude-standard (untracked files)
-func ListUnstagedFiles(ctx context.Context, r Runner) ([]StatusFile, error) {
-	// Working-tree changes (modified, deleted, renamed)
-	nameStatus, err := r.Run(ctx, "diff", "--name-status")
-	if err != nil {
-		return nil, fmt.Errorf("git diff --name-status: %w", err)
-	}
-
-	var files []StatusFile
-	for line := range strings.SplitSeq(nameStatus, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		sf := parseNameStatusLine(line)
-		files = append(files, sf)
-	}
-
-	// Untracked files
-	untracked, err := r.Run(ctx, "ls-files", "--others", "--exclude-standard")
-	if err != nil {
-		return nil, fmt.Errorf("git ls-files --others: %w", err)
-	}
-
-	for line := range strings.SplitSeq(untracked, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		files = append(files, StatusFile{Path: line, Status: Added})
-	}
-
-	return files, nil
-}
-
 // ListUnstagedFilesFiltered returns unstaged files optionally filtered by paths.
-// When paths is empty it behaves identically to ListUnstagedFiles.
+// When paths is empty it returns all unstaged and untracked files.
 // When paths is non-empty it appends "-- <paths>" to the git diff calls so only
 // the specified files are included.
 func ListUnstagedFilesFiltered(ctx context.Context, r Runner, paths []string) ([]StatusFile, error) {
@@ -107,7 +69,7 @@ func ListUnstagedFilesFiltered(ctx context.Context, r Runner, paths []string) ([
 }
 
 // ListModifiedFilesFiltered returns working-tree modified files filtered by paths.
-// When paths is empty it behaves identically to ListModifiedFiles.
+// When paths is empty it returns all modified tracked files.
 func ListModifiedFilesFiltered(ctx context.Context, r Runner, paths []string) ([]StatusFile, error) {
 	args := []string{"diff", "--name-status"}
 	if len(paths) > 0 {
@@ -133,7 +95,7 @@ func ListModifiedFilesFiltered(ctx context.Context, r Runner, paths []string) ([
 }
 
 // ListStagedFilesFiltered returns staged files optionally filtered by paths.
-// When paths is empty it behaves identically to ListStagedFiles.
+// When paths is empty it returns all staged files.
 func ListStagedFilesFiltered(ctx context.Context, r Runner, paths []string) ([]StatusFile, error) {
 	args := []string{"diff", "--cached", "--name-status"}
 	if len(paths) > 0 {
@@ -143,27 +105,6 @@ func ListStagedFilesFiltered(ctx context.Context, r Runner, paths []string) ([]S
 	nameStatus, err := r.Run(ctx, args...)
 	if err != nil {
 		return nil, fmt.Errorf("git diff --cached --name-status: %w", err)
-	}
-
-	var files []StatusFile
-	for line := range strings.SplitSeq(nameStatus, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		sf := parseNameStatusLine(line)
-		files = append(files, sf)
-	}
-
-	return files, nil
-}
-
-// ListModifiedFiles returns working-tree modified files (for checkout/discard).
-// It only includes files tracked by git (not untracked), using git diff --name-status.
-func ListModifiedFiles(ctx context.Context, r Runner) ([]StatusFile, error) {
-	nameStatus, err := r.Run(ctx, "diff", "--name-status")
-	if err != nil {
-		return nil, fmt.Errorf("git diff --name-status: %w", err)
 	}
 
 	var files []StatusFile
@@ -215,38 +156,13 @@ func StageFiles(ctx context.Context, r Runner, paths []string) error {
 	return nil
 }
 
-// StageHunk applies a single hunk patch to the index via `git apply --cached`.
-// patchHeader is the unified diff file header (e.g. "diff --git a/f b/f\n--- a/f\n+++ b/f\n")
-// and hunkBody is the "@@ ... @@\n..." hunk text. They are concatenated to form
-// a minimal patch that git apply can process.
-func StageHunk(ctx context.Context, r Runner, patchHeader, hunkBody string) error {
-	patch := patchHeader + "\n" + hunkBody + "\n"
+// StageHunk stages a single hunk by feeding a unified diff patch to git apply --cached.
+func StageHunk(ctx context.Context, r Runner, patch string) error {
 	_, err := r.RunWithStdin(ctx, patch, "apply", "--cached")
 	if err != nil {
 		return fmt.Errorf("git apply --cached: %w", err)
 	}
 	return nil
-}
-
-// ListStagedFiles returns the list of files currently in the index (staged for commit).
-// It uses git diff --cached --name-status to enumerate staged changes.
-func ListStagedFiles(ctx context.Context, r Runner) ([]StatusFile, error) {
-	nameStatus, err := r.Run(ctx, "diff", "--cached", "--name-status")
-	if err != nil {
-		return nil, fmt.Errorf("git diff --cached --name-status: %w", err)
-	}
-
-	var files []StatusFile
-	for line := range strings.SplitSeq(nameStatus, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		sf := parseNameStatusLine(line)
-		files = append(files, sf)
-	}
-
-	return files, nil
 }
 
 // UnstageFiles runs git reset HEAD -- for the given file paths to remove them from the index.

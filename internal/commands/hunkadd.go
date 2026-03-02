@@ -214,7 +214,7 @@ func (m *HunkAddModel) Update(msg tea.Msg) tea.Cmd {
 				return sbCmd
 			}
 			fi := m.hunkList.CurrentFileIdx()
-			rawDiff := m.patchHeader(m.files[fi]) + "\n" + hunk.Body()
+			rawDiff := patchHeader(m.files[fi]) + "\n" + hunk.Body()
 			return editor.EditDiff(m.ctx, m.runner, rawDiff)
 		}
 
@@ -401,65 +401,16 @@ func (m *HunkAddModel) updateLineEdit(msg tea.KeyPressMsg, sbCmd tea.Cmd) tea.Cm
 	return sbCmd
 }
 
-// renderCurrentHunk updates the right-panel diff view with the hunk under the cursor.
 func (m *HunkAddModel) renderCurrentHunk() {
-	hunk, ok := m.hunkList.CurrentHunk()
-	if !ok {
-		m.diff.SetContent("(no hunks)")
-		return
-	}
-
-	raw := hunk.Body()
-	rendered, err := m.renderer.Render(raw)
-	if err != nil {
-		rendered = raw
-	}
-	m.diff.SetContent(rendered)
-	m.prevFileIdx = m.hunkList.CurrentFileIdx()
-	m.prevHunkIdx = m.hunkList.CurrentHunkIdx()
+	renderHunkPreview(&m.hunkList, &m.diff, m.renderer, &m.prevFileIdx, &m.prevHunkIdx)
 }
 
-// syncDiffPreview updates the diff view if the cursor moved to a different hunk.
 func (m *HunkAddModel) syncDiffPreview() {
-	fi := m.hunkList.CurrentFileIdx()
-	hi := m.hunkList.CurrentHunkIdx()
-	if fi != m.prevFileIdx || hi != m.prevHunkIdx {
-		m.renderCurrentHunk()
-	}
+	syncHunkPreview(&m.hunkList, &m.diff, m.renderer, &m.prevFileIdx, &m.prevHunkIdx)
 }
 
-// applyStaged stages all checked hunks via git apply --cached.
 func (m *HunkAddModel) applyStaged() tea.Cmd {
-	staged := m.hunkList.StagedHunks()
-	if len(staged) == 0 {
-		return nil
-	}
-
-	var lastErr error
-	applied := 0
-	for _, sh := range staged {
-		if sh.FileIdx >= len(m.files) {
-			continue
-		}
-		header := m.patchHeader(m.files[sh.FileIdx])
-		err := git.StageHunk(m.ctx, m.runner, header, sh.Hunk.Body())
-		if err != nil {
-			lastErr = err
-			continue
-		}
-		applied++
-	}
-
-	if lastErr != nil {
-		if applied == 0 {
-			return m.status.SetMessage(fmt.Sprintf("Stage failed: %v", lastErr), components.Error)
-		}
-		_ = m.status.SetMessage(fmt.Sprintf("Stage failed: %v", lastErr), components.Error)
-	}
-
-	return func() tea.Msg {
-		return app.PopModelMsg{MutatedGit: true}
-	}
+	return applyHunks(m.ctx, m.runner, &m.hunkList, m.files, &m.status, git.StageHunk, "Stage")
 }
 
 // splitCurrentHunk attempts to split the hunk under the cursor into sub-hunks.
@@ -558,13 +509,6 @@ func splitHunk(h git.Hunk, contextLines int) []git.Hunk {
 	return result
 }
 
-// patchHeader builds a minimal unified diff header for git apply.
-func (m *HunkAddModel) patchHeader(fd git.FileDiff) string {
-	oldPath := "a/" + fd.OldPath
-	newPath := "b/" + fd.NewPath
-	return fmt.Sprintf("diff --git %s %s\n--- %s\n+++ %s", oldPath, newPath, oldPath, newPath)
-}
-
 // execCommit stages checked hunks and launches devtool commit as a subprocess.
 // If titleOnly is true, passes -t for a title-only commit message.
 // Returns nil if staging fails (error shown in status bar).
@@ -580,8 +524,8 @@ func (m *HunkAddModel) execCommit(titleOnly bool) tea.Cmd {
 		if sh.FileIdx >= len(m.files) {
 			continue
 		}
-		header := m.patchHeader(m.files[sh.FileIdx])
-		if err := git.StageHunk(m.ctx, m.runner, header, sh.Hunk.Body()); err != nil {
+		patch := patchHeader(m.files[sh.FileIdx]) + "\n" + sh.Hunk.Body() + "\n"
+		if err := git.StageHunk(m.ctx, m.runner, patch); err != nil {
 			lastErr = err
 			continue
 		}

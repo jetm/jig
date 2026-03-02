@@ -381,3 +381,38 @@ func TestFileList_Update_NonKeyMsg_NoChange(t *testing.T) {
 	fl.Update("some non-key message")
 	assert.Equal(t, "a.go", fl.SelectedPath())
 }
+
+func TestFileList_SelectedOrCheckedPaths_ReturnsCheckedWhenPresent(t *testing.T) {
+	t.Parallel()
+	fl := NewFileList([]FileEntry{
+		{Path: "a.go", Status: git.Modified},
+		{Path: "b.go", Status: git.Added},
+		{Path: "c.go", Status: git.Deleted},
+	}, true)
+	fl.ToggleChecked() // check a.go
+	paths := fl.SelectedOrCheckedPaths()
+	if len(paths) != 1 || paths[0] != "a.go" {
+		t.Errorf("SelectedOrCheckedPaths() = %v, want [a.go]", paths)
+	}
+}
+
+func TestFileList_SelectedOrCheckedPaths_FallsBackToFocused(t *testing.T) {
+	t.Parallel()
+	fl := NewFileList([]FileEntry{
+		{Path: "a.go", Status: git.Modified},
+		{Path: "b.go", Status: git.Added},
+	}, true)
+	paths := fl.SelectedOrCheckedPaths()
+	if len(paths) != 1 || paths[0] != "a.go" {
+		t.Errorf("SelectedOrCheckedPaths() = %v, want [a.go]", paths)
+	}
+}
+
+func TestFileList_SelectedOrCheckedPaths_EmptyList(t *testing.T) {
+	t.Parallel()
+	fl := NewFileList(nil, true)
+	paths := fl.SelectedOrCheckedPaths()
+	if paths != nil {
+		t.Errorf("SelectedOrCheckedPaths() = %v, want nil", paths)
+	}
+}

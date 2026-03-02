@@ -201,7 +201,7 @@ func (m *CheckoutModel) Update(msg tea.Msg) tea.Cmd {
 			}
 
 		case tea.KeyEnter:
-			paths := m.selectedPaths()
+			paths := m.fileList.SelectedOrCheckedPaths()
 			if len(paths) == 0 {
 				return sbCmd
 			}
@@ -278,7 +278,7 @@ func (m *CheckoutModel) renderLayoutWithConfirm() string {
 	contentHeight := m.height - 1
 	m.status.SetWidth(m.width)
 
-	paths := m.selectedPaths()
+	paths := m.fileList.SelectedOrCheckedPaths()
 	prompt := fmt.Sprintf("Discard changes to %d file(s)? [y/N] ", len(paths))
 	promptStyle := lipgloss.NewStyle().
 		Foreground(tui.ColorYellow).
@@ -321,22 +321,10 @@ func (m *CheckoutModel) renderLayoutWithConfirm() string {
 	}
 }
 
-// selectedPaths returns paths of checked files or the focused file if none checked.
-func (m *CheckoutModel) selectedPaths() []string {
-	paths := m.fileList.CheckedPaths()
-	if len(paths) > 0 {
-		return paths
-	}
-	if path := m.fileList.SelectedPath(); path != "" {
-		return []string{path}
-	}
-	return nil
-}
-
 // discardSelected runs git checkout -- for the selected files and returns a PopModelMsg on success.
 // On failure, the model stays visible with the error in the status bar.
 func (m *CheckoutModel) discardSelected() tea.Cmd {
-	paths := m.selectedPaths()
+	paths := m.fileList.SelectedOrCheckedPaths()
 	if len(paths) == 0 {
 		return nil
 	}

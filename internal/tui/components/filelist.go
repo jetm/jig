@@ -66,6 +66,19 @@ func (fl *FileList) CheckedPaths() []string {
 	return paths
 }
 
+// SelectedOrCheckedPaths returns all checked paths, or the single focused
+// path if none are checked. Returns nil when the list is empty.
+func (fl *FileList) SelectedOrCheckedPaths() []string {
+	paths := fl.CheckedPaths()
+	if len(paths) > 0 {
+		return paths
+	}
+	if path := fl.SelectedPath(); path != "" {
+		return []string{path}
+	}
+	return nil
+}
+
 // ToggleChecked flips the checked state of the entry at the current cursor.
 func (fl *FileList) ToggleChecked() {
 	if len(fl.entries) == 0 {

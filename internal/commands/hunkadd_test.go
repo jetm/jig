@@ -513,11 +513,10 @@ func TestHunkAddModel_ApplyStaged_PartialFailure(t *testing.T) {
 	}
 }
 
-func TestHunkAddModel_PatchHeader(t *testing.T) {
+func TestPatchHeader(t *testing.T) {
 	t.Parallel()
-	m, _ := newHunkAddTestModel(t, singleHunkDiff)
 	fd := newTestFileDiff("path/to/file.go")
-	header := m.patchHeader(fd)
+	header := patchHeader(fd)
 
 	if !strings.Contains(header, "diff --git") {
 		t.Errorf("patchHeader missing 'diff --git': %q", header)

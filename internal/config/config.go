@@ -2,6 +2,7 @@
 package config
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -119,7 +120,9 @@ func applyFile(cfg *Config) error {
 		}
 
 		var fc fileConfig
-		if err := yaml.Unmarshal(data, &fc); err != nil {
+		dec := yaml.NewDecoder(bytes.NewReader(data))
+		dec.KnownFields(true)
+		if err := dec.Decode(&fc); err != nil {
 			return fmt.Errorf("parsing config file %s: %w", path, err)
 		}
 

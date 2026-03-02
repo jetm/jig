@@ -860,3 +860,41 @@ func TestDiffArgs(t *testing.T) {
 		})
 	}
 }
+
+func TestStripDiffPrefix(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"a/foo.go", "foo.go"},
+		{"b/bar.go", "bar.go"},
+		{"foo.go", "foo.go"},
+		{"a/", "a/"},
+		{"x", "x"},
+	}
+	for _, tt := range tests {
+		if got := stripDiffPrefix(tt.input); got != tt.want {
+			t.Errorf("stripDiffPrefix(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestExtractRenameField(t *testing.T) {
+	t.Parallel()
+	block := "diff --git a/old.go b/new.go\nrename from old.go\nrename to new.go\n--- a/old.go"
+	if got := extractRenameField(block, "rename from "); got != "old.go" {
+		t.Errorf("extractRenameField(rename from) = %q, want %q", got, "old.go")
+	}
+	if got := extractRenameField(block, "rename to "); got != "new.go" {
+		t.Errorf("extractRenameField(rename to) = %q, want %q", got, "new.go")
+	}
+	if got := extractRenameField(block, "missing "); got != "" {
+		t.Errorf("extractRenameField(missing) = %q, want empty", got)
+	}
+	// Field at end of block without trailing newline
+	blockNoTrail := "header\nrename from old.go"
+	if got := extractRenameField(blockNoTrail, "rename from "); got != "old.go" {
+		t.Errorf("extractRenameField(no trailing newline) = %q, want %q", got, "old.go")
+	}
+}

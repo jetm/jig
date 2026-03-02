@@ -704,3 +704,24 @@ func TestSave_CreatesParentDirectories(t *testing.T) {
 		t.Errorf("config dir should exist after Save(): %v", err)
 	}
 }
+
+func TestLoad_UnknownFieldReturnsError(t *testing.T) {
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, ".config", "jig")
+	if err := os.MkdirAll(cfgDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	content := `
+diff:
+  renderer: chroma
+  unknownField: true
+`
+	if err := os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := isolatedLoad(t, dir)
+	if err == nil {
+		t.Fatal("expected error for unknown config field, got nil")
+	}
+}

@@ -11,39 +11,78 @@ import (
 
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/jetm/jig/internal/diff"
 )
 
 // DiffView wraps bubbles/v2/viewport for scrollable diff content.
 type DiffView struct {
-	vp         viewport.Model
-	rawContent string
-	softWrap   bool
-	searching  bool
-	matchCount int
+	vp              viewport.Model
+	rawContent      string
+	softWrap        bool
+	searching       bool
+	matchCount      int
+	lineMap         []diff.LineInfo
+	showLineNumbers bool
+	gutterInstalled bool
 }
 
 // NewDiffView creates a DiffView with the given dimensions.
-func NewDiffView(width, height int) DiffView {
+// When showLineNumbers is true, the gutter displays source file line numbers
+// parsed from unified diff hunk headers. When false, no gutter is shown.
+func NewDiffView(width, height int, showLineNumbers bool) DiffView {
 	vp := viewport.New(
 		viewport.WithWidth(width),
 		viewport.WithHeight(height),
 	)
 	vp.FillHeight = true
-	vp.LeftGutterFunc = func(info viewport.GutterContext) string {
-		if info.Soft {
-			return "     \u2502 "
-		}
-		if info.Index >= info.TotalLines {
-			return "   ~ \u2502 "
-		}
-		return fmt.Sprintf("%4d \u2502 ", info.Index+1)
-	}
-	return DiffView{vp: vp}
+	return DiffView{vp: vp, showLineNumbers: showLineNumbers}
 }
 
-// SetContent stores the raw content and applies it to the viewport, wrapping if enabled.
+// initGutter installs the gutter function on the viewport.
+// Must be called after the DiffView is stored at its final address (not from the constructor,
+// since the constructor returns by value and the method value would bind to a stale copy).
+func (d *DiffView) initGutter() {
+	if d.gutterInstalled || !d.showLineNumbers {
+		return
+	}
+	d.gutterInstalled = true
+	d.vp.LeftGutterFunc = d.gutterFunc
+}
+
+// gutterFunc renders source line numbers in the viewport gutter.
+func (d *DiffView) gutterFunc(info viewport.GutterContext) string {
+	if info.Soft {
+		return "     \u2502 "
+	}
+	if info.Index >= info.TotalLines {
+		return "   ~ \u2502 "
+	}
+	if info.Index < len(d.lineMap) {
+		li := d.lineMap[info.Index]
+		if li.Num > 0 {
+			return fmt.Sprintf("%4d \u2502 ", li.Num)
+		}
+	}
+	return "     \u2502 "
+}
+
+// SetContent stores non-diff content (e.g. error messages) and clears the line map.
 func (d *DiffView) SetContent(s string) {
+	d.initGutter()
+	d.lineMap = nil
 	d.rawContent = s
+	d.applyContent()
+}
+
+// SetDiffContent stores rendered diff content and builds the line-number map from raw diff.
+// Use this instead of SetContent when displaying actual diff output.
+func (d *DiffView) SetDiffContent(raw, rendered string) {
+	d.initGutter()
+	if d.showLineNumbers {
+		d.lineMap = diff.ParseLineNumbers(raw)
+	}
+	d.rawContent = rendered
 	d.applyContent()
 }
 

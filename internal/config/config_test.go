@@ -725,3 +725,77 @@ diff:
 		t.Fatal("expected error for unknown config field, got nil")
 	}
 }
+
+func TestNewDefault_ShowLineNumbers(t *testing.T) {
+	cfg := NewDefault()
+	if !cfg.ShowLineNumbers {
+		t.Error("ShowLineNumbers: got false, want true")
+	}
+}
+
+func TestLoad_ShowLineNumbersDefault(t *testing.T) {
+	dir := t.TempDir()
+	cfg, err := isolatedLoad(t, dir)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if !cfg.ShowLineNumbers {
+		t.Error("ShowLineNumbers: got false, want true (default)")
+	}
+}
+
+func TestLoad_ShowLineNumbersFromFile(t *testing.T) {
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, ".config", "jig")
+	if err := os.MkdirAll(cfgDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	content := `
+ui:
+  showLineNumbers: false
+`
+	if err := os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := isolatedLoad(t, dir)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.ShowLineNumbers {
+		t.Error("ShowLineNumbers: got true, want false")
+	}
+}
+
+func TestLoad_ShowLineNumbersEnvOverridesFile(t *testing.T) {
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, ".config", "jig")
+	if err := os.MkdirAll(cfgDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	content := `
+ui:
+  showLineNumbers: true
+`
+	if err := os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("JIG_SHOW_LINE_NUMBERS", "false")
+	cfg, err := isolatedLoad(t, dir)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.ShowLineNumbers {
+		t.Error("ShowLineNumbers: got true, want false (env override)")
+	}
+}
+
+func TestLoad_ShowLineNumbersInvalidEnv(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("JIG_SHOW_LINE_NUMBERS", "invalid")
+	_, err := isolatedLoad(t, dir)
+	if err == nil {
+		t.Fatal("expected error for invalid JIG_SHOW_LINE_NUMBERS, got nil")
+	}
+}

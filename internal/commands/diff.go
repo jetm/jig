@@ -94,7 +94,7 @@ func NewDiffModel(
 	m := &DiffModel{
 		twoPanelModel: newTwoPanelModel(
 			&fileList,
-			components.NewDiffView(80, 20),
+			components.NewDiffView(80, 20, cfg.ShowLineNumbers && !isDeltaRenderer(renderer)),
 			components.NewStatusBar(120),
 			components.NewHelpOverlay([]components.KeyGroup{
 				{
@@ -302,7 +302,7 @@ func (m *DiffModel) renderSelectedDiff() {
 			if err != nil {
 				rendered = f.RawDiff
 			}
-			m.diff.SetContent(rendered)
+			m.diff.SetDiffContent(f.RawDiff, rendered)
 			return
 		}
 	}

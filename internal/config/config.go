@@ -28,8 +28,9 @@ type Config struct {
 	ShowDiffPanel     bool
 
 	// Phase 11 fields
-	PanelRatio int
-	SoftWrap   bool
+	PanelRatio      int
+	SoftWrap        bool
+	ShowLineNumbers bool
 }
 
 // NewDefault returns a Config with default values.
@@ -49,6 +50,7 @@ func NewDefault() Config {
 		ShowDiffPanel:     true,
 		PanelRatio:        40,
 		SoftWrap:          true,
+		ShowLineNumbers:   true,
 	}
 }
 
@@ -65,10 +67,11 @@ type fileConfig struct {
 		DefaultBase string `yaml:"defaultBase"`
 	} `yaml:"rebase"`
 	UI struct {
-		Theme         string `yaml:"theme"`
-		ShowDiffPanel *bool  `yaml:"showDiffPanel"`
-		PanelRatio    int    `yaml:"panelRatio"`
-		SoftWrap      *bool  `yaml:"softWrap"`
+		Theme           string `yaml:"theme"`
+		ShowDiffPanel   *bool  `yaml:"showDiffPanel"`
+		PanelRatio      int    `yaml:"panelRatio"`
+		SoftWrap        *bool  `yaml:"softWrap"`
+		ShowLineNumbers *bool  `yaml:"showLineNumbers"`
 	} `yaml:"ui"`
 }
 
@@ -150,6 +153,9 @@ func applyFile(cfg *Config) error {
 		if fc.UI.SoftWrap != nil {
 			cfg.SoftWrap = *fc.UI.SoftWrap
 		}
+		if fc.UI.ShowLineNumbers != nil {
+			cfg.ShowLineNumbers = *fc.UI.ShowLineNumbers
+		}
 
 		return nil
 	}
@@ -199,6 +205,13 @@ func applyEnv(cfg *Config) error {
 		}
 		cfg.SoftWrap = b
 	}
+	if v := os.Getenv("JIG_SHOW_LINE_NUMBERS"); v != "" {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			return fmt.Errorf("invalid JIG_SHOW_LINE_NUMBERS %q: %w", v, err)
+		}
+		cfg.ShowLineNumbers = b
+	}
 	return nil
 }
 
@@ -214,10 +227,11 @@ type saveConfig struct {
 		DefaultBase string `yaml:"defaultBase"`
 	} `yaml:"rebase"`
 	UI struct {
-		Theme         string `yaml:"theme"`
-		ShowDiffPanel bool   `yaml:"showDiffPanel"`
-		PanelRatio    int    `yaml:"panelRatio"`
-		SoftWrap      bool   `yaml:"softWrap"`
+		Theme           string `yaml:"theme"`
+		ShowDiffPanel   bool   `yaml:"showDiffPanel"`
+		PanelRatio      int    `yaml:"panelRatio"`
+		SoftWrap        bool   `yaml:"softWrap"`
+		ShowLineNumbers bool   `yaml:"showLineNumbers"`
 	} `yaml:"ui"`
 }
 
@@ -243,6 +257,7 @@ func Save(cfg Config) error {
 	sc.UI.ShowDiffPanel = cfg.ShowDiffPanel
 	sc.UI.PanelRatio = cfg.PanelRatio
 	sc.UI.SoftWrap = cfg.SoftWrap
+	sc.UI.ShowLineNumbers = cfg.ShowLineNumbers
 
 	data, err := yaml.Marshal(&sc)
 	if err != nil {

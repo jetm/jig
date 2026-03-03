@@ -8,6 +8,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/jetm/jig/internal/config"
+	"github.com/jetm/jig/internal/diff"
 	"github.com/jetm/jig/internal/tui"
 	"github.com/jetm/jig/internal/tui/components"
 )
@@ -280,4 +281,10 @@ func (tp *twoPanelModel) renderLayout() string {
 		panels := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
 		return panels + "\n" + tp.bottomBar()
 	}
+}
+
+// isDeltaRenderer reports whether r is a *diff.DeltaRenderer.
+func isDeltaRenderer(r diff.Renderer) bool {
+	_, ok := r.(*diff.DeltaRenderer)
+	return ok
 }

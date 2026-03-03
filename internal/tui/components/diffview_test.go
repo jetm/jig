@@ -6,7 +6,7 @@ import (
 )
 
 func newTestDiffView(content string) *DiffView {
-	dv := NewDiffView(80, 5)
+	dv := NewDiffView(80, 5, true)
 	dv.SetContent(content)
 	return &dv
 }
@@ -88,7 +88,7 @@ func TestDiffViewSetWidthAndHeight(t *testing.T) {
 }
 
 func TestDiffViewSoftWrapOffStoresContentUnchanged(t *testing.T) {
-	dv := NewDiffView(20, 5)
+	dv := NewDiffView(20, 5, true)
 	long := strings.Repeat("x", 40) // longer than viewport width
 	dv.SetSoftWrap(false)
 	dv.SetContent(long)
@@ -101,7 +101,7 @@ func TestDiffViewSoftWrapOffStoresContentUnchanged(t *testing.T) {
 }
 
 func TestDiffViewSoftWrapOnWrapsLongLines(t *testing.T) {
-	dv := NewDiffView(40, 20)
+	dv := NewDiffView(40, 20, true)
 	dv.SetSoftWrap(true)
 	// A 50-char line should be broken into multiple physical lines.
 	long := strings.Repeat("a", 50)
@@ -120,7 +120,7 @@ func TestDiffViewSoftWrapOnWrapsLongLines(t *testing.T) {
 }
 
 func TestDiffViewSoftWrapToggleReappliesContent(t *testing.T) {
-	dv := NewDiffView(10, 20)
+	dv := NewDiffView(10, 20, true)
 	long := "+" + strings.Repeat("b", 30)
 	dv.SetContent(long)
 
@@ -138,7 +138,7 @@ func TestDiffViewSoftWrapToggleReappliesContent(t *testing.T) {
 }
 
 func TestDiffViewSoftWrapPreservesDiffPrefix(t *testing.T) {
-	dv := NewDiffView(40, 20)
+	dv := NewDiffView(40, 20, true)
 	dv.SetSoftWrap(true)
 	// diff prefix + 40 chars should wrap but keep + on first content line
 	line := "+" + strings.Repeat("c", 40)
@@ -304,7 +304,7 @@ func TestWrapContent_ContinuationEffectiveWidth(t *testing.T) {
 
 func TestNewDiffView_FillHeightEnabled(t *testing.T) {
 	t.Parallel()
-	dv := NewDiffView(80, 20)
+	dv := NewDiffView(80, 20, true)
 	dv.SetContent("line1\nline2")
 
 	view := dv.View()
@@ -315,29 +315,83 @@ func TestNewDiffView_FillHeightEnabled(t *testing.T) {
 	}
 }
 
-func TestNewDiffView_GutterShowsLineNumbers(t *testing.T) {
+func TestNewDiffView_GutterShowsSourceLineNumbers(t *testing.T) {
 	t.Parallel()
-	dv := NewDiffView(80, 10)
-	dv.SetContent("first\nsecond\nthird")
+	raw := `diff --git a/foo.go b/foo.go
+index abc..def 100644
+--- a/foo.go
++++ b/foo.go
+@@ -10,3 +10,4 @@ func main() {
+ unchanged
+-removed
++added1
++added2
+ context`
+	dv := NewDiffView(80, 20, true)
+	dv.SetDiffContent(raw, raw)
 
 	view := dv.View()
 	lines := strings.Split(view, "\n")
 
-	// First three lines should have line numbers
-	if !strings.Contains(lines[0], "1 ") {
-		t.Errorf("line 0 should contain line number 1, got %q", lines[0])
+	// Line 0-3: headers -> blank gutter
+	if strings.Contains(lines[0], "1 ") {
+		t.Errorf("header line should not have line number, got %q", lines[0])
 	}
-	if !strings.Contains(lines[1], "2 ") {
-		t.Errorf("line 1 should contain line number 2, got %q", lines[1])
+	// Line 4: hunk header -> blank gutter
+	if !strings.Contains(lines[4], "│") {
+		t.Errorf("hunk header should have gutter separator, got %q", lines[4])
 	}
-	if !strings.Contains(lines[2], "3 ") {
-		t.Errorf("line 2 should contain line number 3, got %q", lines[2])
+	// Line 5: " unchanged" -> new-file line 10
+	if !strings.Contains(lines[5], "10 │") {
+		t.Errorf("context line should show line 10, got %q", lines[5])
+	}
+	// Line 6: "-removed" -> old-file line 11
+	if !strings.Contains(lines[6], "11 │") {
+		t.Errorf("removed line should show old line 11, got %q", lines[6])
+	}
+	// Line 7: "+added1" -> new-file line 11
+	if !strings.Contains(lines[7], "11 │") {
+		t.Errorf("added line should show new line 11, got %q", lines[7])
+	}
+	// Line 8: "+added2" -> new-file line 12
+	if !strings.Contains(lines[8], "12 │") {
+		t.Errorf("added line should show new line 12, got %q", lines[8])
+	}
+	// Line 9: " context" -> new-file line 13
+	if !strings.Contains(lines[9], "13 │") {
+		t.Errorf("context line should show new line 13, got %q", lines[9])
+	}
+}
+
+func TestNewDiffView_GutterBlankForNonDiffContent(t *testing.T) {
+	t.Parallel()
+	dv := NewDiffView(80, 10, true)
+	dv.SetContent("just some text")
+
+	view := dv.View()
+	// Should have the separator but no line numbers
+	if !strings.Contains(view, "│") {
+		t.Error("gutter should still show separator")
+	}
+	if strings.Contains(view, "1 │") {
+		t.Error("non-diff content should not show sequential line numbers")
+	}
+}
+
+func TestNewDiffView_NoGutterWhenDisabled(t *testing.T) {
+	t.Parallel()
+	dv := NewDiffView(80, 10, false)
+	dv.SetContent("some content")
+
+	view := dv.View()
+	if strings.Contains(view, "│") {
+		t.Error("gutter should not appear when showLineNumbers is false")
 	}
 }
 
 func TestNewDiffView_GutterFillLinesShowTilde(t *testing.T) {
 	t.Parallel()
-	dv := NewDiffView(80, 10)
+	dv := NewDiffView(80, 10, true)
 	dv.SetContent("only one line")
 
 	view := dv.View()
@@ -353,7 +407,7 @@ func TestNewDiffView_GutterFillLinesShowTilde(t *testing.T) {
 
 func TestDiffView_SearchFindsMatches(t *testing.T) {
 	t.Parallel()
-	dv := NewDiffView(80, 10)
+	dv := NewDiffView(80, 10, true)
 	dv.SetContent("foo bar\nbaz foo\nqux")
 
 	dv.Search("foo")
@@ -367,7 +421,7 @@ func TestDiffView_SearchFindsMatches(t *testing.T) {
 
 func TestDiffView_SearchNoMatches(t *testing.T) {
 	t.Parallel()
-	dv := NewDiffView(80, 10)
+	dv := NewDiffView(80, 10, true)
 	dv.SetContent("foo bar baz")
 
 	dv.Search("xyz")
@@ -381,7 +435,7 @@ func TestDiffView_SearchNoMatches(t *testing.T) {
 
 func TestDiffView_ClearSearch(t *testing.T) {
 	t.Parallel()
-	dv := NewDiffView(80, 10)
+	dv := NewDiffView(80, 10, true)
 	dv.SetContent("foo bar foo")
 
 	dv.Search("foo")
@@ -400,7 +454,7 @@ func TestDiffView_ClearSearch(t *testing.T) {
 
 func TestDiffView_SearchInvalidRegexFallsBackToLiteral(t *testing.T) {
 	t.Parallel()
-	dv := NewDiffView(80, 10)
+	dv := NewDiffView(80, 10, true)
 	dv.SetContent("foo (bar) baz (bar)")
 
 	dv.Search("(bar")

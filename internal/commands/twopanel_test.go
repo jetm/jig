@@ -29,7 +29,7 @@ func (f *fakePanel) Update(tea.Msg) tea.Cmd { return nil }
 func newTestTwoPanel() *twoPanelModel {
 	cfg := config.NewDefault()
 	left := &fakePanel{content: "left"}
-	diff := components.NewDiffView(80, 20)
+	diff := components.NewDiffView(80, 20, true)
 	status := components.NewStatusBar(120)
 	help := components.NewHelpOverlay(nil)
 	tp := newTwoPanelModel(left, diff, status, help, cfg)

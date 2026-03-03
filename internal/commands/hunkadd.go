@@ -82,7 +82,7 @@ func NewHunkAddModel(
 	m := &HunkAddModel{
 		twoPanelModel: newTwoPanelModel(
 			&hl,
-			components.NewDiffView(80, 20),
+			components.NewDiffView(80, 20, cfg.ShowLineNumbers && !isDeltaRenderer(renderer)),
 			components.NewStatusBar(120),
 			components.NewHelpOverlay([]components.KeyGroup{
 				{

@@ -3,6 +3,8 @@ package git
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -38,6 +40,7 @@ func ListUnstagedFilesFiltered(ctx context.Context, r Runner, paths []string) ([
 	}
 
 	// Untracked files (only when no path filter; path-filtered untracked is complex)
+	var untrackedFiles []StatusFile
 	if len(paths) == 0 {
 		untracked, err := r.Run(ctx, "ls-files", "--others", "--exclude-standard")
 		if err != nil {
@@ -48,7 +51,7 @@ func ListUnstagedFilesFiltered(ctx context.Context, r Runner, paths []string) ([
 			if line == "" {
 				continue
 			}
-			files = append(files, StatusFile{Path: line, Status: Added})
+			untrackedFiles = append(untrackedFiles, StatusFile{Path: line, Status: Added})
 		}
 	} else {
 		// For path-filtered mode, check each path individually as untracked.
@@ -60,10 +63,21 @@ func ListUnstagedFilesFiltered(ctx context.Context, r Runner, paths []string) ([
 				if line == "" {
 					continue
 				}
-				files = append(files, StatusFile{Path: line, Status: Added})
+				untrackedFiles = append(untrackedFiles, StatusFile{Path: line, Status: Added})
 			}
 		}
 	}
+
+	// Filter out untracked files whose paths traverse a symlink.
+	// git ls-files --others walks through symlinks, but git add refuses to
+	// stage paths beyond a symlink (exit 128).
+	if len(untrackedFiles) > 0 {
+		topLevel, err := r.Run(ctx, "rev-parse", "--show-toplevel")
+		if err == nil {
+			untrackedFiles = filterBeyondSymlinks(topLevel, untrackedFiles)
+		}
+	}
+	files = append(files, untrackedFiles...)
 
 	return files, nil
 }
@@ -209,4 +223,36 @@ func DiscardFiles(ctx context.Context, r Runner, paths []string) error {
 		return fmt.Errorf("git checkout --: %w", err)
 	}
 	return nil
+}
+
+// pathBeyondSymlink reports whether any directory component of relPath
+// is a symbolic link when resolved from baseDir.
+func pathBeyondSymlink(baseDir, relPath string) bool {
+	dir := filepath.Dir(relPath)
+	if dir == "." {
+		return false
+	}
+	current := baseDir
+	for part := range strings.SplitSeq(dir, string(filepath.Separator)) {
+		current = filepath.Join(current, part)
+		fi, err := os.Lstat(current)
+		if err != nil {
+			return false
+		}
+		if fi.Mode()&os.ModeSymlink != 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// filterBeyondSymlinks removes files whose paths traverse a symlink.
+func filterBeyondSymlinks(baseDir string, files []StatusFile) []StatusFile {
+	filtered := make([]StatusFile, 0, len(files))
+	for _, f := range files {
+		if !pathBeyondSymlink(baseDir, f.Path) {
+			filtered = append(filtered, f)
+		}
+	}
+	return filtered
 }

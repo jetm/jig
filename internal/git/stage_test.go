@@ -3,6 +3,8 @@ package git
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/jetm/jig/internal/testhelper"
@@ -328,5 +330,146 @@ func TestParseNameStatusLine_AllStatuses(t *testing.T) {
 		if sf.Status != tt.wantStatus {
 			t.Errorf("parseNameStatusLine(%q).Status = %v, want %v", tt.line, sf.Status, tt.wantStatus)
 		}
+	}
+}
+
+func TestPathBeyondSymlink_DirectSymlink(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	// Create real/file.txt
+	realDir := filepath.Join(dir, "real")
+	if err := os.MkdirAll(realDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(realDir, "file.txt"), []byte("hi"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create link -> real (symlink)
+	if err := os.Symlink(realDir, filepath.Join(dir, "link")); err != nil {
+		t.Fatal(err)
+	}
+
+	if !pathBeyondSymlink(dir, "link/file.txt") {
+		t.Error("expected link/file.txt to be beyond a symlink")
+	}
+	if pathBeyondSymlink(dir, "real/file.txt") {
+		t.Error("expected real/file.txt to NOT be beyond a symlink")
+	}
+}
+
+func TestPathBeyondSymlink_NestedSymlink(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	// Create a/b/c/file.txt
+	nested := filepath.Join(dir, "a", "b", "c")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(nested, "file.txt"), []byte("hi"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Replace a/b with a symlink: a/sym -> a/b/c
+	if err := os.Symlink(filepath.Join(dir, "a", "b", "c"), filepath.Join(dir, "a", "sym")); err != nil {
+		t.Fatal(err)
+	}
+
+	if !pathBeyondSymlink(dir, "a/sym/file.txt") {
+		t.Error("expected a/sym/file.txt to be beyond a symlink")
+	}
+	if pathBeyondSymlink(dir, "a/b/c/file.txt") {
+		t.Error("expected a/b/c/file.txt to NOT be beyond a symlink")
+	}
+}
+
+func TestPathBeyondSymlink_TopLevelFile(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	if err := os.WriteFile(filepath.Join(dir, "file.txt"), []byte("hi"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if pathBeyondSymlink(dir, "file.txt") {
+		t.Error("top-level file should not be beyond a symlink")
+	}
+}
+
+func TestFilterBeyondSymlinks(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	// Create real/file.txt and link -> real
+	realDir := filepath.Join(dir, "real")
+	if err := os.MkdirAll(realDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(realDir, "file.txt"), []byte("hi"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(realDir, filepath.Join(dir, "link")); err != nil {
+		t.Fatal(err)
+	}
+
+	files := []StatusFile{
+		{Path: "real/file.txt", Status: Added},
+		{Path: "link/file.txt", Status: Added},
+		{Path: "top.txt", Status: Added},
+	}
+
+	got := filterBeyondSymlinks(dir, files)
+
+	if len(got) != 2 {
+		t.Fatalf("expected 2 files after filtering, got %d: %v", len(got), got)
+	}
+	if got[0].Path != "real/file.txt" {
+		t.Errorf("expected first file to be real/file.txt, got %q", got[0].Path)
+	}
+	if got[1].Path != "top.txt" {
+		t.Errorf("expected second file to be top.txt, got %q", got[1].Path)
+	}
+}
+
+func TestListUnstagedFilesFiltered_ExcludesSymlinkedUntracked(t *testing.T) {
+	t.Parallel()
+
+	// Simulate: git diff returns nothing, ls-files returns files including one behind a symlink,
+	// rev-parse returns a tmpdir with a symlink setup.
+	dir := t.TempDir()
+
+	// Create real/file.go and link -> real
+	realDir := filepath.Join(dir, "real")
+	if err := os.MkdirAll(realDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(realDir, "file.go"), []byte("package x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(realDir, filepath.Join(dir, "link")); err != nil {
+		t.Fatal(err)
+	}
+
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{
+			"",                             // git diff --name-status
+			"real/file.go\nlink/file.go\n", // ls-files --others --exclude-standard
+			dir,                            // rev-parse --show-toplevel
+		},
+	}
+
+	files, err := ListUnstagedFilesFiltered(context.Background(), runner, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Should only include real/file.go, not link/file.go
+	if len(files) != 1 {
+		t.Fatalf("expected 1 file after symlink filtering, got %d: %v", len(files), files)
+	}
+	if files[0].Path != "real/file.go" {
+		t.Errorf("expected real/file.go, got %q", files[0].Path)
 	}
 }

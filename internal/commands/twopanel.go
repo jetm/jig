@@ -119,6 +119,14 @@ func (tp *twoPanelModel) handleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, true
 	}
 
+	// When maximized, intercept j/k and forward to the file list so
+	// navigation updates the diff content instead of scrolling the viewport.
+	if tp.diffMaximized {
+		if s := msg.String(); s == "j" || s == "k" {
+			return tp.left.Update(msg), true
+		}
+	}
+
 	switch msg.String() {
 	case "/":
 		if tp.focusRight {
@@ -151,10 +159,12 @@ func (tp *twoPanelModel) handleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case "F":
 		if tp.showDiff {
 			tp.diffMaximized = !tp.diffMaximized
+			if tp.diffMaximized {
+				tp.focusRight = true
+			}
 			tp.updateHints()
 		}
 		return nil, true
-
 	case "w":
 		if tp.focusRight {
 			tp.diff.SetSoftWrap(!tp.diff.SoftWrap())

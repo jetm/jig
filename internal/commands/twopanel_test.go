@@ -26,6 +26,30 @@ func (f *fakePanel) SetWidth(w int)         { f.width = w }
 func (f *fakePanel) SetHeight(h int)        { f.height = h }
 func (f *fakePanel) Update(tea.Msg) tea.Cmd { return nil }
 
+// spyPanel records all messages it receives via Update.
+type spyPanel struct {
+	fakePanel
+	messages []tea.Msg
+}
+
+func (s *spyPanel) Update(msg tea.Msg) tea.Cmd {
+	s.messages = append(s.messages, msg)
+	return nil
+}
+
+func newSpyTwoPanel() (*twoPanelModel, *spyPanel) {
+	cfg := config.NewDefault()
+	spy := &spyPanel{fakePanel: fakePanel{content: "left"}}
+	diff := components.NewDiffView(80, 20, true)
+	status := components.NewStatusBar(120)
+	help := components.NewHelpOverlay(nil)
+	tp := newTwoPanelModel(spy, diff, status, help, cfg)
+	tp.width = 120
+	tp.height = 40
+	tp.setHints("left hints", "right hints", "maximize hints")
+	return &tp, spy
+}
+
 func newTestTwoPanel() *twoPanelModel {
 	cfg := config.NewDefault()
 	left := &fakePanel{content: "left"}
@@ -623,4 +647,97 @@ func TestTwoPanelModel_RenderLayout_SearchMode(t *testing.T) {
 	tp.handleKey(tea.KeyPressMsg{Code: '/'})
 	layout := tp.renderLayout()
 	assert.Contains(t, layout, "/", "layout should contain search prompt when in search mode")
+}
+
+func TestTwoPanelModel_Maximize_SetsFocusRight(t *testing.T) {
+	t.Parallel()
+	tp := newTestTwoPanel()
+	tp.showDiff = true
+
+	assert.False(t, tp.focusRight, "should start focused left")
+
+	tp.handleKey(tea.KeyPressMsg{Code: 'F', Text: "F"})
+
+	assert.True(t, tp.diffMaximized, "F should maximize diff")
+	assert.True(t, tp.focusRight, "entering maximize should set focusRight=true")
+}
+
+func TestTwoPanelModel_Maximize_JK_RoutedToFileList(t *testing.T) {
+	t.Parallel()
+	tp, spy := newSpyTwoPanel()
+	tp.showDiff = true
+
+	// Enter maximize mode.
+	tp.handleKey(tea.KeyPressMsg{Code: 'F', Text: "F"})
+	require.True(t, tp.diffMaximized)
+
+	// Send j — should be intercepted and forwarded to the left panel.
+	_, handledJ := tp.handleKey(tea.KeyPressMsg{Code: 'j', Text: "j"})
+	assert.True(t, handledJ, "j should be handled in maximize mode")
+
+	// Send k — same behavior.
+	_, handledK := tp.handleKey(tea.KeyPressMsg{Code: 'k', Text: "k"})
+	assert.True(t, handledK, "k should be handled in maximize mode")
+
+	// The spy panel should have received both key messages.
+	require.Len(t, spy.messages, 2, "left panel should receive j and k messages")
+	assert.Equal(t, tea.KeyPressMsg{Code: 'j', Text: "j"}, spy.messages[0])
+	assert.Equal(t, tea.KeyPressMsg{Code: 'k', Text: "k"}, spy.messages[1])
+}
+
+func TestTwoPanelModel_Maximize_ArrowKeys_NotIntercepted(t *testing.T) {
+	t.Parallel()
+	tp, spy := newSpyTwoPanel()
+	tp.showDiff = true
+
+	// Enter maximize mode.
+	tp.handleKey(tea.KeyPressMsg{Code: 'F', Text: "F"})
+	require.True(t, tp.diffMaximized)
+
+	// Arrow keys should NOT be handled by handleKey — they pass through
+	// to the parent, which routes them to the viewport via focusRight.
+	_, handledUp := tp.handleKey(tea.KeyPressMsg{Code: tea.KeyUp})
+	assert.False(t, handledUp, "Up arrow should not be handled by handleKey in maximize mode")
+
+	_, handledDown := tp.handleKey(tea.KeyPressMsg{Code: tea.KeyDown})
+	assert.False(t, handledDown, "Down arrow should not be handled by handleKey in maximize mode")
+
+	// Left panel should NOT have received arrow keys.
+	assert.Empty(t, spy.messages, "arrow keys should not reach the left panel in maximize mode")
+}
+
+func TestTwoPanelModel_Maximize_Exit_PreservesFocusRight(t *testing.T) {
+	t.Parallel()
+	tp := newTestTwoPanel()
+	tp.showDiff = true
+
+	// Enter maximize.
+	tp.handleKey(tea.KeyPressMsg{Code: 'F', Text: "F"})
+	require.True(t, tp.diffMaximized)
+	require.True(t, tp.focusRight, "maximize should set focusRight")
+
+	// Exit maximize.
+	tp.handleKey(tea.KeyPressMsg{Code: 'F', Text: "F"})
+	assert.False(t, tp.diffMaximized, "F should exit maximize")
+	assert.True(t, tp.focusRight, "exiting maximize should preserve focusRight=true")
+}
+
+func TestTwoPanelModel_Maximize_PageKeys_NotIntercepted(t *testing.T) {
+	t.Parallel()
+	tp, spy := newSpyTwoPanel()
+	tp.showDiff = true
+
+	// Enter maximize mode.
+	tp.handleKey(tea.KeyPressMsg{Code: 'F', Text: "F"})
+	require.True(t, tp.diffMaximized)
+
+	// PgUp/PgDn should NOT be handled — they pass through to the viewport.
+	_, handledPgUp := tp.handleKey(tea.KeyPressMsg{Code: tea.KeyPgUp})
+	assert.False(t, handledPgUp, "PgUp should not be handled by handleKey in maximize mode")
+
+	_, handledPgDn := tp.handleKey(tea.KeyPressMsg{Code: tea.KeyPgDown})
+	assert.False(t, handledPgDn, "PgDn should not be handled by handleKey in maximize mode")
+
+	// Left panel should NOT have received page keys.
+	assert.Empty(t, spy.messages, "page keys should not reach the left panel in maximize mode")
 }

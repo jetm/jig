@@ -24,14 +24,25 @@ make snapshot   # produces binaries in dist/
 
 | Command | Description | Replaces |
 |---------|-------------|----------|
-| `jig add` | Interactively stage files | [forgit](https://github.com/wfxr/forgit) add |
-| `jig hunk-add` | Interactively stage individual hunks | `git add -p` / [git-add--interactive](https://github.com/cwarden/git-add--interactive) |
-| `jig checkout` | Interactively discard file changes | `git restore` |
+| `jig add [paths...]` | Interactively stage files | [forgit](https://github.com/wfxr/forgit) add |
+| `jig hunk-add [paths...]` | Interactively stage individual hunks | `git add -p` / [git-add--interactive](https://github.com/cwarden/git-add--interactive) |
+| `jig checkout [paths...]` | Interactively discard file changes | `git restore` |
 | `jig diff [revision]` | Interactive side-by-side diff viewer | [diffnav](https://github.com/dlvhdr/diffnav) |
 | `jig fixup` | Interactively create a fixup commit | [forgit](https://github.com/wfxr/forgit) fixup |
+| `jig hunk-checkout [paths...]` | Interactively discard individual hunks | `git checkout -p` |
+| `jig hunk-reset [paths...]` | Interactively unstage individual hunks | `git reset -p` |
 | `jig log [revision]` | Interactive commit log browser | [tig](https://github.com/jonas/tig) / `git log` |
 | `jig rebase-interactive [revision]` | Interactive rebase todo editor | [git-interactive-rebase-tool](https://github.com/MitMaro/git-interactive-rebase-tool) |
-| `jig reset` | Interactively unstage files | [forgit](https://github.com/wfxr/forgit) reset |
+| `jig reset [paths...]` | Interactively unstage files | [forgit](https://github.com/wfxr/forgit) reset |
+
+### Command flags
+
+| Command | Flag | Description |
+|---------|------|-------------|
+| `diff` | `--staged` | Show staged (cached) changes instead of working tree changes |
+| `add` | `--interactive`, `-i` | Open TUI even when paths are given (default: stages paths directly) |
+| `reset` | `--interactive`, `-i` | Open TUI even when paths are given (default: unstages paths directly) |
+| `checkout` | `--direct`, `-d` | Discard files directly without opening TUI |
 
 ## Configuration
 

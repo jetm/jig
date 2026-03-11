@@ -22,7 +22,7 @@ var ansiEscape = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
 const (
 	diffHintsLeft     = "j/k: navigate  Tab: panel  D: diff  ?: help  q: quit"
 	diffHintsRight    = "w: wrap  F: maximize  Tab: panel  ?: help  q: quit"
-diffHintsMaximize = "j/k: files  F: restore  ?: help  q: quit"
+	diffHintsMaximize = "j/k: files  F: restore  ?: help  q: quit"
 )
 
 // DiffModel is the command model for the diff TUI.

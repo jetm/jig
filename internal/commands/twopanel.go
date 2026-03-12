@@ -119,10 +119,12 @@ func (tp *twoPanelModel) handleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, true
 	}
 
-	// When maximized, intercept j/k and forward to the file list so
+	// When maximized, intercept j/k/Space and forward to the file list so
 	// navigation updates the diff content instead of scrolling the viewport.
+	// Space is intercepted so hunk commands (hunkadd, hunkreset, hunkcheckout)
+	// can toggle hunk selection even when the viewport is focused.
 	if tp.diffMaximized {
-		if s := msg.String(); s == "j" || s == "k" {
+		if s := msg.String(); s == "j" || s == "k" || s == "space" {
 			return tp.left.Update(msg), true
 		}
 	}

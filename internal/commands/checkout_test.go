@@ -693,8 +693,8 @@ func TestCheckoutModel_TabNoopWhenMaximized(t *testing.T) {
 
 	m.Update(tea.KeyPressMsg{Code: 'F', ShiftedCode: 'F', Mod: tea.ModShift, Text: "F"})
 	m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
-	if m.focusRight {
-		t.Error("Tab should not switch focus when maximized")
+	if !m.focusRight {
+		t.Error("Tab should not toggle focus when maximized; focusRight should stay true")
 	}
 }
 

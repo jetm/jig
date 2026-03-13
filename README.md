@@ -62,6 +62,10 @@ rebase:
 
 ui:
   theme: dark        # dark | light (theme switching is plumbing only)
+  showDiffPanel: true   # show diff panel on startup
+  panelRatio: 40        # file list width as percentage [20-80]
+  softWrap: true        # soft-wrap long diff lines
+  showLineNumbers: true # show line numbers in diff view
 ```
 
 ### Environment variable overrides
@@ -74,6 +78,10 @@ Environment variables take precedence over the config file:
 | `JIG_LOG_COMMIT_LIMIT` | `log.commitLimit` | `JIG_LOG_COMMIT_LIMIT=100` |
 | `JIG_REBASE_DEFAULT_BASE` | `rebase.defaultBase` | `JIG_REBASE_DEFAULT_BASE=main` |
 | `JIG_UI_THEME` | `ui.theme` | `JIG_UI_THEME=light` |
+| `JIG_SHOW_DIFF_PANEL` | `ui.showDiffPanel` | `JIG_SHOW_DIFF_PANEL=false` |
+| `JIG_PANEL_RATIO` | `ui.panelRatio` | `JIG_PANEL_RATIO=50` |
+| `JIG_SOFT_WRAP` | `ui.softWrap` | `JIG_SOFT_WRAP=false` |
+| `JIG_SHOW_LINE_NUMBERS` | `ui.showLineNumbers` | `JIG_SHOW_LINE_NUMBERS=false` |
 
 ### Diff renderers
 

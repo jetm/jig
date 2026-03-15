@@ -89,6 +89,102 @@ Environment variables take precedence over the config file:
 - `delta` — pipe through [delta](https://github.com/dandavison/delta) if installed
 - `plain` — uncoloured plain text
 
+## Keybindings
+
+### Universal keys
+
+Available in all two-panel commands (add, checkout, diff, fixup, hunk-add, hunk-checkout, hunk-reset, log, reset).
+
+| Key | Action |
+|-----|--------|
+| `?` | Toggle help overlay |
+| `Tab` | Switch focus between file list and diff panel |
+| `D` | Toggle diff panel visibility |
+| `F` | Toggle maximize diff panel (full-width) |
+| `q` / `Esc` | Quit command (Esc also clears active search) |
+| `w` | Toggle soft-wrap in diff panel (when diff is focused) |
+| `[` / `]` | Shrink / grow file list panel by 5% (persisted to config) |
+| `/` | Search in diff (when diff is focused) |
+| `n` / `N` | Next / previous search match |
+
+### File list navigation
+
+When the file list panel is focused.
+
+| Key | Action |
+|-----|--------|
+| `j` / `Down` | Move to next item |
+| `k` / `Up` | Move to previous item |
+
+In maximize mode, `j` and `k` are forwarded to the file list so you can still change files while viewing the full-width diff.
+
+### Diff panel navigation
+
+When the diff panel is focused. These are standard viewport keys.
+
+| Key | Action |
+|-----|--------|
+| `Up` / `Down` | Scroll one line |
+| `PgUp` / `PgDn` | Scroll one page |
+
+### Context and editing keys
+
+Available in most commands that show diffs (add, diff, fixup, hunk-add, log, reset).
+
+| Key | Action | Commands |
+|-----|--------|----------|
+| `{` / `}` | Decrease / increase diff context lines | add, diff, fixup, hunk-add, log, reset, rebase-interactive |
+| `e` | Edit selected diff in `$EDITOR` | add, diff, hunk-add, reset |
+
+### File selection commands (add, reset, checkout)
+
+| Key | Action |
+|-----|--------|
+| `Space` | Toggle file checked/unchecked |
+| `Enter` | Apply action to checked files (stage, unstage, or discard) |
+| `a` | Check all files |
+| `d` | Uncheck all files |
+
+### Commit keys (add, hunk-add)
+
+| Key | Action |
+|-----|--------|
+| `c` | Commit staged changes |
+| `C` | Commit staged changes with `--amend` |
+
+### Hunk commands (hunk-add, hunk-reset, hunk-checkout)
+
+| Key | Action |
+|-----|--------|
+| `Space` | Toggle hunk staged/unstaged |
+| `j` / `Down` | Next hunk |
+| `k` / `Up` | Previous hunk |
+| `Enter` | Apply staged hunks (hunk-add: enter line-edit mode) |
+
+hunk-add only:
+
+| Key | Action |
+|-----|--------|
+| `w` | Apply staged hunks (when file list is focused) |
+| `s` | Split current hunk into smaller hunks |
+
+### rebase-interactive
+
+| Key | Action |
+|-----|--------|
+| `Space` | Cycle through rebase actions (pick, reword, edit, squash, fixup, drop) |
+| `p` | Set action to pick |
+| `r` | Set action to reword |
+| `e` | Set action to edit |
+| `s` | Set action to squash |
+| `f` | Set action to fixup |
+| `d` | Set action to drop |
+| `J` / `Ctrl+Down` | Move commit down in the todo list |
+| `K` / `Ctrl+Up` | Move commit up in the todo list |
+| `w` / `Enter` | Confirm and write the rebase todo |
+| `W` | Toggle soft-wrap in diff panel |
+| `q` / `Esc` | Abort rebase |
+
 ## Shell Completions
 
 Generate and install completions for your shell:

@@ -185,14 +185,59 @@ hunk-add only:
 | `W` | Toggle soft-wrap in diff panel |
 | `q` / `Esc` | Abort rebase |
 
+## Pager Mode
+
+`jig diff` can act as a git pager, displaying piped diff output in the interactive TUI instead of running its own `git diff` internally. When stdin is a pipe (not a terminal), jig reads the diff from stdin and opens `/dev/tty` for keyboard input.
+
+### Setup
+
+```sh
+git config --global pager.diff "jig diff"
+```
+
+With this, running `git diff` or `git diff --cached` pipes the output through jig automatically. Any flags git passes to the diff are preserved in the piped content - jig renders exactly what git produces.
+
+### How it works
+
+1. jig detects that stdin is a pipe (not a character device)
+2. Reads the full diff from stdin
+3. Opens `/dev/tty` directly for terminal input/output
+4. Displays the piped diff in the TUI with all normal keybindings
+
+This means `git diff --cached`, `git diff HEAD~3`, or any other diff variant works - jig sees the final diff output regardless of what flags were used.
+
 ## Shell Completions
 
 Generate and install completions for your shell:
+
+### bash
+
+```sh
+jig completion bash > /etc/bash_completion.d/jig
+# Or for the current user only:
+jig completion bash > ~/.local/share/bash-completion/completions/jig
+```
+
+### zsh
+
+```sh
+jig completion zsh > "${fpath[1]}/_jig"
+# You may need to restart your shell or run:
+compinit
+```
 
 ### fish
 
 ```sh
 jig completion fish > ~/.config/fish/completions/jig.fish
+```
+
+### powershell
+
+```powershell
+jig completion powershell | Out-String | Invoke-Expression
+# Or save to your profile:
+jig completion powershell >> $PROFILE
 ```
 
 ## Development

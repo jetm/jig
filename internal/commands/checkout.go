@@ -162,6 +162,11 @@ func (m *CheckoutModel) Update(msg tea.Msg) tea.Cmd {
 			if msg.String() == "D" && m.showDiff && len(m.files) > 0 {
 				m.renderSelectedDiff()
 			}
+			if m.leftUpdated {
+				m.leftUpdated = false
+				m.fileList.Update(msg)
+				m.renderSelectedDiff()
+			}
 			return sbCmd
 		}
 

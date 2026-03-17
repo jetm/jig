@@ -1328,3 +1328,19 @@ func TestHunkAddModel_ResizeWhileDiffHidden(t *testing.T) {
 		t.Error("View() should not be empty after resize with diff hidden")
 	}
 }
+
+func TestHunkAddModel_MaximizeSpaceTogglesHunk(t *testing.T) {
+	t.Parallel()
+	m, _ := newHunkAddTestModel(t, twoFileDiff)
+	m.width = 120
+	m.height = 40
+
+	// Enter maximize and press Space to toggle the first hunk.
+	m.Update(tea.KeyPressMsg{Code: 'F', ShiftedCode: 'F', Mod: tea.ModShift, Text: "F"})
+	m.Update(tea.KeyPressMsg{Code: tea.KeySpace, Text: "space"})
+
+	staged := m.hunkList.StagedHunks()
+	if len(staged) == 0 {
+		t.Error("Space in maximize mode should toggle hunk selection")
+	}
+}

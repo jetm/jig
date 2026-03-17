@@ -671,18 +671,19 @@ func TestTwoPanelModel_Maximize_JK_RoutedToFileList(t *testing.T) {
 	tp.handleKey(tea.KeyPressMsg{Code: 'F', Text: "F"})
 	require.True(t, tp.diffMaximized)
 
-	// Send j — should be intercepted and forwarded to the left panel.
+	// Send j — should be intercepted and signal leftUpdated.
 	_, handledJ := tp.handleKey(tea.KeyPressMsg{Code: 'j', Text: "j"})
 	assert.True(t, handledJ, "j should be handled in maximize mode")
+	assert.True(t, tp.leftUpdated, "j should set leftUpdated")
+	tp.leftUpdated = false
 
 	// Send k — same behavior.
 	_, handledK := tp.handleKey(tea.KeyPressMsg{Code: 'k', Text: "k"})
 	assert.True(t, handledK, "k should be handled in maximize mode")
+	assert.True(t, tp.leftUpdated, "k should set leftUpdated")
 
-	// The spy panel should have received both key messages.
-	require.Len(t, spy.messages, 2, "left panel should receive j and k messages")
-	assert.Equal(t, tea.KeyPressMsg{Code: 'j', Text: "j"}, spy.messages[0])
-	assert.Equal(t, tea.KeyPressMsg{Code: 'k', Text: "k"}, spy.messages[1])
+	// The spy panel should NOT have received messages (callers forward instead).
+	assert.Empty(t, spy.messages, "handleKey should not forward to left panel directly")
 }
 
 func TestTwoPanelModel_Maximize_ArrowKeys_NotIntercepted(t *testing.T) {

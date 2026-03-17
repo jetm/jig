@@ -585,6 +585,35 @@ func TestDiffModel_ResizeWhileMaximized(t *testing.T) {
 	}
 }
 
+func TestDiffModel_MaximizeJK_ChangesFile(t *testing.T) {
+	t.Parallel()
+	m := newTestModel(t, "", false, twoDiffs)
+	m.width = 120
+	m.height = 40
+
+	initialPath := m.selectedPath
+	if initialPath == "" {
+		t.Fatal("expected a selected file")
+	}
+
+	// Enter maximize mode and press j to move to the next file
+	m.Update(tea.KeyPressMsg{Code: 'F', ShiftedCode: 'F', Mod: tea.ModShift, Text: "F"})
+	if !m.diffMaximized {
+		t.Fatal("F should enable maximize")
+	}
+	m.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
+
+	if m.selectedPath == initialPath {
+		t.Error("j in maximize mode should change the selected file")
+	}
+
+	// Press k to go back
+	m.Update(tea.KeyPressMsg{Code: 'k', Text: "k"})
+	if m.selectedPath != initialPath {
+		t.Error("k in maximize mode should return to the original file")
+	}
+}
+
 func TestDiffModel_EKey_WithFile(t *testing.T) {
 	t.Parallel()
 	m := newTestModel(t, "", false, sampleDiff)

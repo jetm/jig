@@ -36,6 +36,11 @@ type twoPanelModel struct {
 
 	searchMode  bool
 	searchInput textinput.Model
+
+	// leftUpdated is set by handleKey when a maximize-mode intercept
+	// forwarded a key to the left panel. Callers should check this flag
+	// and trigger their diff re-render, then clear it.
+	leftUpdated bool
 }
 
 // newTwoPanelModel creates a twoPanelModel with the given configuration.
@@ -119,13 +124,15 @@ func (tp *twoPanelModel) handleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, true
 	}
 
-	// When maximized, intercept j/k/Space and forward to the file list so
-	// navigation updates the diff content instead of scrolling the viewport.
-	// Space is intercepted so hunk commands (hunkadd, hunkreset, hunkcheckout)
-	// can toggle hunk selection even when the viewport is focused.
+	// When maximized, intercept j/k/Space so they reach the left panel
+	// instead of scrolling the viewport. We set leftUpdated so the caller
+	// knows to forward the message to its left panel and re-render the
+	// diff. We don't call tp.left.Update() here because some callers
+	// reassign tp.left in View(), so the pointer may be stale.
 	if tp.diffMaximized {
 		if s := msg.String(); s == "j" || s == "k" || s == "space" {
-			return tp.left.Update(msg), true
+			tp.leftUpdated = true
+			return nil, true
 		}
 	}
 

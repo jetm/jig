@@ -162,6 +162,11 @@ func (m *FixupModel) Update(msg tea.Msg) tea.Cmd {
 			if msg.String() == "D" && m.showDiff && len(m.commits) > 0 {
 				m.renderSelectedDiff()
 			}
+			if m.leftUpdated {
+				m.leftUpdated = false
+				m.commitList.Update(msg)
+				m.checkSelectionChange()
+			}
 			return sbCmd
 		}
 

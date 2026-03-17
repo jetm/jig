@@ -153,6 +153,11 @@ func (m *HunkCheckoutModel) Update(msg tea.Msg) tea.Cmd {
 			if msg.String() == "D" && m.showDiff && len(m.files) > 0 {
 				m.renderCurrentHunk()
 			}
+			if m.leftUpdated {
+				m.leftUpdated = false
+				m.hunkList.Update(msg)
+				m.syncDiffPreview()
+			}
 			m.status.SetHints(m.hintsForContext())
 			return sbCmd
 		}

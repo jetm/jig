@@ -919,3 +919,17 @@ func TestCheckoutModel_ResizeWhileDiffHidden(t *testing.T) {
 		t.Error("View() should not be empty after resize with diff hidden")
 	}
 }
+
+func TestCheckoutModel_MaximizeJK_ChangesFile(t *testing.T) {
+	t.Parallel()
+	m := newTestCheckoutModel(t, "M\tfoo.go\nM\tbar.go\n")
+	m.width = 120
+	m.height = 40
+
+	m.Update(tea.KeyPressMsg{Code: 'F', ShiftedCode: 'F', Mod: tea.ModShift, Text: "F"})
+	m.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
+
+	if m.fileList.SelectedPath() == "foo.go" {
+		t.Error("j in maximize mode should advance the file list cursor")
+	}
+}

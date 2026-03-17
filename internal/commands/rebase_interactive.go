@@ -279,6 +279,9 @@ func (m *RebaseInteractiveModel) Update(msg tea.Msg) tea.Cmd {
 		case "F":
 			if m.showDiff {
 				m.diffMaximized = !m.diffMaximized
+				if m.diffMaximized {
+					m.focusRight = true
+				}
 				m.updateHints()
 			}
 			return sbCmd
@@ -341,6 +344,16 @@ func (m *RebaseInteractiveModel) Update(msg tea.Msg) tea.Cmd {
 		case "ctrl+down":
 			m.moveDown()
 			return sbCmd
+		}
+
+		// When maximized, intercept j/k so they navigate the list
+		// instead of scrolling the viewport.
+		if m.diffMaximized {
+			if s := msg.String(); s == "j" || s == "k" {
+				listCmd := m.commitList.Update(msg)
+				m.checkSelectionChange()
+				return tea.Batch(sbCmd, listCmd)
+			}
 		}
 
 		if m.focusRight {

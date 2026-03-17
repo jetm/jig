@@ -187,6 +187,11 @@ func (m *DiffModel) Update(msg tea.Msg) tea.Cmd {
 			if msg.String() == "D" && m.showDiff && len(m.files) > 0 {
 				m.checkSelectionChange()
 			}
+			if m.leftUpdated {
+				m.leftUpdated = false
+				m.fileList.Update(msg)
+				m.checkSelectionChange()
+			}
 			return sbCmd
 		}
 

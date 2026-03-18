@@ -4,8 +4,7 @@ THRESHOLD := 90
 VERSION   := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS   := -ldflags "-X main.version=$(VERSION)"
 
-.PHONY: build test test-integration lint fmt vet fix coverage install clean snapshot check-release
-
+.PHONY: build test test-integration lint fmt vet fix coverage install clean snapshot check-release screenshots
 build:
 	go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY) ./cmd/jig
 
@@ -36,3 +35,11 @@ check-release:
 
 clean:
 	rm -rf $(BUILD_DIR) coverage.out coverage.html dist/
+
+screenshots:
+	@mkdir -p docs/screenshots
+	@for tape in docs/vhs/*.tape; do \
+		[ -f "$$tape" ] || continue; \
+		echo "Recording $$tape..."; \
+		vhs "$$tape"; \
+	done

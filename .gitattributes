@@ -1,0 +1,7 @@
+# Generated screenshots
+docs/screenshots/*.gif binary
+
+# Binary assets
+*.png binary
+*.jpg binary
+*.gif binary

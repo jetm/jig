@@ -6,7 +6,7 @@
 Output docs/screenshots/hunk-add-lineedit.gif
 
 Set Shell "bash"
-Set FontFamily "JetBrains Mono"
+Set FontFamily "CommitMono Nerd Font"
 Set FontSize 14
 Set Width 1200
 Set Height 700

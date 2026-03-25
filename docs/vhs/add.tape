@@ -10,7 +10,7 @@ Set FontFamily "CommitMono Nerd Font"
 Set FontSize 14
 Set Width 1200
 Set Height 700
-Set Theme "Catppuccin Mocha"
+Set Theme "OneDark"
 Set TypingSpeed 30ms
 
 # --- Hidden setup: temp repo with two modified files ---

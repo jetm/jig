@@ -18,57 +18,15 @@ Hide
 Type `export PATH="$(go env GOPATH)/bin:$PATH"`
 Enter
 Sleep 500ms
-Type "cd $(mktemp -d) && git init && git config user.email 'demo@jig' && git config user.name 'demo'"
+Type "cd $(mktemp -d) && git init && git config user.email demo@jig && git config user.name demo"
 Enter
 Sleep 500ms
-Type "cat > main.go << 'EOF'"
-Enter
-Type "package main"
-Enter
-Type ""
-Enter
-Type "import \"fmt\""
-Enter
-Type ""
-Enter
-Type "func greet() {"
-Enter
-Type "	fmt.Println(\"hello\")"
-Enter
-Type "}"
-Enter
-Type ""
-Enter
-Type "func pad() string {"
-Enter
-Type "	return \"    \""
-Enter
-Type "}"
-Enter
-Type ""
-Enter
-Type "func sep() string {"
-Enter
-Type "	return \"---\""
-Enter
-Type "}"
-Enter
-Type ""
-Enter
-Type "func footer() {"
-Enter
-Type "	fmt.Println(\"done\")"
-Enter
-Type "}"
-Enter
-Type "EOF"
+Type `printf 'package main\n\nimport "fmt"\n\nfunc greet() {\n\tfmt.Println("hello")\n}\n\nfunc pad() string {\n\treturn "    "\n}\n\nfunc sep() string {\n\treturn "---"\n}\n\nfunc footer() {\n\tfmt.Println("done")\n}\n' > main.go`
 Enter
 Type "git add -A && git commit -m 'initial'"
 Enter
 Sleep 1s
-Type "sed -i 's/\"hello\"/\"hi there\"/' main.go"
-Enter
-Type "sed -i 's/\"done\"/\"finished\"/' main.go"
+Type `sed -i 's/hello/hi there/' main.go && sed -i 's/done/finished/' main.go`
 Enter
 Sleep 300ms
 Show

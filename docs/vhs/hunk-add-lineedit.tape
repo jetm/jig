@@ -18,59 +18,15 @@ Hide
 Type `export PATH="$(go env GOPATH)/bin:$PATH"`
 Enter
 Sleep 500ms
-Type "cd $(mktemp -d) && git init && git config user.email 'demo@jig' && git config user.name 'demo'"
+Type "cd $(mktemp -d) && git init && git config user.email demo@jig && git config user.name demo"
 Enter
 Sleep 500ms
-Type "cat > server.go << 'EOF'"
-Enter
-Type "package main"
-Enter
-Type ""
-Enter
-Type "func serve() {"
-Enter
-Type "	host := \"localhost\""
-Enter
-Type "	port := 8080"
-Enter
-Type "	timeout := 30"
-Enter
-Type "	retries := 3"
-Enter
-Type "	debug := false"
-Enter
-Type "	start(host, port, timeout, retries, debug)"
-Enter
-Type "}"
-Enter
-Type "EOF"
+Type `printf 'package main\n\nfunc serve() {\n\thost := "localhost"\n\tport := 8080\n\ttimeout := 30\n\tretries := 3\n\tdebug := false\n\tstart(host, port, timeout, retries, debug)\n}\n' > server.go`
 Enter
 Type "git add -A && git commit -m 'initial'"
 Enter
 Sleep 1s
-Type "cat > server.go << 'EOF'"
-Enter
-Type "package main"
-Enter
-Type ""
-Enter
-Type "func serve() {"
-Enter
-Type "	host := \"0.0.0.0\""
-Enter
-Type "	port := 9090"
-Enter
-Type "	timeout := 60"
-Enter
-Type "	retries := 5"
-Enter
-Type "	debug := true"
-Enter
-Type "	start(host, port, timeout, retries, debug)"
-Enter
-Type "}"
-Enter
-Type "EOF"
+Type `printf 'package main\n\nfunc serve() {\n\thost := "0.0.0.0"\n\tport := 9090\n\ttimeout := 60\n\tretries := 5\n\tdebug := true\n\tstart(host, port, timeout, retries, debug)\n}\n' > server.go`
 Enter
 Sleep 300ms
 Show

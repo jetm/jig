@@ -18,40 +18,12 @@ Hide
 Type `export PATH="$(go env GOPATH)/bin:$PATH"`
 Enter
 Sleep 500ms
-Type "cd $(mktemp -d) && git init && git config user.email 'demo@jig' && git config user.name 'demo'"
+Type "cd $(mktemp -d) && git init && git config user.email demo@jig && git config user.name demo"
 Enter
 Sleep 500ms
-Type "cat > main.go << 'EOF'"
+Type `printf 'package main\n\nimport "fmt"\n\nfunc main() {\n\tfmt.Println("hello")\n}\n' > main.go`
 Enter
-Type "package main"
-Enter
-Type ""
-Enter
-Type "import \"fmt\""
-Enter
-Type ""
-Enter
-Type "func main() {"
-Enter
-Type "	fmt.Println(\"hello\")"
-Enter
-Type "}"
-Enter
-Type "EOF"
-Enter
-Type "cat > utils.go << 'EOF'"
-Enter
-Type "package main"
-Enter
-Type ""
-Enter
-Type "func add(a, b int) int {"
-Enter
-Type "	return a + b"
-Enter
-Type "}"
-Enter
-Type "EOF"
+Type `printf 'package main\n\nfunc add(a, b int) int {\n\treturn a + b\n}\n' > utils.go`
 Enter
 Type "git add -A && git commit -m 'initial'"
 Enter

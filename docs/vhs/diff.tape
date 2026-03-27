@@ -18,117 +18,23 @@ Hide
 Type `export PATH="$(go env GOPATH)/bin:$PATH"`
 Enter
 Sleep 500ms
-Type "cd $(mktemp -d) && git init && git config user.email 'demo@jig' && git config user.name 'demo'"
+Type "cd $(mktemp -d) && git init && git config user.email demo@jig && git config user.name demo"
 Enter
 Sleep 500ms
-Type "cat > main.go << 'EOF'"
+Type `printf 'package main\n\nimport (\n\t"fmt"\n\t"os"\n)\n\nfunc main() {\n\tcfg := LoadConfig("app.yaml")\n\tif cfg == nil {\n\t\tfmt.Fprintln(os.Stderr, "failed to load config")\n\t\tos.Exit(1)\n\t}\n\tsrv := NewServer(cfg)\n\tsrv.Start()\n}\n' > main.go`
 Enter
-Type "package main"
+Type `printf 'package main\n\nimport "os"\n\ntype Config struct {\n\tHost string\n\tPort int\n}\n\nfunc LoadConfig(path string) *Config {\n\tif _, err := os.Stat(path); err != nil {\n\t\treturn nil\n\t}\n\treturn &Config{Host: "localhost", Port: 8080}\n}\n' > config.go`
 Enter
-Type ""
-Enter
-Type "import ("
-Enter
-Type "	\"fmt\""
-Enter
-Type "	\"os\""
-Enter
-Type ")"
-Enter
-Type ""
-Enter
-Type "func main() {"
-Enter
-Type "	cfg := LoadConfig(\"app.yaml\")"
-Enter
-Type "	if cfg == nil {"
-Enter
-Type "		fmt.Fprintln(os.Stderr, \"failed to load config\")"
-Enter
-Type "		os.Exit(1)"
-Enter
-Type "	}"
-Enter
-Type "	srv := NewServer(cfg)"
-Enter
-Type "	srv.Start()"
-Enter
-Type "}"
-Enter
-Type "EOF"
-Enter
-Type "cat > config.go << 'EOF'"
-Enter
-Type "package main"
-Enter
-Type ""
-Enter
-Type "import \"os\""
-Enter
-Type ""
-Enter
-Type "type Config struct {"
-Enter
-Type "	Host string"
-Enter
-Type "	Port int"
-Enter
-Type "}"
-Enter
-Type ""
-Enter
-Type "func LoadConfig(path string) *Config {"
-Enter
-Type "	if _, err := os.Stat(path); err != nil {"
-Enter
-Type "		return nil"
-Enter
-Type "	}"
-Enter
-Type "	return &Config{Host: \"localhost\", Port: 8080}"
-Enter
-Type "}"
-Enter
-Type "EOF"
-Enter
-Type "cat > handler.go << 'EOF'"
-Enter
-Type "package main"
-Enter
-Type ""
-Enter
-Type "import \"net/http\""
-Enter
-Type ""
-Enter
-Type "func healthHandler(w http.ResponseWriter, r *http.Request) {"
-Enter
-Type "	w.WriteHeader(http.StatusOK)"
-Enter
-Type "	w.Write([]byte(\"ok\"))"
-Enter
-Type "}"
-Enter
-Type "EOF"
+Type `printf 'package main\n\nimport "net/http"\n\nfunc healthHandler(w http.ResponseWriter, r *http.Request) {\n\tw.WriteHeader(http.StatusOK)\n\tw.Write([]byte("ok"))\n}\n' > handler.go`
 Enter
 Type "git add -A && git commit -m 'initial'"
 Enter
 Sleep 1s
-Type "sed -i 's/\"app.yaml\"/os.Getenv(\"CONFIG_PATH\")/' main.go"
+Type `sed -i 's/app.yaml/config.yaml/' main.go && sed -i 's/srv.Start()/srv.ListenAndServe()/' main.go`
 Enter
-Type "sed -i 's/cfg == nil/cfg == nil || cfg.Host == \"\"/' main.go"
+Type `sed -i 's/Host string/Host    string/' config.go && sed -i 's/Port int/Port    int/' config.go`
 Enter
-Type "sed -i 's/srv.Start()/srv.ListenAndServe()/' main.go"
-Enter
-Type "sed -i 's/Host string/Host    string/' config.go"
-Enter
-Type "sed -i 's/Port int/Port    int\\n\\tTimeout int/' config.go"
-Enter
-Type "sed -i 's/Port: 8080/Port: 8080, Timeout: 30/' config.go"
-Enter
-Type "sed -i 's/StatusOK/StatusOK\\n\\tw.Header().Set(\"Content-Type\", \"application\\/json\")/' handler.go"
-Enter
-Type "sed -i 's/\"ok\"/\"{\\\\\"status\\\\\": \\\\\"healthy\\\\\"}\"/' handler.go"
+Type "echo cGFja2FnZSBtYWluCgppbXBvcnQgIm5ldC9odHRwIgoKZnVuYyBoZWFsdGhIYW5kbGVyKHcgaHR0cC5SZXNwb25zZVdyaXRlciwgciAqaHR0cC5SZXF1ZXN0KSB7Cgl3LkhlYWRlcigpLlNldCgiQ29udGVudC1UeXBlIiwgImFwcGxpY2F0aW9uL2pzb24iKQoJdy5Xcml0ZUhlYWRlcihodHRwLlN0YXR1c09LKQoJdy5Xcml0ZShbXWJ5dGUoYHsic3RhdHVzIjogImhlYWx0aHkifWApKQp9Cg== | base64 -d > handler.go"
 Enter
 Sleep 300ms
 Show

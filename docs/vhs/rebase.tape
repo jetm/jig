@@ -12,6 +12,7 @@ Set Width 1200
 Set Height 700
 Set Theme "OneDark"
 Set TypingSpeed 30ms
+Set Padding 0
 
 # --- Hidden setup: temp repo with 5 commits ---
 Hide

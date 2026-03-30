@@ -22,6 +22,9 @@ Sleep 500ms
 Type `WORKDIR=$(mktemp -d) && cd "$WORKDIR" && git init && git config user.email 'demo@jig' && git config user.name 'demo'`
 Enter
 Sleep 500ms
+Type "git commit --allow-empty -m 'init'"
+Enter
+Sleep 500ms
 
 # Commit 1: Add config parser
 Type `printf 'package main\n\nimport "encoding/json"\n\ntype Config struct {\n\tHost string\n\tPort int\n}\n\nfunc ParseConfig(data []byte) (*Config, error) {\n\tvar cfg Config\n\tif err := json.Unmarshal(data, &cfg); err != nil {\n\t\treturn nil, err\n\t}\n\treturn &cfg, nil\n}\n' > config.go && git add -A && git commit -m 'Add config parser'`

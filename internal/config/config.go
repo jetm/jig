@@ -31,6 +31,10 @@ type Config struct {
 	PanelRatio      int
 	SoftWrap        bool
 	ShowLineNumbers bool
+
+	// Commit fields
+	CommitCmd           string
+	CommitTitleOnlyFlag string
 }
 
 // NewDefault returns a Config with default values.
@@ -51,6 +55,9 @@ func NewDefault() Config {
 		PanelRatio:        40,
 		SoftWrap:          true,
 		ShowLineNumbers:   true,
+
+		CommitCmd:           "git commit",
+		CommitTitleOnlyFlag: "",
 	}
 }
 
@@ -73,6 +80,10 @@ type fileConfig struct {
 		SoftWrap        *bool  `yaml:"softWrap"`
 		ShowLineNumbers *bool  `yaml:"showLineNumbers"`
 	} `yaml:"ui"`
+	Commit struct {
+		Command       string `yaml:"command"`
+		TitleOnlyFlag string `yaml:"titleOnlyFlag"`
+	} `yaml:"commit"`
 }
 
 // configPaths returns candidate config file paths in preference order.
@@ -156,6 +167,12 @@ func applyFile(cfg *Config) error {
 		if fc.UI.ShowLineNumbers != nil {
 			cfg.ShowLineNumbers = *fc.UI.ShowLineNumbers
 		}
+		if fc.Commit.Command != "" {
+			cfg.CommitCmd = fc.Commit.Command
+		}
+		if fc.Commit.TitleOnlyFlag != "" {
+			cfg.CommitTitleOnlyFlag = fc.Commit.TitleOnlyFlag
+		}
 
 		return nil
 	}
@@ -212,6 +229,12 @@ func applyEnv(cfg *Config) error {
 		}
 		cfg.ShowLineNumbers = b
 	}
+	if v := os.Getenv("JIG_COMMIT_COMMAND"); v != "" {
+		cfg.CommitCmd = v
+	}
+	if v := os.Getenv("JIG_COMMIT_TITLE_ONLY_FLAG"); v != "" {
+		cfg.CommitTitleOnlyFlag = v
+	}
 	return nil
 }
 
@@ -233,6 +256,10 @@ type saveConfig struct {
 		SoftWrap        bool   `yaml:"softWrap"`
 		ShowLineNumbers bool   `yaml:"showLineNumbers"`
 	} `yaml:"ui"`
+	Commit struct {
+		Command       string `yaml:"command"`
+		TitleOnlyFlag string `yaml:"titleOnlyFlag"`
+	} `yaml:"commit"`
 }
 
 // Save writes the given Config to the primary config file path.
@@ -258,6 +285,8 @@ func Save(cfg Config) error {
 	sc.UI.PanelRatio = cfg.PanelRatio
 	sc.UI.SoftWrap = cfg.SoftWrap
 	sc.UI.ShowLineNumbers = cfg.ShowLineNumbers
+	sc.Commit.Command = cfg.CommitCmd
+	sc.Commit.TitleOnlyFlag = cfg.CommitTitleOnlyFlag
 
 	data, err := yaml.Marshal(&sc)
 	if err != nil {

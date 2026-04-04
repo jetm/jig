@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"strings"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -335,9 +336,8 @@ func (m *AddModel) isTracked(path string) bool {
 	return false
 }
 
-// execCommit stages selected files and launches devtool commit as a subprocess.
-// If titleOnly is true, passes -t for a title-only commit message.
-// Returns nil if staging fails (error shown in status bar).
+// execCommit stages selected files and launches the configured commit command.
+// If titleOnly is true, appends CommitTitleOnlyFlag (when non-empty).
 func (m *AddModel) execCommit(titleOnly bool) tea.Cmd {
 	paths := m.fileList.SelectedOrCheckedPaths()
 	if len(paths) == 0 {
@@ -347,11 +347,14 @@ func (m *AddModel) execCommit(titleOnly bool) tea.Cmd {
 		_ = m.status.SetMessage(fmt.Sprintf("Stage failed: %v", err), components.Error)
 		return nil
 	}
-	args := []string{"commit"}
-	if titleOnly {
-		args = append(args, "-t")
+	// Split command string to handle multi-word values like "devtool commit".
+	parts := strings.Fields(m.cfg.CommitCmd)
+	args := make([]string, len(parts)-1, len(parts))
+	copy(args, parts[1:])
+	if titleOnly && m.cfg.CommitTitleOnlyFlag != "" {
+		args = append(args, m.cfg.CommitTitleOnlyFlag)
 	}
-	cmd := exec.Command("devtool", args...) //nolint:gosec // devtool is a trusted user tool
+	cmd := exec.Command(parts[0], args...) //nolint:gosec // commit command is user-configured
 	return tea.ExecProcess(cmd, func(err error) tea.Msg {
 		return CommitDoneMsg{Err: err}
 	})

@@ -799,3 +799,224 @@ func TestLoad_ShowLineNumbersInvalidEnv(t *testing.T) {
 		t.Fatal("expected error for invalid JIG_SHOW_LINE_NUMBERS, got nil")
 	}
 }
+
+func TestNewDefault_CommitCmd(t *testing.T) {
+	cfg := NewDefault()
+	if cfg.CommitCmd != "git commit" {
+		t.Errorf("CommitCmd: got %q, want %q", cfg.CommitCmd, "git commit")
+	}
+}
+
+func TestNewDefault_CommitTitleOnlyFlag(t *testing.T) {
+	cfg := NewDefault()
+	if cfg.CommitTitleOnlyFlag != "" {
+		t.Errorf("CommitTitleOnlyFlag: got %q, want %q", cfg.CommitTitleOnlyFlag, "")
+	}
+}
+
+func TestLoad_CommitCmdDefault(t *testing.T) {
+	dir := t.TempDir()
+	cfg, err := isolatedLoad(t, dir)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.CommitCmd != "git commit" {
+		t.Errorf("CommitCmd: got %q, want %q", cfg.CommitCmd, "git commit")
+	}
+}
+
+func TestLoad_CommitTitleOnlyFlagDefault(t *testing.T) {
+	dir := t.TempDir()
+	cfg, err := isolatedLoad(t, dir)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.CommitTitleOnlyFlag != "" {
+		t.Errorf("CommitTitleOnlyFlag: got %q, want %q", cfg.CommitTitleOnlyFlag, "")
+	}
+}
+
+func TestLoad_CommitCmdFromFile(t *testing.T) {
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, ".config", "jig")
+	if err := os.MkdirAll(cfgDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	content := `
+commit:
+  command: devtool commit
+`
+	if err := os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := isolatedLoad(t, dir)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.CommitCmd != "devtool commit" {
+		t.Errorf("CommitCmd: got %q, want %q", cfg.CommitCmd, "devtool commit")
+	}
+}
+
+func TestLoad_CommitTitleOnlyFlagFromFile(t *testing.T) {
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, ".config", "jig")
+	if err := os.MkdirAll(cfgDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	content := `
+commit:
+  titleOnlyFlag: "-t"
+`
+	if err := os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := isolatedLoad(t, dir)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.CommitTitleOnlyFlag != "-t" {
+		t.Errorf("CommitTitleOnlyFlag: got %q, want %q", cfg.CommitTitleOnlyFlag, "-t")
+	}
+}
+
+func TestLoad_CommitCmdFileOmitted(t *testing.T) {
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, ".config", "jig")
+	if err := os.MkdirAll(cfgDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	content := `
+ui:
+  theme: dark
+`
+	if err := os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := isolatedLoad(t, dir)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.CommitCmd != "git commit" {
+		t.Errorf("CommitCmd: got %q, want %q (default when file omits it)", cfg.CommitCmd, "git commit")
+	}
+}
+
+func TestLoad_CommitCmdEnvOverridesFile(t *testing.T) {
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, ".config", "jig")
+	if err := os.MkdirAll(cfgDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	content := `
+commit:
+  command: devtool commit
+`
+	if err := os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("JIG_COMMIT_COMMAND", "git commit")
+	cfg, err := isolatedLoad(t, dir)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.CommitCmd != "git commit" {
+		t.Errorf("CommitCmd: got %q, want %q (env override)", cfg.CommitCmd, "git commit")
+	}
+}
+
+func TestLoad_CommitCmdEnvOverridesDefault(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("JIG_COMMIT_COMMAND", "devtool commit")
+
+	cfg, err := isolatedLoad(t, dir)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.CommitCmd != "devtool commit" {
+		t.Errorf("CommitCmd: got %q, want %q", cfg.CommitCmd, "devtool commit")
+	}
+}
+
+func TestLoad_CommitTitleOnlyFlagEnvOverridesFile(t *testing.T) {
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, ".config", "jig")
+	if err := os.MkdirAll(cfgDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	content := `
+commit:
+  titleOnlyFlag: "-t"
+`
+	if err := os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("JIG_COMMIT_TITLE_ONLY_FLAG", "--title-only")
+	cfg, err := isolatedLoad(t, dir)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.CommitTitleOnlyFlag != "--title-only" {
+		t.Errorf("CommitTitleOnlyFlag: got %q, want %q (env override)", cfg.CommitTitleOnlyFlag, "--title-only")
+	}
+}
+
+func TestLoad_CommitTitleOnlyFlagEnvOverridesDefault(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("JIG_COMMIT_TITLE_ONLY_FLAG", "-t")
+
+	cfg, err := isolatedLoad(t, dir)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.CommitTitleOnlyFlag != "-t" {
+		t.Errorf("CommitTitleOnlyFlag: got %q, want %q", cfg.CommitTitleOnlyFlag, "-t")
+	}
+}
+
+func TestSave_CommitCmdRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, ".config"))
+
+	cfg := NewDefault()
+	cfg.CommitCmd = "devtool commit"
+
+	if err := Save(cfg); err != nil {
+		t.Fatalf("Save() error: %v", err)
+	}
+
+	loaded, err := isolatedLoad(t, dir)
+	if err != nil {
+		t.Fatalf("Load() after Save() error: %v", err)
+	}
+	if loaded.CommitCmd != "devtool commit" {
+		t.Errorf("CommitCmd: got %q after save+load, want %q", loaded.CommitCmd, "devtool commit")
+	}
+}
+
+func TestSave_CommitTitleOnlyFlagRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, ".config"))
+
+	cfg := NewDefault()
+	cfg.CommitTitleOnlyFlag = "-t"
+
+	if err := Save(cfg); err != nil {
+		t.Fatalf("Save() error: %v", err)
+	}
+
+	loaded, err := isolatedLoad(t, dir)
+	if err != nil {
+		t.Fatalf("Load() after Save() error: %v", err)
+	}
+	if loaded.CommitTitleOnlyFlag != "-t" {
+		t.Errorf("CommitTitleOnlyFlag: got %q after save+load, want %q", loaded.CommitTitleOnlyFlag, "-t")
+	}
+}

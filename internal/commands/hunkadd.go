@@ -544,11 +544,13 @@ func (m *HunkAddModel) execCommit(titleOnly bool) tea.Cmd {
 		return nil
 	}
 
-	args := []string{"commit"}
-	if titleOnly {
-		args = append(args, "-t")
+	parts := strings.Fields(m.cfg.CommitCmd)
+	args := make([]string, len(parts)-1)
+	copy(args, parts[1:])
+	if titleOnly && m.cfg.CommitTitleOnlyFlag != "" {
+		args = append(args, m.cfg.CommitTitleOnlyFlag)
 	}
-	cmd := exec.Command("devtool", args...) //nolint:gosec // devtool is a trusted user tool
+	cmd := exec.Command(parts[0], args...) //nolint:gosec // commit command is user-configured
 	return tea.ExecProcess(cmd, func(err error) tea.Msg {
 		return CommitDoneMsg{Err: err}
 	})

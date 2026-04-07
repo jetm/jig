@@ -1349,3 +1349,131 @@ func TestAddModel_MaximizeJK_ChangesFile(t *testing.T) {
 		t.Error("j in maximize mode should advance the file list cursor")
 	}
 }
+
+// newTestAddModelWithCfg builds an AddModel backed by a FakeRunner with custom config.
+func newTestAddModelWithCfg(t *testing.T, nameStatus string, cfg config.Config) (*AddModel, *testhelper.FakeRunner) {
+	t.Helper()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{
+			nameStatus, // git diff --name-status
+			"",         // git ls-files --others
+			"main",     // git rev-parse --abbrev-ref HEAD
+			"",         // renderSelectedDiff
+			"",         // git add (stage call)
+		},
+	}
+	renderer := &diff.PlainRenderer{}
+	m, err := NewAddModel(context.Background(), runner, cfg, renderer)
+	if err != nil {
+		t.Fatalf("NewAddModel unexpectedly returned error: %v", err)
+	}
+	return m, runner
+}
+
+func TestAddModel_ExecCommit_DefaultConfig_CKey(t *testing.T) {
+	t.Parallel()
+	cfg := config.NewDefault() // CommitCmd="git commit", CommitTitleOnlyFlag=""
+	m, runner := newTestAddModelWithCfg(t, "M\tfoo.go\n", cfg)
+	m.width = 120
+	m.height = 40
+
+	m.Update(tea.KeyPressMsg{Code: ' ', Text: " "})
+	cmd := m.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
+	if cmd == nil {
+		t.Fatal("expected a command from pressing c with default config")
+	}
+	testhelper.MustHaveCall(t, runner, "add", "--", "foo.go")
+}
+
+func TestAddModel_ExecCommit_DefaultConfig_ShiftCKey(t *testing.T) {
+	t.Parallel()
+	// With default config CommitTitleOnlyFlag is "", so C behaves same as c.
+	cfg := config.NewDefault()
+	m, runner := newTestAddModelWithCfg(t, "M\tfoo.go\n", cfg)
+	m.width = 120
+	m.height = 40
+
+	m.Update(tea.KeyPressMsg{Code: ' ', Text: " "})
+	cmd := m.Update(tea.KeyPressMsg{Code: 'C', ShiftedCode: 'C', Mod: tea.ModShift, Text: "C"})
+	if cmd == nil {
+		t.Fatal("expected a command from pressing C with default config (no title-only flag)")
+	}
+	testhelper.MustHaveCall(t, runner, "add", "--", "foo.go")
+}
+
+func TestAddModel_ExecCommit_CustomCommand_CKey(t *testing.T) {
+	t.Parallel()
+	cfg := config.NewDefault()
+	cfg.CommitCmd = "devtool commit"
+	cfg.CommitTitleOnlyFlag = "-t"
+	m, runner := newTestAddModelWithCfg(t, "M\tfoo.go\n", cfg)
+	m.width = 120
+	m.height = 40
+
+	m.Update(tea.KeyPressMsg{Code: ' ', Text: " "})
+	cmd := m.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
+	if cmd == nil {
+		t.Fatal("expected a command from pressing c with custom commit command")
+	}
+	testhelper.MustHaveCall(t, runner, "add", "--", "foo.go")
+}
+
+func TestAddModel_ExecCommit_CustomCommand_ShiftCKey(t *testing.T) {
+	t.Parallel()
+	cfg := config.NewDefault()
+	cfg.CommitCmd = "devtool commit"
+	cfg.CommitTitleOnlyFlag = "-t"
+	m, runner := newTestAddModelWithCfg(t, "M\tfoo.go\n", cfg)
+	m.width = 120
+	m.height = 40
+
+	m.Update(tea.KeyPressMsg{Code: ' ', Text: " "})
+	cmd := m.Update(tea.KeyPressMsg{Code: 'C', ShiftedCode: 'C', Mod: tea.ModShift, Text: "C"})
+	if cmd == nil {
+		t.Fatal("expected a command from pressing C with custom commit command and title-only flag")
+	}
+	testhelper.MustHaveCall(t, runner, "add", "--", "foo.go")
+}
+
+func TestAddModel_ExecCommit_NoFlag_ShiftCSameAsC(t *testing.T) {
+	t.Parallel()
+	// When CommitTitleOnlyFlag is empty, C produces the same command as c.
+	// Verify both return a non-nil cmd (both paths exercised, same outcome).
+	cfg := config.NewDefault()
+	cfg.CommitCmd = "devtool commit"
+	cfg.CommitTitleOnlyFlag = "" // no flag configured
+
+	runner1 := &testhelper.FakeRunner{
+		Outputs: []string{"M\tfoo.go\n", "", "main", "", ""},
+	}
+	m1, err := NewAddModel(context.Background(), runner1, cfg, &diff.PlainRenderer{})
+	if err != nil {
+		t.Fatalf("NewAddModel: %v", err)
+	}
+	m1.width = 120
+	m1.height = 40
+	m1.Update(tea.KeyPressMsg{Code: ' ', Text: " "})
+	cmdC := m1.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
+
+	runner2 := &testhelper.FakeRunner{
+		Outputs: []string{"M\tfoo.go\n", "", "main", "", ""},
+	}
+	m2, err := NewAddModel(context.Background(), runner2, cfg, &diff.PlainRenderer{})
+	if err != nil {
+		t.Fatalf("NewAddModel: %v", err)
+	}
+	m2.width = 120
+	m2.height = 40
+	m2.Update(tea.KeyPressMsg{Code: ' ', Text: " "})
+	cmdShiftC := m2.Update(tea.KeyPressMsg{Code: 'C', ShiftedCode: 'C', Mod: tea.ModShift, Text: "C"})
+
+	if cmdC == nil {
+		t.Fatal("c key should return a command when CommitTitleOnlyFlag is empty")
+	}
+	if cmdShiftC == nil {
+		t.Fatal("C key should return a command when CommitTitleOnlyFlag is empty")
+	}
+	// Both produce a tea.ExecProcess cmd - verify both triggered staging.
+	testhelper.MustHaveCall(t, runner1, "add", "--", "foo.go")
+	testhelper.MustHaveCall(t, runner2, "add", "--", "foo.go")
+}

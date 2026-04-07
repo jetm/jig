@@ -1344,3 +1344,129 @@ func TestHunkAddModel_MaximizeSpaceTogglesHunk(t *testing.T) {
 		t.Error("Space in maximize mode should toggle hunk selection")
 	}
 }
+
+// newHunkAddTestModelWithCfg creates a HunkAddModel with custom config for testing execCommit paths.
+func newHunkAddTestModelWithCfg(t *testing.T, diffOutput string, cfg config.Config) (*HunkAddModel, *testhelper.FakeRunner) {
+	t.Helper()
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{
+			diffOutput, // git diff
+			"main",     // branch name
+			"",         // git apply --cached
+		},
+	}
+	renderer := &diff.PlainRenderer{}
+	m, err := NewHunkAddModel(context.Background(), runner, cfg, renderer)
+	if err != nil {
+		t.Fatalf("NewHunkAddModel unexpectedly returned error: %v", err)
+	}
+	return m, runner
+}
+
+func TestHunkAddModel_ExecCommit_DefaultConfig_CKey(t *testing.T) {
+	t.Parallel()
+	cfg := config.NewDefault() // CommitCmd="git commit", CommitTitleOnlyFlag=""
+	m, runner := newHunkAddTestModelWithCfg(t, singleHunkDiff, cfg)
+	m.width = 120
+	m.height = 40
+
+	m.Update(tea.KeyPressMsg{Code: tea.KeySpace})
+	cmd := m.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
+	if cmd == nil {
+		t.Fatal("expected a command from pressing c with default config")
+	}
+	testhelper.MustHaveCall(t, runner, "apply", "--cached")
+}
+
+func TestHunkAddModel_ExecCommit_DefaultConfig_ShiftCKey(t *testing.T) {
+	t.Parallel()
+	// With default config CommitTitleOnlyFlag is "", so C behaves same as c.
+	cfg := config.NewDefault()
+	m, runner := newHunkAddTestModelWithCfg(t, singleHunkDiff, cfg)
+	m.width = 120
+	m.height = 40
+
+	m.Update(tea.KeyPressMsg{Code: tea.KeySpace})
+	cmd := m.Update(tea.KeyPressMsg{Code: 'C', ShiftedCode: 'C', Mod: tea.ModShift, Text: "C"})
+	if cmd == nil {
+		t.Fatal("expected a command from pressing C with default config (no title-only flag)")
+	}
+	testhelper.MustHaveCall(t, runner, "apply", "--cached")
+}
+
+func TestHunkAddModel_ExecCommit_CustomCommand_CKey(t *testing.T) {
+	t.Parallel()
+	cfg := config.NewDefault()
+	cfg.CommitCmd = "devtool commit"
+	cfg.CommitTitleOnlyFlag = "-t"
+	m, runner := newHunkAddTestModelWithCfg(t, singleHunkDiff, cfg)
+	m.width = 120
+	m.height = 40
+
+	m.Update(tea.KeyPressMsg{Code: tea.KeySpace})
+	cmd := m.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
+	if cmd == nil {
+		t.Fatal("expected a command from pressing c with custom commit command")
+	}
+	testhelper.MustHaveCall(t, runner, "apply", "--cached")
+}
+
+func TestHunkAddModel_ExecCommit_CustomCommand_ShiftCKey(t *testing.T) {
+	t.Parallel()
+	cfg := config.NewDefault()
+	cfg.CommitCmd = "devtool commit"
+	cfg.CommitTitleOnlyFlag = "-t"
+	m, runner := newHunkAddTestModelWithCfg(t, singleHunkDiff, cfg)
+	m.width = 120
+	m.height = 40
+
+	m.Update(tea.KeyPressMsg{Code: tea.KeySpace})
+	cmd := m.Update(tea.KeyPressMsg{Code: 'C', ShiftedCode: 'C', Mod: tea.ModShift, Text: "C"})
+	if cmd == nil {
+		t.Fatal("expected a command from pressing C with custom commit command and title-only flag")
+	}
+	testhelper.MustHaveCall(t, runner, "apply", "--cached")
+}
+
+func TestHunkAddModel_ExecCommit_NoFlag_ShiftCSameAsC(t *testing.T) {
+	t.Parallel()
+	// When CommitTitleOnlyFlag is empty, C produces the same command as c.
+	// Verify both return a non-nil cmd (both paths exercised, same outcome).
+	cfg := config.NewDefault()
+	cfg.CommitCmd = "devtool commit"
+	cfg.CommitTitleOnlyFlag = "" // no flag configured
+
+	runner1 := &testhelper.FakeRunner{
+		Outputs: []string{singleHunkDiff, "main", ""},
+	}
+	m1, err := NewHunkAddModel(context.Background(), runner1, cfg, &diff.PlainRenderer{})
+	if err != nil {
+		t.Fatalf("NewHunkAddModel: %v", err)
+	}
+	m1.width = 120
+	m1.height = 40
+	m1.Update(tea.KeyPressMsg{Code: tea.KeySpace})
+	cmdC := m1.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
+
+	runner2 := &testhelper.FakeRunner{
+		Outputs: []string{singleHunkDiff, "main", ""},
+	}
+	m2, err := NewHunkAddModel(context.Background(), runner2, cfg, &diff.PlainRenderer{})
+	if err != nil {
+		t.Fatalf("NewHunkAddModel: %v", err)
+	}
+	m2.width = 120
+	m2.height = 40
+	m2.Update(tea.KeyPressMsg{Code: tea.KeySpace})
+	cmdShiftC := m2.Update(tea.KeyPressMsg{Code: 'C', ShiftedCode: 'C', Mod: tea.ModShift, Text: "C"})
+
+	if cmdC == nil {
+		t.Fatal("c key should return a command when CommitTitleOnlyFlag is empty")
+	}
+	if cmdShiftC == nil {
+		t.Fatal("C key should return a command when CommitTitleOnlyFlag is empty")
+	}
+	// Both produce a tea.ExecProcess cmd - verify both triggered staging.
+	testhelper.MustHaveCall(t, runner1, "apply", "--cached")
+	testhelper.MustHaveCall(t, runner2, "apply", "--cached")
+}

@@ -17,7 +17,7 @@ Select modified files and stage them in one shot. Replaces `forgit add`.
 | `Space` | Toggle file checked/unchecked |
 | `Enter` | Stage checked files |
 | `a` / `d` | Check all / uncheck all |
-| `c` / `C` | Commit / commit --amend |
+| `c` / `C` | Commit / commit (title only) |
 | `e` | Edit selected diff in `$EDITOR` |
 
 Flags: `--interactive`, `-i` - open TUI even when paths are given (default: stages paths directly).
@@ -36,7 +36,7 @@ Stage specific hunks instead of whole files. Press Enter to switch to line-edit 
 | `Enter` | Enter line-edit mode |
 | `w` | Apply staged hunks |
 | `s` | Split current hunk into smaller hunks |
-| `c` / `C` | Commit / commit --amend |
+| `c` / `C` | Commit / commit (title only) |
 | `e` | Edit selected diff in `$EDITOR` |
 
 ### jig checkout - Discard file changes interactively
@@ -206,6 +206,10 @@ log:
 rebase:
   defaultBase: HEAD~10   # default base for rebase-interactive
 
+commit:
+  command: git commit          # commit command (space-separated, e.g. "devtool commit")
+  titleOnlyFlag: ""            # flag appended for C key (title-only commit), e.g. "-t"
+
 ui:
   theme: dark        # dark | light (theme switching is plumbing only)
   showDiffPanel: true   # show diff panel on startup
@@ -228,6 +232,8 @@ Environment variables take precedence over the config file:
 | `JIG_PANEL_RATIO` | `ui.panelRatio` | `JIG_PANEL_RATIO=50` |
 | `JIG_SOFT_WRAP` | `ui.softWrap` | `JIG_SOFT_WRAP=false` |
 | `JIG_SHOW_LINE_NUMBERS` | `ui.showLineNumbers` | `JIG_SHOW_LINE_NUMBERS=false` |
+| `JIG_COMMIT_COMMAND` | `commit.command` | `JIG_COMMIT_COMMAND=devtool commit` |
+| `JIG_COMMIT_TITLE_ONLY_FLAG` | `commit.titleOnlyFlag` | `JIG_COMMIT_TITLE_ONLY_FLAG=-t` |
 
 ### Diff renderers
 

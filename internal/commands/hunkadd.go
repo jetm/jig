@@ -514,8 +514,8 @@ func splitHunk(h git.Hunk, contextLines int) []git.Hunk {
 	return result
 }
 
-// execCommit stages checked hunks and launches devtool commit as a subprocess.
-// If titleOnly is true, passes -t for a title-only commit message.
+// execCommit stages checked hunks and launches the configured commit command.
+// If titleOnly is true, appends CommitTitleOnlyFlag (when non-empty).
 // Returns nil if staging fails (error shown in status bar).
 func (m *HunkAddModel) execCommit(titleOnly bool) tea.Cmd {
 	staged := m.hunkList.StagedHunks()

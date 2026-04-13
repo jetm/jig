@@ -25,7 +25,7 @@ vet:    ; go vet ./...
 coverage: ; go tool cover -html=coverage.out -o coverage.html
 
 install: build
-	cp $(BUILD_DIR)/$(BINARY) $(GOPATH)/bin/$(BINARY)
+	cp $(BUILD_DIR)/$(BINARY) $(or $(GOBIN),$(GOPATH)/bin)/$(BINARY)
 
 snapshot:
 	goreleaser release --snapshot --clean

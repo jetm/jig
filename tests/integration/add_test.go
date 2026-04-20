@@ -14,6 +14,26 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// waitForAfterResize polls the TUI output for substr while periodically
+// re-sending a WindowSizeMsg. Needed when a just-pushed child model hasn't
+// seen any WindowSizeMsg yet and View() returns "Terminal too small" - the
+// PushModelMsg is emitted by a cmd running in a goroutine, so ordering
+// relative to a plain tm.send is non-deterministic. Sending the resize on
+// every poll tick guarantees the child eventually observes it.
+func waitForAfterResize(tb testing.TB, tm *testModel, substr string) {
+	tb.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		tm.send(tea.WindowSizeMsg{Width: 120, Height: 40})
+		if strings.Contains(tm.out.String(), substr) {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	tb.Fatalf("waitForAfterResize: %q not found after 5s.\nLast output (%d bytes):\n%s",
+		substr, tm.out.Len(), tm.out.String())
+}
+
 func TestAdd_DirectMode_StagesFiles(t *testing.T) {
 	repoDir := testhelper.NewTempRepo(t)
 	testhelper.WriteFile(t, repoDir, "file1.txt", "hello\n")
@@ -287,4 +307,114 @@ func TestAdd_TUI_FileFilter_NoMatch(t *testing.T) {
 	assertOutputContains(t, tm, "No matching")
 
 	tm.quit(t)
+}
+
+func TestAdd_TUI_FixupConfirmPath_AbsorbsStagedChanges(t *testing.T) {
+	repoDir := testhelper.NewTempRepo(t)
+	// Seed: initial commit (from NewTempRepo) + a second commit on a.txt.
+	testhelper.WriteFile(t, repoDir, "a.txt", "original\n")
+	testhelper.AddCommit(t, repoDir, "second commit on a.txt")
+
+	// Unstaged modification to a.txt.
+	testhelper.WriteFile(t, repoDir, "a.txt", "modified for fixup\n")
+
+	beforeCount := testhelper.CommitCount(t, repoDir)
+
+	tm := newAddTestModel(t, repoDir)
+
+	// Wait for the add file list to render a.txt
+	tm.waitFor(t, containsOutput("a.txt"))
+
+	// 'f' stages the cursor file and pushes the fixup picker. The app.Model
+	// forwards the push's Init() but does not replay the prior WindowSizeMsg
+	// to the newly pushed model, so its width/height start at zero and its
+	// View() returns "Terminal too small" until a resize arrives. Re-send
+	// the window size repeatedly while waiting so the msg is guaranteed to
+	// arrive *after* the PushModelMsg (which is emitted by a cmd running in
+	// a goroutine, ordering is non-deterministic relative to tm.send).
+	sendKey(tm, 'f')
+	waitForAfterResize(t, tm, "second commit on a.txt")
+
+	// Enter selects the top commit (index 0 = most recent) for fixup.
+	sendEnter(tm)
+
+	// The fixup path runs CreateFixupCommit + AutosquashRebase, then pops
+	// back to AddModel (program stays running). Poll git state until the
+	// staged changes have been absorbed (index becomes empty) so we know
+	// the rebase has completed before we quit the TUI.
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		cached := gitRun(t, repoDir, "diff", "--cached", "--name-only")
+		if cached == "" {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	tm.quit(t)
+
+	// Nothing should remain staged after the autosquash absorbed the change.
+	cached := gitRun(t, repoDir, "diff", "--cached", "--name-only")
+	assert.Empty(t, cached, "index should be empty after fixup+autosquash")
+
+	// Commit count is unchanged (fixup amends into an existing commit).
+	afterCount := testhelper.CommitCount(t, repoDir)
+	assert.Equal(t, beforeCount, afterCount, "commit count should not change after fixup")
+
+	// Resolve the target commit by subject (hash changed because of the rebase).
+	// Find the commit whose subject matches our seed and inspect its diff.
+	hash := gitRun(t, repoDir, "log", "--format=%H", "--grep=^second commit on a.txt$", "-E")
+	require.NotEmpty(t, hash, "target commit should still exist after autosquash")
+	// If multiple commits match (shouldn't), take the first.
+	if idx := strings.Index(hash, "\n"); idx >= 0 {
+		hash = hash[:idx]
+	}
+
+	show := gitRun(t, repoDir, "show", hash)
+	assert.Contains(t, show, "modified for fixup",
+		"the previously unstaged change should now be part of the target commit")
+}
+
+func TestAdd_TUI_FixupCancelPath_LeavesFilesStaged(t *testing.T) {
+	repoDir := testhelper.NewTempRepo(t)
+	testhelper.WriteFile(t, repoDir, "a.txt", "original\n")
+	testhelper.AddCommit(t, repoDir, "second commit on a.txt")
+
+	testhelper.WriteFile(t, repoDir, "a.txt", "modified for fixup\n")
+
+	beforeCount := testhelper.CommitCount(t, repoDir)
+
+	tm := newAddTestModel(t, repoDir)
+
+	tm.waitFor(t, containsOutput("a.txt"))
+
+	// 'f' stages the cursor file (a.txt) and pushes the fixup picker. See
+	// matching comment in the confirm-path test for why the resize is
+	// re-sent while waiting.
+	sendKey(tm, 'f')
+	waitForAfterResize(t, tm, "second commit on a.txt")
+
+	// 'q' cancels the picker and pops back to AddModel with MutatedGit=false.
+	// The file remains staged (no unstage-on-cancel - design decision D3).
+	sendKey(tm, 'q')
+
+	// Wait for the picker to pop. After the pop the mode indicator returns
+	// to "add"; poll for the staged state so we don't quit before the pop
+	// settles.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		cached := gitRun(t, repoDir, "diff", "--cached", "--name-only")
+		if strings.Contains(cached, "a.txt") {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	tm.quit(t)
+
+	cached := gitRun(t, repoDir, "diff", "--cached", "--name-only")
+	assert.Contains(t, cached, "a.txt", "a.txt should remain staged after fixup cancel")
+
+	afterCount := testhelper.CommitCount(t, repoDir)
+	assert.Equal(t, beforeCount, afterCount, "commit count should not change on fixup cancel")
 }

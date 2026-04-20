@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	addHintsLeft     = "Tab: panel  Enter: stage  c: commit  D: diff  ?: help  q: quit"
+	addHintsLeft     = "Tab: panel  Enter: stage  c: commit  f: fixup  ?: help  q: quit"
 	addHintsRight    = "w: wrap  F: maximize  Tab: panel  ?: help  q: quit"
 	addHintsMaximize = "F: restore  ?: help  q: quit"
 )
@@ -92,6 +92,7 @@ func NewAddModel(
 						{Key: "Enter", Desc: "stage selected files"},
 						{Key: "c", Desc: "stage and commit"},
 						{Key: "C", Desc: "stage and commit (title only)"},
+						{Key: "f", Desc: "stage and fixup"},
 						{Key: "w", Desc: "toggle soft-wrap (diff panel)"},
 						{Key: "F", Desc: "maximize diff panel"},
 						{Key: "/", Desc: "search in diff"},
@@ -212,6 +213,10 @@ func (m *AddModel) Update(msg tea.Msg) tea.Cmd {
 
 		if msg.String() == "C" {
 			return m.execCommit(true)
+		}
+
+		if msg.String() == "f" {
+			return m.execFixup()
 		}
 
 		switch msg.Code {
@@ -358,6 +363,25 @@ func (m *AddModel) execCommit(titleOnly bool) tea.Cmd {
 	return tea.ExecProcess(cmd, func(err error) tea.Msg {
 		return CommitDoneMsg{Err: err}
 	})
+}
+
+// execFixup stages selected files, refreshes the add view, and pushes a FixupModel.
+func (m *AddModel) execFixup() tea.Cmd {
+	paths := m.fileList.SelectedOrCheckedPaths()
+	if len(paths) == 0 {
+		return nil
+	}
+	if err := git.StageFiles(m.ctx, m.runner, paths); err != nil {
+		return m.status.SetMessage(fmt.Sprintf("Stage failed: %v", err), components.Error)
+	}
+	m.refreshFiles()
+	fixupModel, err := NewFixupModel(m.ctx, m.runner, m.cfg, m.renderer)
+	if err != nil {
+		return m.status.SetMessage(fmt.Sprintf("Fixup failed: %v", err), components.Error)
+	}
+	return func() tea.Msg {
+		return app.PushModelMsg{Model: NewTeaModelAdapter(fixupModel)}
+	}
 }
 
 // refreshFiles re-queries git state and rebuilds the file list.

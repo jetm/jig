@@ -1477,3 +1477,204 @@ func TestAddModel_ExecCommit_NoFlag_ShiftCSameAsC(t *testing.T) {
 	testhelper.MustHaveCall(t, runner1, "add", "--", "foo.go")
 	testhelper.MustHaveCall(t, runner2, "add", "--", "foo.go")
 }
+
+// TestAddModel_FKey_EmptyList_NoOp verifies that pressing f with an empty
+// file list returns no command and does not emit a PushModelMsg.
+func TestAddModel_FKey_EmptyList_NoOp(t *testing.T) {
+	t.Parallel()
+	m := newTestAddModel(t, "", "")
+	m.width = 120
+	m.height = 40
+
+	cmd := m.Update(tea.KeyPressMsg{Code: 'f', Text: "f"})
+	// With no files, execFixup returns nil; the outer Update returns the
+	// statusbar cmd (which is nil when no statusbar update was triggered).
+	if cmd != nil {
+		msg := cmd()
+		if _, ok := msg.(app.PushModelMsg); ok {
+			t.Fatal("pressing f with empty file list should not emit PushModelMsg")
+		}
+	}
+}
+
+// TestAddModel_FKey_StageError_StatusMessage verifies that a StageFiles
+// failure in execFixup surfaces a status-bar error and does not emit a
+// PushModelMsg.
+func TestAddModel_FKey_StageError_StatusMessage(t *testing.T) {
+	t.Parallel()
+	// Call sequence:
+	//   1. diff --name-status
+	//   2. ls-files --others
+	//   3. rev-parse --abbrev-ref HEAD (BranchName)
+	//   4. diff -U3 -- foo.go       (renderSelectedDiff in NewAddModel)
+	//   5. add -- foo.go            (StageFiles, will fail)
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{
+			"M\tfoo.go\n",
+			"",
+			"main",
+			"",
+			"",
+		},
+		Errors: []error{nil, nil, nil, nil, fmt.Errorf("staging failed")},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m, err := NewAddModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
+	m.width = 120
+	m.height = 40
+
+	cmd := m.Update(tea.KeyPressMsg{Code: 'f', Text: "f"})
+	if cmd == nil {
+		t.Fatal("expected status-bar cmd after stage error")
+	}
+	msg := cmd()
+	if _, ok := msg.(app.PushModelMsg); ok {
+		t.Fatal("should not emit PushModelMsg when StageFiles fails")
+	}
+
+	// Status bar should carry the error text.
+	view := m.View()
+	if !strings.Contains(view, "Stage failed") {
+		t.Errorf("View() should contain 'Stage failed' after stage error, got: %q", view)
+	}
+
+	// Verify stage call was attempted with the focused file (no explicit
+	// selection; SelectedOrCheckedPaths falls back to cursor).
+	testhelper.MustHaveCall(t, runner, "add", "--", "foo.go")
+}
+
+// TestAddModel_FKey_NewFixupModelError_StatusMessage verifies that a
+// NewFixupModel failure (here: HasStagedChanges reports false) surfaces a
+// status-bar error and does not emit a PushModelMsg.
+func TestAddModel_FKey_NewFixupModelError_StatusMessage(t *testing.T) {
+	t.Parallel()
+	// Call sequence:
+	//   1. diff --name-status         (NewAddModel)
+	//   2. ls-files --others          (NewAddModel)
+	//   3. rev-parse --abbrev-ref HEAD (BranchName, NewAddModel)
+	//   4. diff -U3 -- foo.go         (renderSelectedDiff, NewAddModel)
+	//   5. add -- foo.go              (StageFiles, succeeds)
+	//   6. diff --name-status         (refreshFiles; keep file so View()
+	//                                   renders the status bar over layout)
+	//   7. ls-files --others          (refreshFiles)
+	//   8. diff -U3 -- bar.go         (renderSelectedDiff inside refreshFiles)
+	//   9. diff --cached --quiet      (HasStagedChanges; nil err => "nothing staged")
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{
+			"M\tfoo.go\n",
+			"",
+			"main",
+			"",
+			"",
+			"M\tbar.go\n", // refresh diff --name-status
+			"",            // refresh ls-files --others
+			"",            // refresh renderSelectedDiff: diff -- bar.go
+			"",            // HasStagedChanges: nil error => reports false
+		},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m, err := NewAddModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
+	m.width = 120
+	m.height = 40
+
+	cmd := m.Update(tea.KeyPressMsg{Code: 'f', Text: "f"})
+	if cmd == nil {
+		t.Fatal("expected status-bar cmd after NewFixupModel error")
+	}
+	msg := cmd()
+	if _, ok := msg.(app.PushModelMsg); ok {
+		t.Fatal("should not emit PushModelMsg when NewFixupModel fails")
+	}
+
+	view := m.View()
+	if !strings.Contains(view, "Fixup failed") {
+		t.Errorf("View() should contain 'Fixup failed' after NewFixupModel error, got: %q", view)
+	}
+
+	// Staging still happened before the fixup-model construction failed.
+	testhelper.MustHaveCall(t, runner, "add", "--", "foo.go")
+}
+
+// TestAddModel_FKey_Success_EmitsPushModelMsg verifies that the happy path
+// stages the file, constructs a FixupModel, and emits a PushModelMsg whose
+// Model is a *teaModelAdapter wrapping a *FixupModel.
+func TestAddModel_FKey_Success_EmitsPushModelMsg(t *testing.T) {
+	t.Parallel()
+	logOutput := "abc1234\x1fFix bug\x1fAlice\x1f2 hours ago\x1e"
+	commitDiff := "diff --git a/foo.go b/foo.go\n" +
+		"--- a/foo.go\n+++ b/foo.go\n@@ -1 +1 @@\n-old\n+new\n"
+
+	// Call sequence:
+	//   1. diff --name-status          (NewAddModel)
+	//   2. ls-files --others           (NewAddModel)
+	//   3. rev-parse --abbrev-ref HEAD (BranchName, NewAddModel)
+	//   4. diff -U3 -- foo.go          (renderSelectedDiff, NewAddModel)
+	//   5. add -- foo.go               (StageFiles)
+	//   6. diff --name-status          (refreshFiles; empty after stage)
+	//   7. ls-files --others           (refreshFiles)
+	//   8. diff --cached --quiet       (HasStagedChanges: err => staged)
+	//   9. rev-parse --show-toplevel   (RepoRoot for IsRebaseInProgress)
+	//  10. log -n20 --format=...       (RecentCommits)
+	//  11. rev-parse --abbrev-ref HEAD (BranchName in NewFixupModel)
+	//  12. show -U3 abc1234            (renderSelectedDiff inside NewFixupModel)
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{
+			"M\tfoo.go\n",
+			"",
+			"main",
+			"",
+			"",
+			"",           // refresh diff --name-status
+			"",           // refresh ls-files --others
+			"",           // HasStagedChanges (err != nil => true)
+			"/fake/repo", // RepoRoot (filesystem won't have .git/rebase-merge)
+			logOutput,
+			"main",
+			commitDiff,
+		},
+		Errors: []error{
+			nil, nil, nil, nil, nil,
+			nil, nil,
+			fmt.Errorf("staged"), // HasStagedChanges expects error to report true
+			nil,
+			nil,
+			nil,
+			nil,
+		},
+	}
+	cfg := config.NewDefault()
+	renderer := &diff.PlainRenderer{}
+	m, err := NewAddModel(context.Background(), runner, cfg, renderer)
+	require.NoError(t, err)
+	m.width = 120
+	m.height = 40
+
+	cmd := m.Update(tea.KeyPressMsg{Code: 'f', Text: "f"})
+	if cmd == nil {
+		t.Fatal("expected a command from pressing f on success path")
+	}
+	msg := cmd()
+	push, ok := msg.(app.PushModelMsg)
+	if !ok {
+		t.Fatalf("expected app.PushModelMsg, got %T", msg)
+	}
+	if push.Model == nil {
+		t.Fatal("PushModelMsg.Model should be non-nil")
+	}
+
+	// Unwrap the adapter and verify the inner ChildModel is a *FixupModel.
+	adapter, ok := push.Model.(*teaModelAdapter)
+	if !ok {
+		t.Fatalf("expected *teaModelAdapter, got %T", push.Model)
+	}
+	if _, ok := adapter.inner.(*FixupModel); !ok {
+		t.Errorf("expected inner model to be *FixupModel, got %T", adapter.inner)
+	}
+
+	// Staging must have run before the push.
+	testhelper.MustHaveCall(t, runner, "add", "--", "foo.go")
+}

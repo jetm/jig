@@ -14,26 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// waitForAfterResize polls the TUI output for substr while periodically
-// re-sending a WindowSizeMsg. Needed when a just-pushed child model hasn't
-// seen any WindowSizeMsg yet and View() returns "Terminal too small" - the
-// PushModelMsg is emitted by a cmd running in a goroutine, so ordering
-// relative to a plain tm.send is non-deterministic. Sending the resize on
-// every poll tick guarantees the child eventually observes it.
-func waitForAfterResize(tb testing.TB, tm *testModel, substr string) {
-	tb.Helper()
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		tm.send(tea.WindowSizeMsg{Width: 120, Height: 40})
-		if strings.Contains(tm.out.String(), substr) {
-			return
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	tb.Fatalf("waitForAfterResize: %q not found after 5s.\nLast output (%d bytes):\n%s",
-		substr, tm.out.Len(), tm.out.String())
-}
-
 func TestAdd_DirectMode_StagesFiles(t *testing.T) {
 	repoDir := testhelper.NewTempRepo(t)
 	testhelper.WriteFile(t, repoDir, "file1.txt", "hello\n")
@@ -325,15 +305,9 @@ func TestAdd_TUI_FixupConfirmPath_AbsorbsStagedChanges(t *testing.T) {
 	// Wait for the add file list to render a.txt
 	tm.waitFor(t, containsOutput("a.txt"))
 
-	// 'f' stages the cursor file and pushes the fixup picker. The app.Model
-	// forwards the push's Init() but does not replay the prior WindowSizeMsg
-	// to the newly pushed model, so its width/height start at zero and its
-	// View() returns "Terminal too small" until a resize arrives. Re-send
-	// the window size repeatedly while waiting so the msg is guaranteed to
-	// arrive *after* the PushModelMsg (which is emitted by a cmd running in
-	// a goroutine, ordering is non-deterministic relative to tm.send).
+	// 'f' stages the cursor file and pushes the fixup picker.
 	sendKey(tm, 'f')
-	waitForAfterResize(t, tm, "second commit on a.txt")
+	tm.waitFor(t, containsOutput("second commit on a.txt"))
 
 	// Enter selects the top commit (index 0 = most recent) for fixup.
 	sendEnter(tm)
@@ -388,11 +362,9 @@ func TestAdd_TUI_FixupCancelPath_LeavesFilesStaged(t *testing.T) {
 
 	tm.waitFor(t, containsOutput("a.txt"))
 
-	// 'f' stages the cursor file (a.txt) and pushes the fixup picker. See
-	// matching comment in the confirm-path test for why the resize is
-	// re-sent while waiting.
+	// 'f' stages the cursor file (a.txt) and pushes the fixup picker.
 	sendKey(tm, 'f')
-	waitForAfterResize(t, tm, "second commit on a.txt")
+	tm.waitFor(t, containsOutput("second commit on a.txt"))
 
 	// 'q' cancels the picker and pops back to AddModel with MutatedGit=false.
 	// The file remains staged (no unstage-on-cancel - design decision D3).

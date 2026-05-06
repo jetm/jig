@@ -194,6 +194,66 @@ func TestWindowSizeMsgForwardedToActive(t *testing.T) {
 	}
 }
 
+// TestPushModelMsgForwardsWindowSizeToChild verifies that when the app has
+// received a WindowSizeMsg, the next push batches a matching WindowSizeMsg
+// into the returned cmd so the child renders correctly without waiting for a
+// real terminal resize.
+func TestPushModelMsgForwardsWindowSizeToChild(t *testing.T) {
+	root := newMock("root")
+	a := New(root, nil, configZero())
+
+	a.Update(tea.WindowSizeMsg{Width: 120, Height: 40}) //nolint:errcheck
+
+	child := newMock("child")
+	_, cmd := a.Update(PushModelMsg{Model: child})
+
+	if cmd == nil {
+		t.Fatal("expected cmd to forward window size to pushed child, got nil")
+	}
+
+	// Collect all messages produced by the cmd (direct msg or batched).
+	var msgs []tea.Msg
+	result := cmd()
+	if batch, ok := result.(tea.BatchMsg); ok {
+		for _, c := range batch {
+			if c != nil {
+				msgs = append(msgs, c())
+			}
+		}
+	} else {
+		msgs = append(msgs, result)
+	}
+
+	var found bool
+	for _, m := range msgs {
+		if sz, ok := m.(tea.WindowSizeMsg); ok && sz.Width == 120 && sz.Height == 40 {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected WindowSizeMsg{120, 40} in cmd output; msgs: %v", msgs)
+	}
+}
+
+// TestPushModelMsgWithoutPriorWindowSize verifies that pushing a model before
+// any WindowSizeMsg has arrived does not inject an invalid 0×0 size.
+func TestPushModelMsgWithoutPriorWindowSize(t *testing.T) {
+	root := newMock("root")
+	a := New(root, nil, configZero())
+
+	child := newMock("child")
+	// child.Init() returns nil and no size is known, so cmd must be nil.
+	_, cmd := a.Update(PushModelMsg{Model: child})
+
+	if cmd != nil {
+		result := cmd()
+		if sz, ok := result.(tea.WindowSizeMsg); ok {
+			t.Fatalf("must not forward WindowSizeMsg before any size is known; got %v", sz)
+		}
+	}
+}
+
 // TestViewReturnsAltScreen verifies View() returns tea.View with AltScreen true.
 func TestViewReturnsAltScreen(t *testing.T) {
 	root := newMock("hello world")

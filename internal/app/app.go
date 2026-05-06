@@ -26,6 +26,8 @@ type Model struct {
 	Runner  git.Runner
 	Config  config.Config
 	Aborted bool // true when an abort was requested (non-zero exit)
+	width   int
+	height  int
 }
 
 // New creates a Model with the initial model on the stack.
@@ -62,9 +64,22 @@ func (a *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case AbortMsg:
 		a.Aborted = true
 		return a, tea.Quit
+	case tea.WindowSizeMsg:
+		a.width = msg.Width
+		a.height = msg.Height
+		active, cmd := a.Active().Update(msg)
+		a.stack[len(a.stack)-1] = active
+		return a, cmd
 	case PushModelMsg:
 		a.Push(msg.Model)
-		return a, msg.Model.Init()
+		initCmd := msg.Model.Init()
+		if a.width > 0 && a.height > 0 {
+			w, h := a.width, a.height
+			return a, tea.Batch(initCmd, func() tea.Msg {
+				return tea.WindowSizeMsg{Width: w, Height: h}
+			})
+		}
+		return a, initCmd
 	case PopModelMsg:
 		parent := a.Pop()
 		if parent == nil {

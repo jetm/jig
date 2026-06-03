@@ -114,6 +114,46 @@ func TestChromaRenderer_GoldenOutput(t *testing.T) {
 	}
 }
 
+func TestChromaRenderer_WordDiffHighlightsAdjacentPairs(t *testing.T) {
+	t.Parallel()
+	// A diff with one paired -/+ line: only "greet" → "greet(name string)"
+	// The changed portion must have the word-diff background injected.
+	input := `--- a/main.go
++++ b/main.go
+@@ -1,2 +1,2 @@
+-func greet() string {
++func greet(name string) string {
+ }
+`
+	r, err := diff.NewChromaRenderer()
+	if err != nil {
+		t.Fatalf("failed to create ChromaRenderer: %v", err)
+	}
+	got, err := r.Render(input)
+	if err != nil {
+		t.Fatalf("unexpected render error: %v", err)
+	}
+	// The removal background must appear in the - line and the addition
+	// background in the + line.
+	lines := strings.Split(got, "\n")
+	foundRemBg, foundAddBg := false, false
+	for _, l := range lines {
+		stripped := stripANSI(l)
+		if len(stripped) > 0 && stripped[0] == '-' && strings.Contains(l, "\x1b[48;2;80;30;30m") {
+			foundRemBg = true
+		}
+		if len(stripped) > 0 && stripped[0] == '+' && strings.Contains(l, "\x1b[48;2;20;60;20m") {
+			foundAddBg = true
+		}
+	}
+	if !foundRemBg {
+		t.Error("removal line should contain word-diff background colour")
+	}
+	if !foundAddBg {
+		t.Error("addition line should contain word-diff background colour")
+	}
+}
+
 func TestChromaRenderer_BinaryDiff(t *testing.T) {
 	input := "Binary files a/image.png and b/image.png differ\n"
 

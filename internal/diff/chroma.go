@@ -3,6 +3,7 @@ package diff
 import (
 	"bytes"
 	"errors"
+	"strings"
 
 	"github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/formatters"
@@ -42,9 +43,16 @@ func NewChromaRenderer() (*ChromaRenderer, error) {
 	}, nil
 }
 
+// bgRemoved is the truecolor background injected onto changed words in removal lines.
+const bgRemoved = "\x1b[48;2;80;30;30m"
+
+// bgAdded is the truecolor background injected onto changed words in addition lines.
+const bgAdded = "\x1b[48;2;20;60;20m"
+
 // Render tokenizes the raw diff with chroma's Diff lexer and formats it with
-// ANSI escape codes. On any lexer or formatter error it returns the raw input
-// as graceful degradation.
+// ANSI escape codes. Adjacent -/+ line pairs receive intra-line word-level
+// background highlights for the changed words. On any lexer or formatter error
+// it returns the raw input as graceful degradation.
 func (c *ChromaRenderer) Render(rawDiff string) (string, error) {
 	if rawDiff == "" {
 		return "", nil
@@ -60,5 +68,44 @@ func (c *ChromaRenderer) Render(rawDiff string) (string, error) {
 		return rawDiff, nil
 	}
 
-	return buf.String(), nil
+	return applyWordDiffHighlights(buf.String()), nil
+}
+
+// applyWordDiffHighlights post-processes chroma-coloured diff output, adding
+// per-word background highlights to adjacent -/+ line pairs.
+func applyWordDiffHighlights(colored string) string {
+	lines := strings.Split(colored, "\n")
+	out := make([]string, 0, len(lines))
+
+	i := 0
+	for i < len(lines) {
+		raw := StripANSI(lines[i])
+		if len(raw) > 0 && raw[0] == '-' && i+1 < len(lines) {
+			nextRaw := StripANSI(lines[i+1])
+			if len(nextRaw) > 0 && nextRaw[0] == '+' {
+				// Pair found: compute word diff on content without the prefix.
+				oldContent := raw[1:]
+				newContent := nextRaw[1:]
+				oldSpans, newSpans := WordDiff(oldContent, newContent)
+
+				// Shift spans by 1 to account for the +/- prefix character.
+				for k := range oldSpans {
+					oldSpans[k].Start++
+					oldSpans[k].End++
+				}
+				for k := range newSpans {
+					newSpans[k].Start++
+					newSpans[k].End++
+				}
+
+				out = append(out, ApplyHighlightSpans(lines[i], oldSpans, bgRemoved))
+				out = append(out, ApplyHighlightSpans(lines[i+1], newSpans, bgAdded))
+				i += 2
+				continue
+			}
+		}
+		out = append(out, lines[i])
+		i++
+	}
+	return strings.Join(out, "\n")
 }

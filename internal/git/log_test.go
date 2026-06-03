@@ -119,15 +119,34 @@ func TestRecentCommits_ReturnsErrorOnFailure(t *testing.T) {
 }
 
 func TestCommitDiff_UsesShowCommand(t *testing.T) {
-	runner := &testhelper.FakeRunner{Outputs: []string{"diff output"}}
+	gitShowOutput := "commit abc1234def\nAuthor: Dev <dev@example.com>\nDate:   Mon Jan 1 00:00:00 2024 +0000\n\n    add x\n\ndiff --git a/x.go b/x.go\n--- a/x.go\n+++ b/x.go\n@@ -1 +1 @@\n-old\n+new\n"
+	runner := &testhelper.FakeRunner{Outputs: []string{gitShowOutput}}
 	out, err := git.CommitDiff(context.Background(), runner, "abc1234", -1)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if out != "diff output" {
-		t.Errorf("CommitDiff output = %q, want %q", out, "diff output")
+	if !strings.HasPrefix(out, "diff --git") {
+		t.Errorf("CommitDiff should return stripped diff starting with 'diff --git', got: %q", out)
 	}
 	testhelper.MustHaveCall(t, runner, "show", "abc1234")
+}
+
+func TestCommitDiff_StripsCommitMetadataFromGitShow(t *testing.T) {
+	gitShowOutput := "commit abc1234def5678\nAuthor: Dev <dev@example.com>\nDate:   Mon Jan 1 00:00:00 2024 +0000\n\n    feat: add feature\n\ndiff --git a/foo.go b/foo.go\nindex abc..def 100644\n--- a/foo.go\n+++ b/foo.go\n@@ -1 +1 @@\n-old\n+new\n"
+	runner := &testhelper.FakeRunner{Outputs: []string{gitShowOutput}}
+	out, err := git.CommitDiff(context.Background(), runner, "abc1234", -1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(out, "Author:") {
+		t.Error("CommitDiff should strip commit metadata header, found 'Author:' in output")
+	}
+	if strings.Contains(out, "commit abc1234") {
+		t.Error("CommitDiff should strip commit hash line from output")
+	}
+	if !strings.HasPrefix(out, "diff --git") {
+		t.Errorf("CommitDiff output should begin with 'diff --git', got: %q", out[:min(60, len(out))])
+	}
 }
 
 func TestCommitDiff_ReturnsErrorOnFailure(t *testing.T) {

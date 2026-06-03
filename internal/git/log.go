@@ -40,6 +40,8 @@ func RecentCommitsFrom(ctx context.Context, r Runner, n int, ref string) ([]Comm
 
 // CommitDiff returns the diff of a single commit (git show <hash>).
 // When contextLines is negative the git default is used.
+// The commit metadata header (commit hash, Author, Date, message body) that
+// git show prepends to the patch is stripped; only the patch text is returned.
 func CommitDiff(ctx context.Context, r Runner, hash string, contextLines int) (string, error) {
 	args := []string{"show"}
 	if contextLines >= 0 {
@@ -50,7 +52,21 @@ func CommitDiff(ctx context.Context, r Runner, hash string, contextLines int) (s
 	if err != nil {
 		return "", fmt.Errorf("git show: %w", err)
 	}
-	return out, nil
+	return stripCommitHeader(out), nil
+}
+
+// stripCommitHeader removes the commit metadata block that git show prepends to
+// the patch (commit hash, Author, Date, and message body). Returns everything
+// from the first "diff --git" line onwards. When no diff header is found (e.g.
+// empty commits), the original string is returned unchanged.
+func stripCommitHeader(s string) string {
+	if idx := strings.Index(s, "\ndiff --git "); idx >= 0 {
+		return s[idx+1:]
+	}
+	if strings.HasPrefix(s, "diff --git ") {
+		return s
+	}
+	return s
 }
 
 // CreateFixupCommit creates a fixup! commit targeting the given commit hash.

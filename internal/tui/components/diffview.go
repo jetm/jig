@@ -4,10 +4,6 @@ package components
 import (
 	"fmt"
 	"regexp"
-	"strings"
-
-	"github.com/muesli/reflow/wordwrap"
-	"github.com/muesli/reflow/wrap"
 
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
@@ -86,45 +82,12 @@ func (d *DiffView) SetDiffContent(raw, rendered string) {
 	d.applyContent()
 }
 
-// applyContent pushes rawContent into the viewport, wrapping long lines when softWrap is true.
+// applyContent pushes rawContent into the viewport and syncs the soft-wrap
+// state. The viewport's built-in SoftWrap already accounts for gutter width
+// via maxWidth(), so we do not pre-wrap here.
 func (d *DiffView) applyContent() {
-	if !d.softWrap {
-		d.vp.SetContent(d.rawContent)
-		return
-	}
-	d.vp.SetContent(wrapContent(d.rawContent, d.vp.Width()))
-}
-
-// wrapContent wraps lines in s that exceed width visible characters.
-// It uses ANSI-aware word wrapping (breaking at spaces) with a fallback to
-// forced character breaks for overlong tokens. Continuation lines are indented
-// with 1 space to align with content after the unified diff prefix (+/-/ ).
-func wrapContent(s string, width int) string {
-	if width <= 0 {
-		return s
-	}
-	lines := strings.Split(s, "\n")
-	out := make([]string, 0, len(lines))
-	for _, line := range lines {
-		// First pass: break at word boundaries (ANSI-aware).
-		wrapped := wordwrap.String(line, width)
-		// Second pass: force-break any remaining overlong words.
-		wrapped = wrap.String(wrapped, width)
-
-		parts := strings.Split(wrapped, "\n")
-		out = append(out, parts[0])
-		// Indent continuation lines with 1 space, wrapping at width-1
-		// to account for the indent. Each sub-line gets the indent.
-		for _, cont := range parts[1:] {
-			effWidth := max(width-1, 1)
-			rewrapped := wordwrap.String(cont, effWidth)
-			rewrapped = wrap.String(rewrapped, effWidth)
-			for sub := range strings.SplitSeq(rewrapped, "\n") {
-				out = append(out, " "+sub)
-			}
-		}
-	}
-	return strings.Join(out, "\n")
+	d.vp.SoftWrap = d.softWrap
+	d.vp.SetContent(d.rawContent)
 }
 
 // SetSoftWrap enables or disables soft-wrap and re-applies the stored content.
@@ -142,12 +105,10 @@ func (d *DiffView) ScrollOffset() int { return d.vp.YOffset() }
 // XOffset returns the current horizontal scroll offset.
 func (d *DiffView) XOffset() int { return d.vp.XOffset() }
 
-// SetWidth sets the viewport width and re-applies content so wrap reflects the new width.
+// SetWidth sets the viewport width. When SoftWrap is active, the viewport
+// re-wraps at the new width on the next View() call automatically.
 func (d *DiffView) SetWidth(w int) {
 	d.vp.SetWidth(w)
-	if d.softWrap {
-		d.applyContent()
-	}
 }
 
 // SetHeight sets the viewport height.

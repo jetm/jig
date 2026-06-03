@@ -3,6 +3,7 @@ package git
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -67,6 +68,101 @@ func stripCommitHeader(s string) string {
 		return s
 	}
 	return s
+}
+
+// LargeFileLineThreshold is the default maximum number of added+deleted lines
+// in a single file before CommitDiffSafe excludes it from the diff.
+const LargeFileLineThreshold = 20_000
+
+// FileStat holds per-file statistics from git --numstat output.
+type FileStat struct {
+	Additions int
+	Deletions int
+	Name      string
+	Binary    bool
+}
+
+// CommitNumstat returns per-file line-count statistics for a commit using
+// git show --numstat. The commit metadata header is suppressed with --format=.
+func CommitNumstat(ctx context.Context, r Runner, hash string) ([]FileStat, error) {
+	out, err := r.Run(ctx, "show", "--numstat", "--format=", hash)
+	if err != nil {
+		return nil, fmt.Errorf("git show --numstat: %w", err)
+	}
+	return parseNumstat(out), nil
+}
+
+// parseNumstat parses git --numstat output into a FileStat slice.
+// Each line is "<additions>\t<deletions>\t<filename>" or "-\t-\t<filename>" for binaries.
+func parseNumstat(raw string) []FileStat {
+	var stats []FileStat
+	for line := range strings.SplitSeq(raw, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "\t", 3)
+		if len(parts) != 3 {
+			continue
+		}
+		stat := FileStat{Name: parts[2]}
+		if parts[0] == "-" && parts[1] == "-" {
+			stat.Binary = true
+		} else {
+			stat.Additions, _ = strconv.Atoi(parts[0])
+			stat.Deletions, _ = strconv.Atoi(parts[1])
+		}
+		stats = append(stats, stat)
+	}
+	return stats
+}
+
+// CommitDiffSafe returns the diff for a commit, excluding any file whose total
+// changed lines (additions + deletions) exceeds maxLinesPerFile. Excluded files
+// are listed in a human-readable notice prepended to the patch. When no files
+// exceed the threshold the behaviour is identical to CommitDiff.
+func CommitDiffSafe(ctx context.Context, r Runner, hash string, contextLines, maxLinesPerFile int) (string, error) {
+	stats, err := CommitNumstat(ctx, r, hash)
+	if err != nil {
+		return CommitDiff(ctx, r, hash, contextLines)
+	}
+
+	var large []string
+	for _, s := range stats {
+		if !s.Binary && s.Additions+s.Deletions > maxLinesPerFile {
+			large = append(large, s.Name)
+		}
+	}
+
+	if len(large) == 0 {
+		return CommitDiff(ctx, r, hash, contextLines)
+	}
+
+	// Build diff call with :(exclude) pathspecs for large files.
+	args := []string{"show"}
+	if contextLines >= 0 {
+		args = append(args, fmt.Sprintf("-U%d", contextLines))
+	}
+	args = append(args, hash, "--")
+	for _, name := range large {
+		args = append(args, ":(exclude)"+name)
+	}
+
+	out, err := r.Run(ctx, args...)
+	if err != nil {
+		return "", fmt.Errorf("git show: %w", err)
+	}
+
+	diff := stripCommitHeader(out)
+
+	// Prepend a notice listing the excluded files.
+	var notice strings.Builder
+	notice.WriteString("# Large files excluded from diff (>" + strconv.Itoa(maxLinesPerFile) + " changed lines):\n")
+	for _, name := range large {
+		notice.WriteString("#   " + name + "\n")
+	}
+	notice.WriteString("#\n")
+	return notice.String() + diff, nil
 }
 
 // CreateFixupCommit creates a fixup! commit targeting the given commit hash.

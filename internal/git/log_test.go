@@ -149,6 +149,128 @@ func TestCommitDiff_StripsCommitMetadataFromGitShow(t *testing.T) {
 	}
 }
 
+func TestCommitNumstat_ParsesPerFileStats(t *testing.T) {
+	numstatOut := "10\t5\tfoo.go\n0\t200\tbar.go\n-\t-\timage.png\n"
+	runner := &testhelper.FakeRunner{Outputs: []string{numstatOut}}
+	stats, err := git.CommitNumstat(context.Background(), runner, "abc1234")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(stats) != 3 {
+		t.Fatalf("expected 3 file stats, got %d", len(stats))
+	}
+	if stats[0].Name != "foo.go" || stats[0].Additions != 10 || stats[0].Deletions != 5 {
+		t.Errorf("stats[0] = %+v, want {foo.go 10 5 false}", stats[0])
+	}
+	if stats[1].Name != "bar.go" || stats[1].Additions != 0 || stats[1].Deletions != 200 {
+		t.Errorf("stats[1] = %+v, want {bar.go 0 200 false}", stats[1])
+	}
+	if !stats[2].Binary || stats[2].Name != "image.png" {
+		t.Errorf("stats[2] = %+v, want binary image.png", stats[2])
+	}
+	testhelper.MustHaveCall(t, runner, "show", "--numstat", "--format=", "abc1234")
+}
+
+func TestCommitDiffSafe_ExcludesLargeFiles(t *testing.T) {
+	// Numstat call returns one large file (30000 lines) and one normal file.
+	numstatOut := "25000\t5000\tlarge.go\n10\t5\tsmall.go\n"
+	// The second call is the actual diff without large.go.
+	diffOut := "commit abc\nAuthor: Dev <d@e.com>\nDate: Mon\n\n    msg\n\ndiff --git a/small.go b/small.go\n--- a/small.go\n+++ b/small.go\n@@ -1 +1 @@\n-old\n+new\n"
+	runner := &testhelper.FakeRunner{Outputs: []string{numstatOut, diffOut}}
+	out, err := git.CommitDiffSafe(context.Background(), runner, "abc1234", -1, 20000)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out, "large.go") {
+		t.Error("output should mention excluded large.go")
+	}
+	if !strings.Contains(out, "diff --git") {
+		t.Error("output should contain the remaining diff")
+	}
+	// Second call must exclude large.go via :(exclude).
+	calls := runner.Calls
+	if len(calls) < 2 {
+		t.Fatalf("expected 2 runner calls, got %d", len(calls))
+	}
+	hasExclude := false
+	for _, arg := range calls[1].Args {
+		if strings.Contains(arg, ":(exclude)large.go") {
+			hasExclude = true
+		}
+	}
+	if !hasExclude {
+		t.Errorf("second git call should exclude large.go, args: %v", calls[1].Args)
+	}
+}
+
+func TestCommitDiffSafe_NoLargeFiles_BehavesLikeCommitDiff(t *testing.T) {
+	numstatOut := "5\t3\tsmall.go\n"
+	diffOut := "commit abc\nAuthor: x\nDate: y\n\n    msg\n\ndiff --git a/small.go b/small.go\n--- a/small.go\n+++ b/small.go\n@@ -1 +1 @@\n-old\n+new\n"
+	runner := &testhelper.FakeRunner{Outputs: []string{numstatOut, diffOut}}
+	out, err := git.CommitDiffSafe(context.Background(), runner, "abc1234", -1, 20000)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.HasPrefix(out, "diff --git") {
+		t.Errorf("output should start with 'diff --git', got: %q", out[:min(40, len(out))])
+	}
+}
+
+func TestCommitDiff_InputStartingWithDiff_Unchanged(t *testing.T) {
+	// git show can produce output that already begins with "diff --git" when the
+	// commit metadata is absent (e.g. --no-commit-id mode or output piped in).
+	directDiff := "diff --git a/x.go b/x.go\n--- a/x.go\n+++ b/x.go\n@@ -1 +1 @@\n-old\n+new\n"
+	runner := &testhelper.FakeRunner{Outputs: []string{directDiff}}
+	out, err := git.CommitDiff(context.Background(), runner, "abc1234", -1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.HasPrefix(out, "diff --git") {
+		t.Errorf("diff-only input should be preserved, got %q", out[:min(40, len(out))])
+	}
+}
+
+func TestCommitDiff_EmptyCommit_ReturnsRawOutput(t *testing.T) {
+	// An empty commit has no diff section; the raw git show output is returned.
+	emptyOut := "commit abc1234\nAuthor: Dev <d@e.com>\nDate: Mon\n\n    empty commit\n"
+	runner := &testhelper.FakeRunner{Outputs: []string{emptyOut}}
+	out, err := git.CommitDiff(context.Background(), runner, "abc1234", -1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out != emptyOut {
+		t.Errorf("empty commit should return raw output unchanged, got %q", out)
+	}
+}
+
+func TestCommitNumstat_ReturnsErrorOnFailure(t *testing.T) {
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{""},
+		Errors:  []error{&git.ExecError{Args: []string{"show"}, ExitCode: 128, Stderr: "bad object"}},
+	}
+	_, err := git.CommitNumstat(context.Background(), runner, "badhash")
+	if err == nil {
+		t.Error("expected error from CommitNumstat, got nil")
+	}
+}
+
+func TestCommitDiffSafe_FallsBackWhenNumstatFails(t *testing.T) {
+	// When numstat itself fails, CommitDiffSafe falls back to CommitDiff.
+	numstatErr := &git.ExecError{Args: []string{"show"}, ExitCode: 128, Stderr: "bad object"}
+	diffOut := "commit abc\nAuthor: x\nDate: y\n\n    msg\n\ndiff --git a/x.go b/x.go\n--- a/x.go\n+++ b/x.go\n@@ -1 +1 @@\n-old\n+new\n"
+	runner := &testhelper.FakeRunner{
+		Outputs: []string{"", diffOut},
+		Errors:  []error{numstatErr, nil},
+	}
+	out, err := git.CommitDiffSafe(context.Background(), runner, "abc1234", -1, 20000)
+	if err != nil {
+		t.Fatalf("unexpected error on numstat fallback: %v", err)
+	}
+	if !strings.HasPrefix(out, "diff --git") {
+		t.Errorf("fallback output should start with 'diff --git', got: %q", out[:min(40, len(out))])
+	}
+}
+
 func TestCommitDiff_ReturnsErrorOnFailure(t *testing.T) {
 	runner := &testhelper.FakeRunner{
 		Outputs: []string{""},

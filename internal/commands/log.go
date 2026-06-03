@@ -234,12 +234,13 @@ func (m *LogModel) checkSelectionChange() {
 }
 
 // renderSelectedDiff fetches and renders the selected commit's diff in the right panel.
+// Files exceeding LargeFileLineThreshold changed lines are excluded and noted at the top.
 func (m *LogModel) renderSelectedDiff() {
 	if m.selectedIdx >= len(m.commits) {
 		return
 	}
 	hash := m.commits[m.selectedIdx].Hash
-	raw, err := git.CommitDiff(m.ctx, m.runner, hash, m.contextLines)
+	raw, err := git.CommitDiffSafe(m.ctx, m.runner, hash, m.contextLines, git.LargeFileLineThreshold)
 	if err != nil {
 		m.diff.SetContent(fmt.Sprintf("(could not load diff: %v)", err))
 		return

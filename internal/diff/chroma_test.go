@@ -81,6 +81,39 @@ func TestChromaRenderer_EmptyInput(t *testing.T) {
 	}
 }
 
+func TestChromaRenderer_GoldenOutput(t *testing.T) {
+	t.Parallel()
+	fixture, err := os.ReadFile("testdata/sample.diff")
+	if err != nil {
+		t.Fatalf("failed to read fixture: %v", err)
+	}
+
+	r, err := diff.NewChromaRenderer()
+	if err != nil {
+		t.Fatalf("failed to create ChromaRenderer: %v", err)
+	}
+
+	got, err := r.Render(string(fixture))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	golden, err := os.ReadFile("testdata/golden_chroma_sample.ansi")
+	if err != nil {
+		t.Fatalf("failed to read golden file: %v", err)
+	}
+
+	if got != string(golden) {
+		// Regenerate with: UPDATE_GOLDEN=1 go test ./internal/diff/ -run TestChromaRenderer_GoldenOutput
+		if os.Getenv("UPDATE_GOLDEN") == "1" {
+			_ = os.WriteFile("testdata/golden_chroma_sample.ansi", []byte(got), 0644)
+			t.Log("golden file updated")
+			return
+		}
+		t.Errorf("ChromaRenderer output does not match golden file.\nRun UPDATE_GOLDEN=1 go test ./internal/diff/ to refresh.\ngot  (len=%d)\nwant (len=%d)", len(got), len(golden))
+	}
+}
+
 func TestChromaRenderer_BinaryDiff(t *testing.T) {
 	input := "Binary files a/image.png and b/image.png differ\n"
 

@@ -21,7 +21,7 @@ for _, tt := range tests {
 
 **Assertion library:** `testify/require` for fatal checks, `testify/assert` for non-fatal. Use `require` for setup preconditions, `assert` for test assertions.
 
-**Benchmarks:** Use `b.Loop()` (Go 1.26+), not `for i := 0; i < b.N; i++`. Use `b.ArtifactDir()` for benchmark output files.
+**Benchmarks:** Use `b.Loop()` (Go 1.24+), not `for i := 0; i < b.N; i++`. Use `b.ArtifactDir()` (Go 1.26+) for benchmark output files.
 
 **`t.Parallel()`** on every test and subtest unless it mutates shared git state.
 

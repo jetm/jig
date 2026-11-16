@@ -16,9 +16,9 @@ type Span struct {
 // and returns the character-position spans of tokens that were removed (in old)
 // and added (in new). Both strings should be stripped of their leading +/-
 // diff prefix before calling.
-func WordDiff(old, new string) (oldSpans, newSpans []Span) {
-	oldTokens := tokenize(old)
-	newTokens := tokenize(new)
+func WordDiff(oldText, newText string) (oldSpans, newSpans []Span) {
+	oldTokens := tokenize(oldText)
+	newTokens := tokenize(newText)
 
 	m, n := len(oldTokens), len(newTokens)
 	dp := make([][]int, m+1)

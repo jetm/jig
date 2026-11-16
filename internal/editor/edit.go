@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -92,8 +93,8 @@ func sanitizeEditedDiff(s string) string {
 
 	// Find the last non-empty line index to identify trailing empty lines.
 	lastNonEmpty := -1
-	for i := len(lines) - 1; i >= 0; i-- {
-		if lines[i] != "" {
+	for i, line := range slices.Backward(lines) {
+		if line != "" {
 			lastNonEmpty = i
 			break
 		}

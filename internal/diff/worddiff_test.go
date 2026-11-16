@@ -9,9 +9,9 @@ import (
 
 func TestWordDiff_IdenticalStrings_NoSpans(t *testing.T) {
 	t.Parallel()
-	old, new := diff.WordDiff("hello world", "hello world")
-	if len(old) != 0 || len(new) != 0 {
-		t.Errorf("identical strings: expected no spans, got old=%v new=%v", old, new)
+	gotOld, gotNew := diff.WordDiff("hello world", "hello world")
+	if len(gotOld) != 0 || len(gotNew) != 0 {
+		t.Errorf("identical strings: expected no spans, got old=%v new=%v", gotOld, gotNew)
 	}
 }
 
@@ -34,9 +34,9 @@ func TestWordDiff_WordReplaced_BothSidesHaveSpans(t *testing.T) {
 	t.Parallel()
 	// "return old" → "return new" — "old" is replaced by "new".
 	// Both sides must have a changed span; "return " is shared and must NOT appear in spans.
-	old := "return old"
-	new := "return new"
-	oldSpans, newSpans := diff.WordDiff(old, new)
+	oldText := "return old"
+	newText := "return new"
+	oldSpans, newSpans := diff.WordDiff(oldText, newText)
 
 	if len(oldSpans) == 0 {
 		t.Error("expected changed spans in old when a word is replaced")
@@ -59,17 +59,17 @@ func TestWordDiff_WordReplaced_BothSidesHaveSpans(t *testing.T) {
 
 func TestWordDiff_EmptyStrings_NoSpans(t *testing.T) {
 	t.Parallel()
-	old, new := diff.WordDiff("", "")
-	if len(old) != 0 || len(new) != 0 {
-		t.Errorf("empty strings: expected no spans, got old=%v new=%v", old, new)
+	gotOld, gotNew := diff.WordDiff("", "")
+	if len(gotOld) != 0 || len(gotNew) != 0 {
+		t.Errorf("empty strings: expected no spans, got old=%v new=%v", gotOld, gotNew)
 	}
 }
 
 func TestWordDiff_AddedContent_OnlyNewSpan(t *testing.T) {
 	t.Parallel()
-	old := "return x"
-	new := "return x + y"
-	oldSpans, newSpans := diff.WordDiff(old, new)
+	oldText := "return x"
+	newText := "return x + y"
+	oldSpans, newSpans := diff.WordDiff(oldText, newText)
 	if len(oldSpans) != 0 {
 		t.Errorf("old had no changes, expected no spans, got %v", oldSpans)
 	}

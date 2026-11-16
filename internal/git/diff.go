@@ -173,7 +173,7 @@ func stripDiffPrefix(path string) string {
 // This is the fallback for diff blocks without ---/+++ lines (e.g., empty or binary files).
 // Handles standard (a/b), mnemonic (c/i/w/o), and noprefix formats.
 func extractPathsFromHeader(block string) (string, string) {
-	header := strings.SplitN(block, "\n", 2)[0]
+	header, _, _ := strings.Cut(block, "\n")
 	rest := strings.TrimPrefix(header, "diff --git ")
 
 	// Find the separator between old and new paths: " X/" where X is a single letter

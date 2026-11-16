@@ -166,8 +166,7 @@ func TestExecRunner_Run_ContextCancel(t *testing.T) {
 	}
 	if !errors.Is(err, context.Canceled) {
 		// The error may be wrapped in an ExecError or context error — check both
-		var execErr *git.ExecError
-		if !errors.As(err, &execErr) {
+		if _, ok := errors.AsType[*git.ExecError](err); !ok {
 			t.Errorf("expected context.Canceled or *git.ExecError, got %T: %v", err, err)
 		}
 	}
